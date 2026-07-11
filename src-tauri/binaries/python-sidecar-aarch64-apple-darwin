@@ -1,0 +1,34 @@
+#!/bin/sh
+# Dev sidecar shim for SermonSync.
+#
+# Tauri's externalBin ("binaries/python-sidecar") resolves to this
+# target-triple-suffixed executable and spawns it on app start. For the
+# skeleton this is a thin launcher for python-sidecar/main.py; for production
+# replace it with a PyInstaller-frozen binary of the same name (see README.md).
+#
+# Locates the repo by walking up from this script's directory until it finds
+# python-sidecar/main.py, so it works whether run in place or copied next to
+# the dev build under target/debug.
+set -e
+
+DIR="$(cd "$(dirname "$0")" && pwd)"
+while [ "$DIR" != "/" ]; do
+  if [ -f "$DIR/python-sidecar/main.py" ]; then
+    break
+  fi
+  DIR="$(dirname "$DIR")"
+done
+
+SIDECAR="$DIR/python-sidecar"
+if [ ! -f "$SIDECAR/main.py" ]; then
+  echo "[python-sidecar] could not locate python-sidecar/main.py" >&2
+  exit 1
+fi
+
+if [ -x "$SIDECAR/.venv/bin/python" ]; then
+  PY="$SIDECAR/.venv/bin/python"
+else
+  PY="python3"
+fi
+
+exec "$PY" "$SIDECAR/main.py"
