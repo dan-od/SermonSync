@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-frontend:
+    name: Lint frontend (ESLint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npx eslint src/
+
+  lint-backend:
+    name: Lint backend (Ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install ruff
+      - run: ruff check python-sidecar/
+
+  type-check:
+    name: Type-check (tsc)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+
+  build-frontend:
+    name: Build frontend (Vite)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+  build-tauri:
+    name: Build Tauri app
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows runner included per SS-003; macOS can be added later.
+        platform: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      # The Tauri config declares a `python-sidecar` externalBin, so the build
+      # requires a binary matching the runner's target triple. For CI build
+      # verification we drop in a placeholder so `tauri build` exercises the
+      # full Rust compile + bundle. Production releases should replace this with
+      # a PyInstaller-frozen build of python-sidecar/main.py (see
+      # src-tauri/binaries/README.md).
+      - name: Stage sidecar build placeholder (Unix)
+        if: matrix.platform != 'windows-latest'
+        run: |
+          TARGET="$(rustc -vV | sed -n 's/^host: //p')"
+          mkdir -p src-tauri/binaries
+          printf '#!/bin/sh\necho "python-sidecar placeholder (CI build)"\n' \
+            > "src-tauri/binaries/python-sidecar-${TARGET}"
+          chmod +x "src-tauri/binaries/python-sidecar-${TARGET}"
+
+      - name: Stage sidecar build placeholder (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $target = (rustc -vV | Select-String '^host: ').ToString().Split(' ')[1]
+          New-Item -ItemType Directory -Force -Path src-tauri/binaries | Out-Null
+          Set-Content -Path "src-tauri/binaries/python-sidecar-$target.exe" -Value "python-sidecar placeholder (CI build)"
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build Tauri app
+        run: npm run tauri build
