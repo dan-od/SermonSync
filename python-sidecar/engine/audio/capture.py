@@ -17,6 +17,7 @@ import math
 
 from ws_hub import manager
 
+from . import vad
 from .devices import AudioBackendError, backend_available
 from .state import audio_state
 
@@ -75,6 +76,10 @@ class CaptureManager:
         self._chunk_counter = 0
         # Emit an audio_level JSON roughly every ~100 ms (every 3rd 30 ms chunk).
         self._level_every = 3
+        self._last_is_speech = False
+        # Optional sink for VAD-passed speech chunks (set by transcription, SS-013).
+        # Signature: sink(pcm_bytes: bytes) -> None
+        self.speech_sink = None
 
     @property
     def is_capturing(self) -> bool:
@@ -136,9 +141,20 @@ class CaptureManager:
 
         audio_state.last_rms = rms
         audio_state.last_peak = peak
+
+        # VAD gate (SS-010): classify the chunk; only speech reaches transcription.
+        is_speech, vad_conf = vad.get_detector().process_rms(rms)
+        if is_speech and self.speech_sink is not None:
+            try:
+                self.speech_sink(pcm)
+            except Exception as exc:  # pragma: no cover
+                logger.error("speech sink error: %s", exc)
+
         self._chunk_counter += 1
         emit_level = self._chunk_counter % self._level_every == 0
-        self._schedule(self._emit(pcm, rms, peak, emit_level))
+        vad_changed = is_speech != self._last_is_speech
+        self._last_is_speech = is_speech
+        self._schedule(self._emit(pcm, rms, peak, emit_level, is_speech, vad_conf, vad_changed))
 
     def _schedule(self, coro) -> None:
         if self._loop is None:
@@ -146,11 +162,25 @@ class CaptureManager:
         with contextlib.suppress(RuntimeError):  # loop closed
             asyncio.run_coroutine_threadsafe(coro, self._loop)
 
-    async def _emit(self, pcm: bytes, rms: float, peak: float, emit_level: bool) -> None:
+    async def _emit(
+        self,
+        pcm: bytes,
+        rms: float,
+        peak: float,
+        emit_level: bool,
+        is_speech: bool,
+        vad_conf: float,
+        vad_changed: bool,
+    ) -> None:
         await manager.broadcast_bytes(pcm)
         if emit_level:
             await manager.broadcast_json(
                 {"type": "audio_level", "rms": round(rms, 4), "peak": round(peak, 4)}
+            )
+        # Emit VAD state on transitions (and periodically while active).
+        if vad_changed or (emit_level and is_speech):
+            await manager.broadcast_json(
+                {"type": "vad_state", "is_speech": is_speech, "confidence": vad_conf}
             )
 
     async def _handle_device_error(self, detail: str) -> None:
