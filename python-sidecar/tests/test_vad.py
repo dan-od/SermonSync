@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-
 from engine.audio.vad import EnergyVAD, sensitivity_to_threshold
 
 
