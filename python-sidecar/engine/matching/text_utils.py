@@ -38,3 +38,32 @@ def normalize_words(text: str) -> list[str]:
 def content_words(text: str) -> list[str]:
     """Normalized words with stopwords removed (for keyword indexing)."""
     return [w for w in normalize_words(text) if w not in STOPWORDS]
+
+
+# American -> KJV British spellings, so paraphrases match the KJV text.
+_SPELLING = {
+    "neighbor": "neighbour",
+    "savior": "saviour",
+    "honor": "honour",
+    "favor": "favour",
+    "labor": "labour",
+    "color": "colour",
+    "glorious": "glorious",
+}
+
+
+def stem(word: str) -> str:
+    """Very conservative stem: spelling-normalize + strip a plural 's'.
+
+    Deliberately light — aggressive suffix stripping mangles short words
+    (dead -> de), so we only fold obvious plurals (works -> work).
+    """
+    w = _SPELLING.get(word, word)
+    if len(w) > 4 and w.endswith("s") and not w.endswith(("ss", "us", "is", "ous")):
+        w = w[:-1]
+    return w
+
+
+def stems(text: str) -> list[str]:
+    """Content-word stems for keyword indexing/matching."""
+    return [stem(w) for w in content_words(text)]
