@@ -1,15 +1,19 @@
-"""SermonSync AI sidecar — FastAPI skeleton.
+"""SermonSync AI sidecar — FastAPI app.
 
-Launched by the Tauri app as a sidecar process. This is the backbone the
-real-time audio → transcription → scripture-matching pipeline will hang off.
-No AI logic yet — just the health/status/websocket skeleton.
+Launched by the Tauri app as a sidecar process. Hosts the real-time audio →
+transcription → scripture-matching pipeline: audio capture/VAD/worship
+detection, Whisper streaming transcription, and the Bible database API.
 """
 
 import logging
+from contextlib import asynccontextmanager
 
 import uvicorn
 from api.audio import router as audio_router
 from api.bible import router as bible_router
+from api.transcription import router as transcription_router
+from engine.audio.capture import capture_manager
+from engine.transcription.streaming import streaming_transcriber
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from ws_hub import manager
 
@@ -23,9 +27,22 @@ ENGINE = "sermonsync-ai"
 VERSION = "0.1.0"
 PIPELINE_STAGES = 4
 
-app = FastAPI(title="SermonSync AI Sidecar", version=VERSION)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Route VAD-passed speech chunks into the streaming transcriber.
+    capture_manager.speech_sink = streaming_transcriber.feed
+    await streaming_transcriber.start()
+    logger.info("sidecar pipeline ready")
+    yield
+    await streaming_transcriber.stop()
+    await capture_manager.stop()
+
+
+app = FastAPI(title="SermonSync AI Sidecar", version=VERSION, lifespan=lifespan)
 app.include_router(bible_router)
 app.include_router(audio_router)
+app.include_router(transcription_router)
 
 
 @app.get("/health")
