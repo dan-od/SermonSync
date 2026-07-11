@@ -6,6 +6,8 @@ from __future__ import annotations
 from typing import Optional
 
 from engine.audio import devices
+from engine.audio.capture import capture_manager
+from engine.audio.devices import AudioBackendError
 from engine.audio.state import audio_state
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -48,3 +50,30 @@ def select_device(req: SelectDeviceRequest) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"selected": chosen}
+
+
+@router.post("/start-capture")
+async def start_capture() -> dict:
+    """Begin capturing PCM audio from the selected device and streaming it."""
+    try:
+        await capture_manager.start()
+    except AudioBackendError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # PortAudio / permission errors
+        raise HTTPException(
+            status_code=500, detail=f"could not start capture: {exc}"
+        ) from exc
+    return {
+        "capturing": True,
+        "device_index": audio_state.device_index,
+        "sample_rate": audio_state.sample_rate,
+        "channels": audio_state.channels,
+    }
+
+
+@router.post("/stop-capture")
+async def stop_capture() -> dict:
+    await capture_manager.stop()
+    return {"capturing": False}
