@@ -8,6 +8,7 @@ No AI logic yet — just the health/status/websocket skeleton.
 import logging
 
 import uvicorn
+from api.audio import router as audio_router
 from api.bible import router as bible_router
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from ws_hub import manager
@@ -24,6 +25,7 @@ PIPELINE_STAGES = 4
 
 app = FastAPI(title="SermonSync AI Sidecar", version=VERSION)
 app.include_router(bible_router)
+app.include_router(audio_router)
 
 
 @app.get("/health")
