@@ -17,7 +17,7 @@ import math
 
 from ws_hub import manager
 
-from . import vad
+from . import vad, worship_detector
 from .devices import AudioBackendError, backend_available
 from .state import audio_state
 
@@ -77,6 +77,9 @@ class CaptureManager:
         # Emit an audio_level JSON roughly every ~100 ms (every 3rd 30 ms chunk).
         self._level_every = 3
         self._last_is_speech = False
+        self._last_acoustic_state = worship_detector.SILENCE
+        # Emit a worship/scene decision roughly every ~0.5 s (every 16th frame).
+        self._scene_every = 16
         # Optional sink for VAD-passed speech chunks (set by transcription, SS-013).
         # Signature: sink(pcm_bytes: bytes) -> None
         self.speech_sink = None
@@ -144,7 +147,15 @@ class CaptureManager:
 
         # VAD gate (SS-010): classify the chunk; only speech reaches transcription.
         is_speech, vad_conf = vad.get_detector().process_rms(rms)
-        if is_speech and self.speech_sink is not None:
+
+        # Worship/scene detection (SS-012): reduce/pause transcription on music.
+        flatness = worship_detector.spectral_flatness(samples)
+        scene, scene_conf = worship_detector.get_detector().update(rms, flatness)
+        audio_state.acoustic_state = scene
+
+        # Forward to transcription only when it's speech AND not worship/music.
+        forward = is_speech and scene != worship_detector.WORSHIP
+        if forward and self.speech_sink is not None:
             try:
                 self.speech_sink(pcm)
             except Exception as exc:  # pragma: no cover
@@ -154,7 +165,17 @@ class CaptureManager:
         emit_level = self._chunk_counter % self._level_every == 0
         vad_changed = is_speech != self._last_is_speech
         self._last_is_speech = is_speech
-        self._schedule(self._emit(pcm, rms, peak, emit_level, is_speech, vad_conf, vad_changed))
+
+        scene_changed = scene != self._last_acoustic_state
+        emit_scene = scene_changed or (self._chunk_counter % self._scene_every == 0)
+        self._last_acoustic_state = scene
+
+        self._schedule(
+            self._emit(
+                pcm, rms, peak, emit_level, is_speech, vad_conf, vad_changed,
+                scene, scene_conf, emit_scene,
+            )
+        )
 
     def _schedule(self, coro) -> None:
         if self._loop is None:
@@ -171,6 +192,9 @@ class CaptureManager:
         is_speech: bool,
         vad_conf: float,
         vad_changed: bool,
+        scene: str,
+        scene_conf: float,
+        emit_scene: bool,
     ) -> None:
         await manager.broadcast_bytes(pcm)
         if emit_level:
@@ -181,6 +205,11 @@ class CaptureManager:
         if vad_changed or (emit_level and is_speech):
             await manager.broadcast_json(
                 {"type": "vad_state", "is_speech": is_speech, "confidence": vad_conf}
+            )
+        # Emit worship/scene state on transitions and periodically (SS-012).
+        if emit_scene:
+            await manager.broadcast_json(
+                {"type": "state_change", "state": scene, "confidence": scene_conf}
             )
 
     async def _handle_device_error(self, detail: str) -> None:
