@@ -135,6 +135,15 @@ class StreamingTranscriber:
                 seg["text"], is_final=True, timestamp=emit_ts
             ):
                 await manager.broadcast_json(sentence)
+                # SS-021: run the 4-stage matcher on each assembled sentence and
+                # broadcast suggestions (off-loop, fire-and-forget).
+                from ..matching.orchestrator import get_orchestrator
+
+                asyncio.create_task(
+                    get_orchestrator().match_and_emit(
+                        sentence["text"], sentence.get("context")
+                    )
+                )
                 if self.on_segment is not None:
                     try:
                         self.on_segment(sentence)

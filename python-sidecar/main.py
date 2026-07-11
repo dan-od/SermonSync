@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 from api.audio import router as audio_router
 from api.bible import router as bible_router
+from api.pipeline import router as pipeline_router
 from api.system import router as system_router
 from api.transcription import router as transcription_router
 from engine.audio.capture import capture_manager
@@ -49,6 +50,7 @@ app.include_router(bible_router)
 app.include_router(audio_router)
 app.include_router(transcription_router)
 app.include_router(system_router)
+app.include_router(pipeline_router)
 
 
 @app.get("/health")

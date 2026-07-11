@@ -24,6 +24,11 @@ python-sidecar/.venv/
 __pycache__/
 *.pyc
 
+# Generated vector store (rebuilt via scripts/build_embeddings.py)
+python-sidecar/data/chroma/
+# Downloaded models (Whisper/LLM/embeddings)
+python-sidecar/models/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
