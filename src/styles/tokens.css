@@ -1,0 +1,76 @@
+/**
+ * SermonSync design tokens (SS-005 scaffold).
+ *
+ * Brand + surface palette agreed for the dark-first operator console.
+ * Dee owns component styling on top of these — these are the locked primitives.
+ */
+:root {
+  /* Brand — Foursquare Gospel purple */
+  --color-primary: #7b2ff7;
+  --color-primary-hover: #6a1fe0;
+  --color-primary-muted: rgba(123, 47, 247, 0.15);
+
+  /* Dark backgrounds */
+  --bg-base: #0a0a0f;
+  --bg-surface: #12121a;
+  --bg-elevated: #1a1a2e;
+
+  /* Foreground / text */
+  --fg-base: #e8e8f0;
+  --fg-muted: #9a9ab0;
+  --fg-subtle: #6a6a80;
+  --border-base: #24243a;
+
+  /* Status accents */
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+  --color-info: #3b82f6;
+
+  /* Verse title themes (Cup / Cross / Crown) */
+  --theme-cup: #f59e0b;
+  --theme-cross: #7b2ff7;
+  --theme-crown: #eab308;
+
+  /* Typography */
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+  --font-sans: "Inter", system-ui, sans-serif;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 2rem;
+
+  /* Spacing scale */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+
+  /* Radius */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+  --shadow-glow: 0 0 16px rgba(123, 47, 247, 0.35);
+}
+
+/* Light theme overrides — SS-047 theme toggle flips [data-theme="light"]. */
+:root[data-theme="light"] {
+  --bg-base: #f5f5fa;
+  --bg-surface: #ffffff;
+  --bg-elevated: #ececf4;
+  --fg-base: #16161f;
+  --fg-muted: #55556a;
+  --fg-subtle: #8a8aa0;
+  --border-base: #d8d8e4;
+}
