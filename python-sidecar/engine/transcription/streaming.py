@@ -144,6 +144,12 @@ class StreamingTranscriber:
                         sentence["text"], sentence.get("context")
                     )
                 )
+                # SS-022: refresh sermon themes periodically / on topic shift.
+                from ..context_detector import get_detector
+
+                theme_update = get_detector().feed(sentence["text"])
+                if theme_update is not None:
+                    await manager.broadcast_json(theme_update)
                 if self.on_segment is not None:
                     try:
                         self.on_segment(sentence)
