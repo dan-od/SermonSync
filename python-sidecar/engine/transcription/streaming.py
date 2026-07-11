@@ -15,6 +15,7 @@ from ws_hub import manager
 
 from ..monitoring import monitor
 from . import whisper_engine
+from .buffer import transcript_buffer
 
 logger = logging.getLogger("sermonsync.transcription.streaming")
 
@@ -127,11 +128,18 @@ class StreamingTranscriber:
                 "latency_ms": latency_ms,
             }
             await manager.broadcast_json(payload)
-            if self.on_segment is not None:
-                try:
-                    self.on_segment(seg)
-                except Exception as exc:  # pragma: no cover
-                    logger.error("on_segment callback error: %s", exc)
+
+            # SS-016: assemble fragments into complete sentences and broadcast
+            # them (with rolling context) for the scripture-matching pipeline.
+            for sentence in transcript_buffer.add_fragment(
+                seg["text"], is_final=True, timestamp=emit_ts
+            ):
+                await manager.broadcast_json(sentence)
+                if self.on_segment is not None:
+                    try:
+                        self.on_segment(sentence)
+                    except Exception as exc:  # pragma: no cover
+                        logger.error("on_segment callback error: %s", exc)
 
 
 streaming_transcriber = StreamingTranscriber()
