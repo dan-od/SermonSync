@@ -8,7 +8,9 @@ No AI logic yet — just the health/status/websocket skeleton.
 import logging
 
 import uvicorn
+from api.bible import router as bible_router
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from ws_hub import manager
 
 logging.basicConfig(
     level=logging.INFO,
@@ -21,6 +23,7 @@ VERSION = "0.1.0"
 PIPELINE_STAGES = 4
 
 app = FastAPI(title="SermonSync AI Sidecar", version=VERSION)
+app.include_router(bible_router)
 
 
 @app.get("/health")
@@ -43,18 +46,18 @@ async def status() -> dict:
 async def ws_audio(websocket: WebSocket) -> None:
     """Audio ingest channel.
 
-    For now: accept the connection, ack it, and log whatever arrives.
-    Real transcript/audio streaming lands in later tasks.
+    Accepts the connection, acks it, and registers the client with the shared
+    broadcast hub so engine components can push events (audio levels, VAD state,
+    transcription, suggestions, system status) to it.
     """
-    await websocket.accept()
-    logger.info("audio websocket connected: %s", websocket.client)
+    await manager.connect(websocket)
     await websocket.send_json({"type": "ack", "message": "connected"})
     try:
         while True:
             message = await websocket.receive_text()
             logger.info("audio ws received: %s", message)
     except WebSocketDisconnect:
-        logger.info("audio websocket disconnected: %s", websocket.client)
+        await manager.disconnect(websocket)
 
 
 if __name__ == "__main__":
