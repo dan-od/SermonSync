@@ -4,3 +4,8 @@ websockets
 sounddevice
 numpy
 faster-whisper
+chromadb
+
+# Optional (large; enable real Stage 3/4 quality):
+#   llama-cpp-python        # Stage 3 LLM matcher (set LLM_MODEL_PATH)
+#   sentence-transformers   # Stage 4 real embeddings (all-MiniLM-L6-v2)
