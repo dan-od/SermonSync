@@ -5,14 +5,17 @@ transcription → scripture-matching pipeline: audio capture/VAD/worship
 detection, Whisper streaming transcription, and the Bible database API.
 """
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
 import uvicorn
 from api.audio import router as audio_router
 from api.bible import router as bible_router
+from api.system import router as system_router
 from api.transcription import router as transcription_router
 from engine.audio.capture import capture_manager
+from engine.monitoring import status_emitter
 from engine.transcription.streaming import streaming_transcriber
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from ws_hub import manager
@@ -33,8 +36,10 @@ async def lifespan(app: FastAPI):
     # Route VAD-passed speech chunks into the streaming transcriber.
     capture_manager.speech_sink = streaming_transcriber.feed
     await streaming_transcriber.start()
+    status_task = asyncio.create_task(status_emitter())
     logger.info("sidecar pipeline ready")
     yield
+    status_task.cancel()
     await streaming_transcriber.stop()
     await capture_manager.stop()
 
@@ -43,6 +48,7 @@ app = FastAPI(title="SermonSync AI Sidecar", version=VERSION, lifespan=lifespan)
 app.include_router(bible_router)
 app.include_router(audio_router)
 app.include_router(transcription_router)
+app.include_router(system_router)
 
 
 @app.get("/health")

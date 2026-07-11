@@ -13,6 +13,7 @@ import time
 
 from ws_hub import manager
 
+from ..monitoring import monitor
 from . import whisper_engine
 
 logger = logging.getLogger("sermonsync.transcription.streaming")
@@ -100,13 +101,19 @@ class StreamingTranscriber:
     async def _infer_and_emit(self, pcm: bytes, received_ts: float) -> None:
         engine = whisper_engine.get_engine()
         audio = pcm16_to_float(pcm)
+        infer_start = time.time()
         try:
             segments = await asyncio.to_thread(engine.transcribe, audio)
         except Exception as exc:  # pragma: no cover
             logger.error("transcription failed: %s", exc)
+            monitor.flag_error("transcription")
             return
         emit_ts = time.time()
         latency_ms = int((emit_ts - received_ts) * 1000)
+        # SS-015: record transcription-stage latency and end-to-end latency.
+        monitor.record_stage("transcription", (emit_ts - infer_start) * 1000)
+        monitor.record_end_to_end(latency_ms)
+        monitor.clear_error("transcription")
         for seg in segments:
             if not seg["text"]:
                 continue
