@@ -74,3 +74,20 @@
   --fg-subtle: #8a8aa0;
   --border-base: #d8d8e4;
 }
+
+:root[data-theme="midnight"] {
+  --color-primary: #4f9bff;
+  --color-primary-hover: #2f83f7;
+  --color-primary-muted: rgba(79, 155, 255, 0.18);
+
+  --bg-base: #050913;
+  --bg-surface: #0b1327;
+  --bg-elevated: #132240;
+
+  --fg-base: #e4edff;
+  --fg-muted: #9badcf;
+  --fg-subtle: #6f82a8;
+  --border-base: #243459;
+
+  --shadow-glow: 0 0 16px rgba(79, 155, 255, 0.32);
+}
