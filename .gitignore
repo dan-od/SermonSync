@@ -39,3 +39,7 @@ python-sidecar/models/
 *.njsproj
 *.sln
 *.sw?
+
+# Generated Tauri / PyInstaller artifacts
+src-tauri/build/
+src-tauri/*.spec
