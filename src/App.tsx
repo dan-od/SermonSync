@@ -333,6 +333,7 @@ function App() {
     uiTheme,
     onUiThemeChange: setUiTheme,
     sessionStatus,
+    onSync: () => undefined,
     onSessionStart: () => setSessionStatus("active"),
     onSessionEnd: () => setSessionStatus("ended"),
   } as unknown as Parameters<typeof AppLayout>[0]["header"];
@@ -340,6 +341,7 @@ function App() {
   const projectorDeskProps = {
     previewSlide,
     liveSlide,
+    feedOverride,
     overlayMode,
     onOverlayModeChange: setOverlayMode,
     theme,
@@ -357,6 +359,7 @@ function App() {
           inputName,
           inputDevices: ["Default Device", "Built-in Microphone", "USB Audio Interface"],
           onInputNameChange: setInputName,
+          isSessionLive: sessionStatus === "active",
           vadPercent,
           onVadPercentChange: setVadPercent,
           sampleRateLabel: "44.1 kHz PCM",

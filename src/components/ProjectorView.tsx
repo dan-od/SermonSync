@@ -33,13 +33,14 @@ function themeLabel(theme: VerseTheme) {
 interface ProjectorViewProps {
   title: string;
   slide: ProjectorSlide | null;
+  feedOverride: "live" | "logo" | "black" | "clear";
   overlayMode: OverlayMode;
   theme: VerseTheme;
   isLive: boolean;
   fontSizePx: number;
 }
 
-export function ProjectorView({ title, slide, overlayMode, theme, isLive, fontSizePx }: ProjectorViewProps) {
+export function ProjectorView({ title, slide, feedOverride, overlayMode, theme, isLive, fontSizePx }: ProjectorViewProps) {
   const stageRef = useRef<HTMLDivElement>(null);
   const [viewportSize, setViewportSize] = useState({ width: OVERLAY_WIDTH, height: OVERLAY_HEIGHT });
 
@@ -90,6 +91,10 @@ export function ProjectorView({ title, slide, overlayMode, theme, isLive, fontSi
   const isLowerThird = overlayMode === "lower-third";
   const lowerThirdTextSize = `${Math.max(40, Math.round(fontSizePx * 1.2))}px`;
   const lowerThirdMetaSize = `${Math.max(20, Math.round(fontSizePx * 0.56))}px`;
+  const isBlackOverride = feedOverride === "black";
+  const isClearOverride = feedOverride === "clear";
+  const isLogoOverride = feedOverride === "logo";
+  const showSlide = feedOverride === "live";
 
   return (
     <div
@@ -108,31 +113,47 @@ export function ProjectorView({ title, slide, overlayMode, theme, isLive, fontSi
           alignItems: "center",
           justifyContent: "space-between",
           padding: "8px 10px",
-          background: "rgba(10, 12, 27, 0.78)",
-          borderBottom: "1px solid #30204e",
+          background: "var(--projector-header-bg)",
+          borderBottom: "1px solid var(--projector-header-border)",
           fontFamily: "var(--font-mono)",
           fontSize: "10px",
-          color: "#96a2c4",
+          color: "var(--projector-header-text)",
           minWidth: 0,
           overflow: "hidden",
         }}
       >
+        <style>{`
+          @keyframes ssOnAirBlink {
+            0%, 100% {
+              opacity: 1;
+            }
+            50% {
+              opacity: 0.35;
+            }
+          }
+        `}</style>
         <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span style={{ width: "10px", height: "10px", borderRadius: "50%", background: "#b02845" }} />
           {title}
         </span>
         <span style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <span style={{ color: "#7f8db3" }}>Scale:{fontSizePx}px</span>
+          <span style={{ color: "var(--projector-header-subtext)" }}>Scale:{fontSizePx}px</span>
           <span
             style={{
-              border: "1px solid #5b2035",
+              border: isLive ? "none" : "1px solid #5b2035",
               borderRadius: "8px",
               padding: "4px 8px",
-              color: isLive ? "#ff6f84" : "#a9b4d0",
+              background: isLive ? "#ffffff" : "transparent",
+              color: isLive ? "#c32b4b" : "var(--projector-header-status-text)",
               fontSize: "10px",
+              fontWeight: 700,
             }}
           >
-            {isLive ? "ON-AIR" : "STANDBY"}
+            {isLive ? (
+              <span style={{ animation: "ssOnAirBlink 1800ms ease-in-out infinite" }}>ON-AIR</span>
+            ) : (
+              "STANDBY"
+            )}
           </span>
         </span>
       </div>
@@ -157,10 +178,13 @@ export function ProjectorView({ title, slide, overlayMode, theme, isLive, fontSi
             height: `${viewportSize.height}px`,
             position: "relative",
             borderRadius: "var(--radius-lg)",
-            background: "linear-gradient(180deg, rgba(16, 20, 44, 0.95), rgba(8, 9, 18, 1))",
+            background: isBlackOverride
+              ? "#000000"
+              : "linear-gradient(180deg, rgba(16, 20, 44, 0.95), rgba(8, 9, 18, 1))",
             overflow: "hidden",
           }}
         >
+          {isClearOverride ? null : (
           <div
             style={{
               width: `${OVERLAY_WIDTH}px`,
@@ -178,7 +202,7 @@ export function ProjectorView({ title, slide, overlayMode, theme, isLive, fontSi
               textAlign: isLowerThird ? "left" : "center",
             }}
           >
-            {slide ? (
+            {showSlide && slide ? (
               isLowerThird ? (
                 <div
                   style={{
@@ -353,12 +377,25 @@ export function ProjectorView({ title, slide, overlayMode, theme, isLive, fontSi
                   </div>
                 </div>
               )
+            ) : isLogoOverride ? (
+              <div
+                style={{
+                  color: "#e7eeff",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: `${Math.max(40, Math.round(fontSizePx * 1.6))}px`,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                }}
+              >
+                LOGO OVERLAY
+              </div>
             ) : (
               <div style={{ color: "var(--fg-subtle)", fontFamily: "var(--font-mono)", fontSize: "28px" }}>
                 No verse loaded
               </div>
             )}
           </div>
+          )}
         </div>
       </div>
     </div>

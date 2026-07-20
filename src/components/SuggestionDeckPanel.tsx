@@ -7,6 +7,17 @@ function referenceLabel(card: SuggestionCard) {
   return `${card.reference.book} ${card.reference.chapter}:${card.reference.verse}`;
 }
 
+function confidenceTone(confidence: number) {
+  const percent = Math.round(confidence * 100);
+  if (percent <= 39) {
+    return "#b91c1c";
+  }
+  if (percent <= 79) {
+    return "#a16207";
+  }
+  return "#166534";
+}
+
 interface SuggestionDeckPanelProps {
   cards: SuggestionCard[];
   previewReference: string | null;
@@ -64,10 +75,11 @@ export function SuggestionDeckPanel({
         display: "flex",
         flexDirection: "column",
         gap: "var(--space-2)",
-        background: "linear-gradient(180deg, rgba(14,18,41,0.86), rgba(10,10,15,0.98))",
-        border: "1px solid #1e2b55",
+        background: "var(--bg-surface)",
+        border: "none",
         borderRadius: "var(--radius-lg)",
         padding: "var(--space-3)",
+        boxShadow: "var(--shadow-sm)",
       }}
     >
       <style>{`
@@ -117,7 +129,7 @@ export function SuggestionDeckPanel({
               fontFamily: "var(--font-mono)",
               fontSize: "10px",
               letterSpacing: "0.08em",
-              color: "#cfd6eb",
+              color: "var(--fg-base)",
               fontWeight: 700,
             }}
           >
@@ -130,27 +142,25 @@ export function SuggestionDeckPanel({
           aria-label="Clear suggestion deck"
           title="Clear suggestion deck"
           style={{
-            width: "28px",
-            height: "28px",
             display: "grid",
             placeItems: "center",
-            border: "1px solid #2a3969",
-            background: "#141c37",
-            color: "#c9d2ec",
-            borderRadius: "6px",
+            border: "none",
+            background: "transparent",
+            color: "var(--fg-muted)",
+            padding: "4px",
             cursor: "pointer",
           }}
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M15.4 3.2 20.8 5.7 16.5 15.1 11.1 12.6 15.4 3.2Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-            <path d="M10.9 12.6c-1.4 3.1-4.1 5.3-7.9 6.5 1.4 1.3 3.1 2.1 5.1 2.4 3.5.5 6.3-.8 8.4-3.8.7-1 .6-2.3-.3-3.1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-            <path d="M7.4 17.1c1.5.4 3 .4 4.5-.2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-            <path d="M9.6 14.5c1.6.7 3.3.8 5 .3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            <path d="M4 7h16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            <path d="M9 7V5.8c0-.9.7-1.6 1.6-1.6h2.8c.9 0 1.6.7 1.6 1.6V7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M7.4 7l.7 11c.1 1 .9 1.8 1.9 1.8h4c1 0 1.8-.8 1.9-1.8l.7-11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M10 11v5M14 11v5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
           </svg>
         </button>
       </div>
 
-      <div style={{ height: "1px", background: "#22325f" }} />
+      <div style={{ height: "1px", background: "var(--border-base)" }} />
 
       <ScrollArea
         style={{ flex: 1, minHeight: 0 }}
@@ -164,10 +174,12 @@ export function SuggestionDeckPanel({
       >
         {visibleCards.map((card) => {
           const label = referenceLabel(card);
+          const confidencePercent = Math.round(card.confidence * 100);
+          const confidenceColor = confidenceTone(card.confidence);
           const isPreview = previewReference === label;
           const isLive = liveReference === label;
           const isHovered = hoveredCardId === card.id;
-          const previewRing = isPreview ? "inset 0 0 0 1px rgba(255,255,255,0.12)" : "none";
+          const previewRing = isPreview ? "inset 0 0 0 1px rgba(123, 47, 247, 0.2)" : "none";
           const hoverGlow = isHovered ? "0 0 0 1px rgba(255, 75, 96, 0.82), 0 0 8px rgba(255, 36, 74, 0.35)" : "none";
 
           return (
@@ -178,24 +190,22 @@ export function SuggestionDeckPanel({
               onMouseEnter={() => setHoveredCardId(card.id)}
               onMouseLeave={() => setHoveredCardId((current) => (current === card.id ? null : current))}
               style={{
-                border: `1px solid ${isPreview ? "#d1d7e7" : "#5126b8"}`,
+                border: `1px solid ${isPreview ? "var(--color-primary)" : "var(--border-base)"}`,
                 borderLeft: `6px solid ${isLive ? "#00ff9f" : "#ff003b"}`,
-                background: "#0f132a",
+                background: "var(--bg-elevated)",
                 borderRadius: "12px",
                 padding: "10px 12px",
                 boxShadow: hoverGlow !== "none" ? `${previewRing !== "none" ? `${previewRing}, ` : ""}${hoverGlow}` : previewRing,
-                outline: isHovered ? "1px solid rgba(255, 75, 96, 0.82)" : "none",
-                outlineOffset: "0px",
                 cursor: "pointer",
                 transition: "box-shadow 140ms ease",
               }}
               className="ss-suggestion-enter"
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginBottom: "6px" }}>
-                <div style={{ color: "#d7def1", fontWeight: 800, fontSize: "14px", lineHeight: 1.1, fontFamily: "Georgia, serif" }}>{label}</div>
+                <div style={{ color: "var(--fg-base)", fontWeight: 800, fontSize: "14px", lineHeight: 1.1, fontFamily: "Georgia, serif" }}>{label}</div>
                 <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  <span style={{ color: "#8d9ac0", fontFamily: "var(--font-mono)", fontSize: "9px", whiteSpace: "nowrap" }}>
-                    Confidence: <span style={{ color: "#00f3b3", fontWeight: 700 }}>{Math.round(card.confidence * 100)}%</span>
+                  <span style={{ color: "var(--fg-muted)", fontFamily: "var(--font-mono)", fontSize: "9px", whiteSpace: "nowrap" }}>
+                    Confidence: <span style={{ color: confidenceColor, fontWeight: 700 }}>{confidencePercent}%</span>
                   </span>
                   <button
                     type="button"
@@ -209,9 +219,9 @@ export function SuggestionDeckPanel({
                     style={{
                       width: "24px",
                       height: "24px",
-                      border: "1px solid #2a3a64",
-                      background: "#111a34",
-                      color: "#d9e0f1",
+                      border: "1px solid var(--border-base)",
+                      background: "var(--bg-surface)",
+                      color: "var(--fg-base)",
                       borderRadius: "4px",
                       padding: 0,
                       fontFamily: "var(--font-mono)",
@@ -225,13 +235,15 @@ export function SuggestionDeckPanel({
                 </div>
               </div>
 
-              <div style={{ color: "#b8c1db", fontSize: "13px", fontStyle: "italic", lineHeight: 1.32, fontFamily: "Georgia, serif" }}>{`"${card.text}"`}</div>
+              <div style={{ color: "var(--fg-muted)", fontSize: "13px", fontStyle: "italic", lineHeight: 1.32, fontFamily: "Georgia, serif" }}>{`"${card.text}"`}</div>
             </article>
           );
         })}
 
         {exitingCards.map((card) => {
           const label = referenceLabel(card);
+          const confidencePercent = Math.round(card.confidence * 100);
+          const confidenceColor = confidenceTone(card.confidence);
           const isPreview = previewReference === label;
           const isLive = liveReference === label;
 
@@ -241,20 +253,20 @@ export function SuggestionDeckPanel({
               className="ss-suggestion-exit"
               style={{
                 overflow: "hidden",
-                border: `1px solid ${isPreview ? "#d1d7e7" : "#5126b8"}`,
+                border: `1px solid ${isPreview ? "var(--color-primary)" : "var(--border-base)"}`,
                 borderLeft: `6px solid ${isLive ? "#00ff9f" : "#ff003b"}`,
-                background: "#0f132a",
+                background: "var(--bg-elevated)",
                 borderRadius: "12px",
                 padding: "10px 12px",
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "8px", marginBottom: "6px" }}>
-                <div style={{ color: "#d7def1", fontWeight: 800, fontSize: "14px", lineHeight: 1.1, fontFamily: "Georgia, serif" }}>{label}</div>
-                <span style={{ color: "#8d9ac0", fontFamily: "var(--font-mono)", fontSize: "9px", whiteSpace: "nowrap" }}>
-                  Confidence: <span style={{ color: "#00f3b3", fontWeight: 700 }}>{Math.round(card.confidence * 100)}%</span>
+                <div style={{ color: "var(--fg-base)", fontWeight: 800, fontSize: "14px", lineHeight: 1.1, fontFamily: "Georgia, serif" }}>{label}</div>
+                <span style={{ color: "var(--fg-muted)", fontFamily: "var(--font-mono)", fontSize: "9px", whiteSpace: "nowrap" }}>
+                  Confidence: <span style={{ color: confidenceColor, fontWeight: 700 }}>{confidencePercent}%</span>
                 </span>
               </div>
-              <div style={{ color: "#b8c1db", fontSize: "13px", fontStyle: "italic", lineHeight: 1.32, fontFamily: "Georgia, serif" }}>{`"${card.text}"`}</div>
+              <div style={{ color: "var(--fg-muted)", fontSize: "13px", fontStyle: "italic", lineHeight: 1.32, fontFamily: "Georgia, serif" }}>{`"${card.text}"`}</div>
             </article>
           );
         })}

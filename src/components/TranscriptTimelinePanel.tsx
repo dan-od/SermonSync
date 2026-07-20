@@ -51,9 +51,9 @@ export function TranscriptTimelinePanel({
         minHeight: 0,
         display: "flex",
         flexDirection: "column",
-        gap: "var(--space-3)",
-        background: "linear-gradient(180deg, rgba(15,18,42,0.86), rgba(10,10,15,0.98))",
-        border: "1px solid #1e2b55",
+        gap: "var(--space-2)",
+        background: "var(--bg-surface)",
+        border: "none",
         borderRadius: "var(--radius-lg)",
         padding: "var(--space-3)",
         boxShadow: "var(--shadow-sm)",
@@ -106,7 +106,7 @@ export function TranscriptTimelinePanel({
               fontFamily: "var(--font-mono)",
                 fontSize: "10px",
               letterSpacing: "0.08em",
-              color: "#cdd4e8",
+              color: "var(--fg-base)",
               fontWeight: 700,
               textTransform: "uppercase",
             }}
@@ -118,7 +118,7 @@ export function TranscriptTimelinePanel({
           style={{
             fontFamily: "var(--font-mono)",
             fontSize: "10px",
-            color: "#7c8bb1",
+            color: "var(--fg-muted)",
             letterSpacing: "0.06em",
           }}
         >
@@ -126,7 +126,7 @@ export function TranscriptTimelinePanel({
         </div>
       </div>
 
-      <div style={{ height: "1px", background: "#22325f" }} />
+      <div style={{ height: "1px", background: "var(--border-base)" }} />
 
       <form
         onSubmit={(event) => {
@@ -147,9 +147,9 @@ export function TranscriptTimelinePanel({
           style={{
             flex: 1,
             minWidth: 0,
-            background: "#111a34",
-            color: "#d3d8ea",
-            border: "1px solid #243263",
+            background: "var(--bg-elevated)",
+            color: "var(--fg-base)",
+            border: "1px solid var(--border-base)",
             borderRadius: "var(--radius-md)",
             padding: "9px 11px",
             fontSize: "13px",
@@ -189,14 +189,14 @@ export function TranscriptTimelinePanel({
             key={item.id}
             className="ss-transcript-enter"
             style={{
-              background: "#151b30",
+              background: "var(--bg-elevated)",
               padding: "5px 8px",
               borderRadius: 0,
             }}
           >
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", lineHeight: 1.34, color: "#cbd3e9" }}>
-              <span style={{ color: "#7f8bad" }}>{item.timestamp} </span>
-              <strong style={{ color: "#7f8cff" }}>[TRANSCRIPTION]</strong>{" "}
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", lineHeight: 1.34, color: "var(--fg-base)" }}>
+              <span style={{ color: "var(--fg-subtle)" }}>{item.timestamp} </span>
+              <strong style={{ color: "var(--color-primary)" }}>[TRANSCRIPTION]</strong>{" "}
               <span style={{ fontStyle: "italic" }}>{item.text}</span>
             </div>
           </div>
@@ -208,14 +208,14 @@ export function TranscriptTimelinePanel({
             className="ss-transcript-exit"
             style={{
               overflow: "hidden",
-              background: "#151b30",
+              background: "var(--bg-elevated)",
               padding: "5px 8px",
               borderRadius: 0,
             }}
           >
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", lineHeight: 1.34, color: "#cbd3e9" }}>
-              <span style={{ color: "#7f8bad" }}>{item.timestamp} </span>
-              <strong style={{ color: "#7f8cff" }}>[TRANSCRIPTION]</strong>{" "}
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", lineHeight: 1.34, color: "var(--fg-base)" }}>
+              <span style={{ color: "var(--fg-subtle)" }}>{item.timestamp} </span>
+              <strong style={{ color: "var(--color-primary)" }}>[TRANSCRIPTION]</strong>{" "}
               <span style={{ fontStyle: "italic" }}>{item.text}</span>
             </div>
           </div>
