@@ -11,18 +11,18 @@ export interface HeaderBarProps {
   uiTheme: UiTheme;
   onUiThemeChange: (theme: UiTheme) => void;
   sessionStatus: SessionStatus;
+  onSync: () => void;
   onSessionStart: () => void;
   onSessionEnd: () => void;
 }
 
 export function HeaderBar({
-  activeTab,
-  onTabChange,
   feedOverride,
   onFeedOverrideChange,
   uiTheme,
   onUiThemeChange,
   sessionStatus,
+  onSync,
   onSessionStart,
   onSessionEnd,
 }: HeaderBarProps) {
@@ -66,17 +66,6 @@ export function HeaderBar({
     };
   }, [isTauriWindow]);
 
-  const navItems: Array<{
-    id: HeaderBarProps["activeTab"];
-    label: string;
-    glyph: string;
-  }> = [
-    { id: "suggestions", label: "Suggestions", glyph: "⌘" },
-    { id: "bible", label: "Bible", glyph: "◫" },
-    { id: "notes", label: "Notes", glyph: "✦" },
-    { id: "database", label: "Database", glyph: "◌" },
-  ];
-
   const overrideItems: Array<{
     id: HeaderBarProps["feedOverride"];
     label: string;
@@ -86,15 +75,6 @@ export function HeaderBar({
     { id: "black", label: "Black", preview: "▭" },
     { id: "clear", label: "Clear", preview: "⌾" },
   ];
-
-  const controlShellStyle = {
-    display: "flex",
-    alignItems: "center",
-    borderRadius: "var(--radius-full)",
-    background: "var(--bg-elevated)",
-    border: "1px solid var(--border-base)",
-    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
-  } as const;
 
   const headerChrome = `
     .ss-header-win {
@@ -110,7 +90,7 @@ export function HeaderBar({
       transition: background-color 0.15s ease, color 0.15s ease;
     }
     .ss-header-win:hover {
-      background: rgba(255, 255, 255, 0.06);
+      background: var(--color-primary-muted);
       color: var(--fg-base);
     }
     .ss-header-win--danger:hover {
@@ -135,7 +115,7 @@ export function HeaderBar({
     }
     .ss-header-override:hover {
       color: var(--fg-base);
-      background: rgba(255, 255, 255, 0.05);
+      background: var(--color-primary-muted);
     }
     .ss-header-override.active {
       color: var(--fg-base);
@@ -216,7 +196,7 @@ export function HeaderBar({
       transition: background-color 0.15s ease, color 0.15s ease;
     }
     .ss-header-session.active {
-      color: #ffd7de;
+      color: var(--color-error);
     }
     .ss-header-session:hover {
       background: var(--color-primary-muted);
@@ -302,7 +282,7 @@ export function HeaderBar({
       onDoubleClick={handleHeaderDoubleClick}
       style={{
         display: "grid",
-        gridTemplateColumns: isTauriWindow ? "1fr auto 1fr auto" : "1fr auto 1fr",
+        gridTemplateColumns: isTauriWindow ? "1fr 1fr auto" : "1fr 1fr",
         alignItems: "center",
         gap: "12px",
         padding: "0 12px 0 12px",
@@ -355,42 +335,14 @@ export function HeaderBar({
         >
           {sessionStatus === "active" ? "END SESSION" : "START SESSION"}
         </button>
-      </div>
-
-      <div
-        style={{
-          ...controlShellStyle,
-          justifySelf: "center",
-          gap: "2px",
-          padding: "2px",
-        }}
-      >
-        {navItems.map((item) => {
-          const active = item.id === activeTab;
-
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => onTabChange(item.id)}
-              title={item.label}
-              style={{
-                width: "22px",
-                height: "22px",
-                borderRadius: "7px",
-                border: "none",
-                background: active ? "var(--color-primary-muted)" : "transparent",
-                color: active ? "var(--fg-base)" : "#aeb7d0",
-                fontSize: "10px",
-                lineHeight: 1,
-                boxShadow: active ? "inset 0 0 0 1px rgba(123, 47, 247, 0.2)" : "none",
-                cursor: "pointer",
-              }}
-            >
-              {item.glyph}
-            </button>
-          );
-        })}
+        <button
+          type="button"
+          data-no-drag="true"
+          className="ss-header-session"
+          onClick={onSync}
+        >
+          SYNC
+        </button>
       </div>
 
       <div
@@ -413,14 +365,14 @@ export function HeaderBar({
         >
           <span
             style={{
-              color: "#7f8eb0",
+              color: "var(--fg-subtle)",
               fontFamily: "var(--font-mono)",
               fontSize: "8px",
               fontWeight: 700,
               letterSpacing: "0.08em",
             }}
           >
-            FEED OVERRIDE:
+            LIVE FEED OVERRIDE:
           </span>
           <div style={{ display: "flex", alignItems: "center", gap: "1px" }}>
             {overrideItems.map((item) => {
