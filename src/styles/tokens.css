@@ -32,6 +32,13 @@
   --theme-cross: #7b2ff7;
   --theme-crown: #eab308;
 
+  /* Projector header chrome */
+  --projector-header-bg: rgba(10, 12, 27, 0.78);
+  --projector-header-border: #30204e;
+  --projector-header-text: #96a2c4;
+  --projector-header-subtext: #7f8db3;
+  --projector-header-status-text: #a9b4d0;
+
   /* Typography */
   --font-mono: "JetBrains Mono", "Fira Code", monospace;
   --font-sans: "Inter", system-ui, sans-serif;
@@ -73,6 +80,12 @@
   --fg-muted: #55556a;
   --fg-subtle: #8a8aa0;
   --border-base: #d8d8e4;
+
+  --projector-header-bg: #444854;
+  --projector-header-border: #3b3f4a;
+  --projector-header-text: #ffffff;
+  --projector-header-subtext: #ffffff;
+  --projector-header-status-text: #ffffff;
 }
 
 :root[data-theme="midnight"] {

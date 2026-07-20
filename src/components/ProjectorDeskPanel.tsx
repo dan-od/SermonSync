@@ -11,6 +11,7 @@ const DEFAULT_SPLIT_RATIO = 0.5;
 interface ProjectorDeskPanelProps {
   previewSlide: ProjectorSlide | null;
   liveSlide: ProjectorSlide | null;
+  feedOverride: "live" | "logo" | "black" | "clear";
   overlayMode: OverlayMode;
   onOverlayModeChange: (mode: OverlayMode) => void;
   theme: VerseTheme;
@@ -22,6 +23,7 @@ interface ProjectorDeskPanelProps {
 export function ProjectorDeskPanel({
   previewSlide,
   liveSlide,
+  feedOverride,
   overlayMode,
   onOverlayModeChange,
   theme,
@@ -124,25 +126,25 @@ export function ProjectorDeskPanel({
           justifyContent: "space-between",
           gap: "var(--space-2)",
           minWidth: 0,
-          color: "#98a6c8",
+          color: "var(--fg-muted)",
           fontFamily: "var(--font-mono)",
           fontSize: "10px",
         }}
       >
-        <span style={{ color: "#d2daef", letterSpacing: "0.1em", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>PROJECTION SIMULATION</span>
+        <span style={{ color: "var(--fg-base)", letterSpacing: "0.1em", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>PROJECTION SIMULATION</span>
         <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0, flexShrink: 0 }}>
-          <span style={{ color: "#8d99bc" }}>FONT SIZE :</span>
+          <span style={{ color: "var(--fg-muted)" }}>FONT SIZE :</span>
           <input
             type="range"
             min={28}
             max={72}
             value={fontSizePx}
             onChange={(event) => setFontSizePx(Number(event.target.value))}
-            style={{ width: "70px", accentColor: "#d7dde9" }}
+            style={{ width: "70px", accentColor: "var(--color-primary)" }}
           />
-          <span style={{ color: "#c5cee6", minWidth: "32px" }}>{fontSizePx}px</span>
-          <span style={{ color: "#44537d" }}>|</span>
-          <span style={{ color: "#8d99bc" }}>AUTO SEND :</span>
+          <span style={{ color: "var(--fg-base)", minWidth: "32px" }}>{fontSizePx}px</span>
+          <span style={{ color: "var(--fg-subtle)" }}>|</span>
+          <span style={{ color: "var(--fg-muted)" }}>AUTO SEND :</span>
           <button
             type="button"
             onClick={() => setAutoSendEnabled((current) => !current)}
@@ -151,7 +153,7 @@ export function ProjectorDeskPanel({
               height: "20px",
               border: "none",
               borderRadius: "999px",
-              background: autoSendEnabled ? "var(--color-primary)" : "#3a4364",
+              background: autoSendEnabled ? "var(--color-primary)" : "var(--border-base)",
               position: "relative",
               display: "inline-flex",
               alignItems: "center",
@@ -172,14 +174,14 @@ export function ProjectorDeskPanel({
               }}
             />
           </button>
-          <span style={{ color: "#44537d" }}>|</span>
+          <span style={{ color: "var(--fg-subtle)" }}>|</span>
           <button
             type="button"
             onClick={onPrevious}
             style={{
               border: "none",
-              background: "#111a34",
-              color: "#c4cde6",
+              background: "var(--bg-elevated)",
+              color: "var(--fg-base)",
               borderRadius: "var(--radius-md)",
               padding: "4px 8px",
               fontFamily: "var(--font-mono)",
@@ -195,8 +197,8 @@ export function ProjectorDeskPanel({
             onClick={onNext}
             style={{
               border: "none",
-              background: "#111a34",
-              color: "#c4cde6",
+              background: "var(--bg-elevated)",
+              color: "var(--fg-base)",
               borderRadius: "var(--radius-md)",
               padding: "4px 8px",
               fontFamily: "var(--font-mono)",
@@ -234,7 +236,7 @@ export function ProjectorDeskPanel({
             padding: "8px",
           }}
         >
-          <ProjectorView title="PREVIEW STANDBY" slide={previewSlide} overlayMode={overlayMode} theme={theme} isLive={false} fontSizePx={fontSizePx} />
+          <ProjectorView title="PREVIEW" slide={previewSlide} feedOverride="live" overlayMode={overlayMode} theme={theme} isLive={false} fontSizePx={fontSizePx} />
         </div>
 
         <div
@@ -271,7 +273,7 @@ export function ProjectorDeskPanel({
             padding: "8px",
           }}
         >
-          <ProjectorView title="LIVE STAGE STREAM" slide={liveSlide} overlayMode={overlayMode} theme={theme} isLive={liveSlide !== null} fontSizePx={fontSizePx} />
+          <ProjectorView title="LIVE" slide={liveSlide} feedOverride={feedOverride} overlayMode={overlayMode} theme={theme} isLive={liveSlide !== null} fontSizePx={fontSizePx} />
         </div>
 
         <div style={{ gridColumn: "1", gridRow: "2", display: "grid", gridTemplateColumns: "1fr", gap: "6px", minWidth: 0, overflow: "hidden" }}>
@@ -309,7 +311,7 @@ export function ProjectorDeskPanel({
               style={{
                 border: "none",
                 borderRadius: "4px",
-                background: "linear-gradient(180deg, rgba(10, 18, 42, 0.95), rgba(6, 10, 24, 0.95))",
+                background: "var(--bg-surface)",
                 padding: "6px",
                 display: "grid",
                 gap: "6px",
@@ -325,7 +327,7 @@ export function ProjectorDeskPanel({
                   fontSize: "8px",
                   letterSpacing: "0.08em",
                   textTransform: "uppercase",
-                  color: "#8d99bc",
+                  color: "var(--fg-muted)",
                 }}
               >
                 Screen Layout Mode
@@ -335,7 +337,7 @@ export function ProjectorDeskPanel({
                   display: "grid",
                   gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
                   gap: "6px",
-                  background: "rgba(4, 10, 30, 0.8)",
+                  background: "var(--bg-elevated)",
                   border: "none",
                   borderRadius: "4px",
                   padding: "3px",
@@ -358,10 +360,11 @@ export function ProjectorDeskPanel({
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     cursor: "pointer",
-                    background: overlayMode === "widescreen" ? "#d3dae7" : "transparent",
-                    color: overlayMode === "widescreen" ? "#14203f" : "#8794b6",
+                    background: overlayMode === "widescreen" ? "var(--color-primary-muted)" : "transparent",
+                    color: overlayMode === "widescreen" ? "var(--fg-base)" : "var(--fg-muted)",
                     fontWeight: overlayMode === "widescreen" ? 700 : 500,
-                    boxShadow: overlayMode === "widescreen" ? "inset 0 0 0 1px rgba(255,255,255,0.28)" : "none",
+                    boxShadow: "none",
+                    outline: "none",
                     transform: overlayMode === "widescreen" ? "scale(1.015)" : "scale(1)",
                     transition: "background-color 160ms ease, color 160ms ease, box-shadow 160ms ease, transform 160ms ease",
                   }}
@@ -384,10 +387,11 @@ export function ProjectorDeskPanel({
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     cursor: "pointer",
-                    background: overlayMode === "lower-third" ? "#d3dae7" : "transparent",
-                    color: overlayMode === "lower-third" ? "#14203f" : "#8794b6",
+                    background: overlayMode === "lower-third" ? "var(--color-primary-muted)" : "transparent",
+                    color: overlayMode === "lower-third" ? "var(--fg-base)" : "var(--fg-muted)",
                     fontWeight: overlayMode === "lower-third" ? 700 : 500,
-                    boxShadow: overlayMode === "lower-third" ? "inset 0 0 0 1px rgba(255,255,255,0.28)" : "none",
+                    boxShadow: "none",
+                    outline: "none",
                     transform: overlayMode === "lower-third" ? "scale(1.015)" : "scale(1)",
                     transition: "background-color 160ms ease, color 160ms ease, box-shadow 160ms ease, transform 160ms ease",
                   }}
