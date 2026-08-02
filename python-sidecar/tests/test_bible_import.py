@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import sqlite3
 
-import pytest
-from fastapi import HTTPException
-
 import database
+import pytest
 from api.bible import ImportBibleRequest, import_bible, list_versions, lookup
-
+from fastapi import HTTPException
 
 SCHEMA = """
 CREATE TABLE versions (
@@ -49,7 +47,10 @@ def bible_db(tmp_path, monkeypatch):
     db_path = tmp_path / "bible.db"
     conn = sqlite3.connect(db_path)
     conn.executescript(SCHEMA)
-    conn.execute("INSERT INTO versions (name, abbreviation) VALUES (?, ?)", ("King James Version", "KJV"))
+    conn.execute(
+        "INSERT INTO versions (name, abbreviation) VALUES (?, ?)",
+        ("King James Version", "KJV"),
+    )
 
     john_id = conn.execute(
         "INSERT INTO books (name, abbreviation, testament, position) VALUES (?, ?, ?, ?)",
@@ -126,7 +127,10 @@ def test_duplicate_version_overwrites_existing_text(bible_db):
         """,
     )
     import_bible(payload)
-    payload = ImportBibleRequest(filename=payload.filename, content=payload.content.replace("Old text.", "New text."))
+    payload = ImportBibleRequest(
+      filename=payload.filename,
+      content=payload.content.replace("Old text.", "New text."),
+    )
 
     result = import_bible(payload)
 

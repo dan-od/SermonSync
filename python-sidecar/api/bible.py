@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import re
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
-import xml.etree.ElementTree as ET
 
 from database import get_connection, get_writable_connection, normalize_book
 from fastapi import APIRouter, HTTPException, Query
@@ -213,7 +213,10 @@ def _xml_label(element: ET.Element, fallback: str) -> str:
 
 
 def _parse_xml_verse(element: ET.Element, fallback_number: int) -> dict[str, Any]:
-    number = _xml_number(element, "vnumber", "verse", "number", "v", "n", "osisID") or fallback_number
+    number = (
+        _xml_number(element, "vnumber", "verse", "number", "v", "n", "osisID")
+        or fallback_number
+    )
     text = _element_text(element)
     if not text:
         raise HTTPException(status_code=400, detail="verse text is missing")
@@ -221,9 +224,15 @@ def _parse_xml_verse(element: ET.Element, fallback_number: int) -> dict[str, Any
 
 
 def _parse_xml_chapter(element: ET.Element, fallback_number: int) -> dict[str, Any]:
-    number = _xml_number(element, "cnumber", "chapter", "number", "c", "n", "osisID") or fallback_number
+    number = (
+        _xml_number(element, "cnumber", "chapter", "number", "c", "n", "osisID")
+        or fallback_number
+    )
     verse_elements = [child for child in list(element) if _is_verse_element(child)]
-    parsed_verses = [_parse_xml_verse(verse, verse_index) for verse_index, verse in enumerate(verse_elements, start=1)]
+    parsed_verses = [
+        _parse_xml_verse(verse, verse_index)
+        for verse_index, verse in enumerate(verse_elements, start=1)
+    ]
 
     if not parsed_verses and _is_verse_element(element):
         parsed_verses = [_parse_xml_verse(element, 1)]
@@ -254,7 +263,10 @@ def _parse_xml_book(element: ET.Element, fallback_position: int) -> dict[str, An
     if not chapter_elements:
         chapter_elements = [element]
 
-    parsed_chapters = [_parse_xml_chapter(chapter, chapter_index) for chapter_index, chapter in enumerate(chapter_elements, start=1)]
+    parsed_chapters = [
+        _parse_xml_chapter(chapter, chapter_index)
+        for chapter_index, chapter in enumerate(chapter_elements, start=1)
+    ]
     if not parsed_chapters:
         raise HTTPException(status_code=400, detail=f"book '{name}' has no chapters")
 
@@ -297,7 +309,10 @@ def _parse_xml_import(filename: str, content: str) -> tuple[str, str, list[dict[
     if not book_elements:
         raise HTTPException(status_code=400, detail="XML bible file is missing book elements")
 
-    parsed_books = [_parse_xml_book(book, book_index) for book_index, book in enumerate(book_elements, start=1)]
+    parsed_books = [
+        _parse_xml_book(book, book_index)
+        for book_index, book in enumerate(book_elements, start=1)
+    ]
     return version_name, version_abbreviation, parsed_books
 
 
@@ -356,7 +371,11 @@ def import_bible(payload: ImportBibleRequest) -> dict:
                 chapter_id = _ensure_chapter(conn, book_id, chapter_number)
                 for verse in chapter["verses"]:
                     conn.execute(
-                        "INSERT INTO verses (chapter_id, verse_number, text, version_id) VALUES (?, ?, ?, ?)",
+                        (
+                            "INSERT INTO verses "
+                            "(chapter_id, verse_number, text, version_id) "
+                            "VALUES (?, ?, ?, ?)"
+                        ),
                         (chapter_id, verse["verse"], verse["text"], version_id),
                     )
                     verse_count += 1
