@@ -101,8 +101,8 @@ export function ScrollArea({
       >
         <div style={{ minWidth: 0, ...contentStyle }}>{children}</div>
       </div>
-      <div className="ss-scroll-rail" aria-hidden="true">
-        {thumb.visible ? (
+      {thumb.visible ? (
+        <div className="ss-scroll-rail" aria-hidden="true">
           <div
             className="ss-scroll-thumb"
             onPointerDown={handleThumbPointerDown}
@@ -111,8 +111,8 @@ export function ScrollArea({
               transform: `translateY(${thumb.top}px)`,
             }}
           />
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }

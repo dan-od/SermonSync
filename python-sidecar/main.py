@@ -19,6 +19,7 @@ from engine.audio.capture import capture_manager
 from engine.monitoring import status_emitter
 from engine.transcription.streaming import streaming_transcriber
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from ws_hub import manager
 
 logging.basicConfig(
@@ -46,6 +47,16 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="SermonSync AI Sidecar", version=VERSION, lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:1420",
+        "http://127.0.0.1:1420",
+        "tauri://localhost",
+    ],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(bible_router)
 app.include_router(audio_router)
 app.include_router(transcription_router)
