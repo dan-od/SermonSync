@@ -1,8 +1,6 @@
 """Build the SermonSync SQLite Bible database.
 
-Populates the full public-domain KJV text and creates placeholder version
-entries for the copyrighted translations (NIV/NKJV/AMP) whose text is TBD
-pending licensing.
+Populates the full public-domain KJV text.
 
 Usage:
     python scripts/build_bible_db.py [--source PATH_OR_URL] [--out data/bible.db]
@@ -48,14 +46,8 @@ BOOKS = [
     ("3 John", "3Jn"), ("Jude", "Jud"), ("Revelation", "Rev"),
 ]
 
-# Version entries. KJV is public domain and fully populated. The rest are
-# copyrighted — we register the version row but leave the text unpopulated.
-# TODO(licensing): populate NIV/NKJV/AMP verse text once licensing is secured.
 VERSIONS = [
     ("King James Version", "KJV", True),
-    ("New International Version", "NIV", False),   # TODO: copyrighted, licensing TBD
-    ("New King James Version", "NKJV", False),     # TODO: copyrighted, licensing TBD
-    ("Amplified Bible", "AMP", False),             # TODO: copyrighted, licensing TBD
 ]
 
 SCHEMA = """
@@ -176,7 +168,6 @@ def build(source: str, out: str) -> None:
         )
         conn.commit()
         print(f"KJV populated: {verse_rows} verses across {len(BOOKS)} books.")
-        print("Placeholder versions (no text yet): NIV, NKJV, AMP  # TODO: licensing")
         print(f"Wrote {out} ({os.path.getsize(out) / 1_048_576:.1f} MB)")
     finally:
         conn.close()

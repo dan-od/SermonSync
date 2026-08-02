@@ -1,14 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AiPanel } from "./components/AiPanel";
+import { AuthGate } from "./components/Auth/AuthGate";
+import type { BranchAccount } from "./components/Auth/types";
 import { BiblePanel } from "./components/BiblePanel";
+import { LocalLibraryPanel, type LibraryTab } from "./components/LocalLibraryPanel";
 import { DbInspectorPanel } from "./components/DbInspectorPanel";
 import { ProjectorDeskPanel } from "./components/ProjectorDeskPanel";
+import { SettingsPanel } from "./components/Settings/SettingsPanel";
 import { SuggestionDeckPanel } from "./components/SuggestionDeckPanel";
 import { TranscriptTimelinePanel } from "./components/TranscriptTimelinePanel";
 import type { BiblePassage, DbTable, TranscriptItem } from "./components/desktop/uiTypes";
 import { AppLayout } from "./components/layout/AppLayout";
-import "./styles/tokens.css";
+import { useConfigStore } from "./stores/configStore";
 import type { OverlayMode, ProjectorSlide, SessionStatus, SuggestionCard, UiTheme, VerseTheme } from "./types/state";
 
 const shellReset = `
@@ -21,14 +25,23 @@ const shellReset = `
     background: var(--bg-base);
     color: var(--fg-base);
     font-family: var(--font-sans);
+    -webkit-user-select: none;
+    user-select: none;
   }
 
   #root {
     width: 100%;
+    -webkit-user-select: none;
+    user-select: none;
   }
 
   button, input, select, textarea {
     font: inherit;
+  }
+
+  input, textarea, [contenteditable="true"] {
+    -webkit-user-select: text;
+    user-select: text;
   }
 `;
 
@@ -76,6 +89,260 @@ const passageLibrary: BiblePassage[] = [
     themes: ["PRAYER", "PEACE"],
   },
 ];
+
+function LocalLibrarySearch({
+  activeTab,
+  searchQuery,
+  onSearchQueryChange,
+  scheduledItems,
+  onAddToSchedule,
+  onRemoveFromSchedule,
+  onSchedulePreview,
+  onScheduleLive,
+}: {
+  activeTab: LibraryTab;
+  searchQuery: string;
+  onSearchQueryChange: (value: string) => void;
+  scheduledItems: { id: string; kind: "scriptures" | "songs"; value: string }[];
+  onAddToSchedule: () => void;
+  onRemoveFromSchedule: (id: string) => void;
+  onSchedulePreview: (item: { id: string; kind: "scriptures" | "songs"; value: string }) => void;
+  onScheduleLive: (item: { id: string; kind: "scriptures" | "songs"; value: string }) => void;
+}) {
+  const canSearch = activeTab === "scriptures" || activeTab === "songs";
+  const label = activeTab === "songs" ? "Search songs" : "Search scriptures";
+  const canAdd = canSearch && searchQuery.trim().length > 0;
+  const clickTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (clickTimeoutRef.current !== null) {
+        window.clearTimeout(clickTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleItemClick = (item: { id: string; kind: "scriptures" | "songs"; value: string }) => {
+    if (clickTimeoutRef.current !== null) {
+      window.clearTimeout(clickTimeoutRef.current);
+    }
+
+    clickTimeoutRef.current = window.setTimeout(() => {
+      onSchedulePreview(item);
+      clickTimeoutRef.current = null;
+    }, 220);
+  };
+
+  const handleItemDoubleClick = (item: { id: string; kind: "scriptures" | "songs"; value: string }) => {
+    if (clickTimeoutRef.current !== null) {
+      window.clearTimeout(clickTimeoutRef.current);
+      clickTimeoutRef.current = null;
+    }
+
+    onScheduleLive(item);
+  };
+
+  return (
+    <div
+      style={{
+        height: "100%",
+        padding: "14px 16px 12px",
+        boxSizing: "border-box",
+        background: "var(--bg-base)",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          display: "grid",
+          gridTemplateRows: "auto auto minmax(0, 1fr)",
+          gap: "10px",
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1fr) auto",
+            alignItems: "center",
+            gap: "8px",
+          }}
+        >
+          <label
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(0, 1fr) 34px",
+              alignItems: "center",
+              background: "linear-gradient(180deg, rgba(26, 26, 46, 0.9), rgba(18, 18, 26, 0.98))",
+              border: "none",
+              borderRadius: "4px",
+              boxShadow: "none",
+              overflow: "hidden",
+            }}
+          >
+            <input
+              type="search"
+              value={searchQuery}
+              disabled={!canSearch}
+              onChange={(event) => onSearchQueryChange(event.target.value)}
+              placeholder={canSearch ? `${label}...` : "Search unavailable"}
+              aria-label={label}
+              style={{
+                minWidth: 0,
+                height: 34,
+                padding: "0 11px",
+                border: "none",
+                outline: "none",
+                background: "transparent",
+                color: canSearch ? "var(--fg-base)" : "var(--fg-subtle)",
+                fontSize: "var(--text-xs)",
+              }}
+            />
+            <span
+              aria-hidden="true"
+              style={{
+                width: 24,
+                height: 24,
+                marginRight: 5,
+                display: "grid",
+                placeItems: "center",
+                justifySelf: "end",
+                borderRadius: "3px",
+                background: "var(--bg-elevated)",
+                color: canSearch ? "var(--fg-muted)" : "var(--fg-subtle)",
+                fontFamily: "var(--font-mono)",
+                fontSize: "12px",
+                border: "none",
+              }}
+            >
+              ⌕
+            </span>
+          </label>
+          <button
+            type="button"
+            onClick={onAddToSchedule}
+            disabled={!canAdd}
+            style={{
+              width: 34,
+              height: 34,
+              display: "grid",
+              placeItems: "center",
+              borderRadius: "4px",
+              background: "var(--bg-elevated)",
+              color: canAdd ? "var(--fg-base)" : "var(--fg-subtle)",
+              fontFamily: "var(--font-mono)",
+              fontSize: "18px",
+              lineHeight: 1,
+              border: "none",
+              cursor: canAdd ? "pointer" : "not-allowed",
+            }}
+          >
+            +
+          </button>
+        </div>
+
+        <div
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: "8px",
+            fontWeight: 700,
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+            color: "var(--fg-subtle)",
+          }}
+        >
+          Schedule
+        </div>
+
+        <div
+          style={{
+            minHeight: 0,
+            border: "none",
+            borderRadius: "4px",
+            overflow: "auto",
+            background: "var(--bg-elevated)",
+          }}
+        >
+          {scheduledItems.length === 0 ? (
+            <div
+              style={{
+                padding: "10px 12px",
+                color: "var(--fg-subtle)",
+                fontSize: "var(--text-xs)",
+                fontStyle: "italic",
+              }}
+            >
+              No scheduled scriptures or songs yet.
+            </div>
+          ) : (
+            scheduledItems.map((item) => (
+              <div
+                key={item.id}
+                onClick={() => handleItemClick(item)}
+                onDoubleClick={() => handleItemDoubleClick(item)}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "auto minmax(0, 1fr) auto",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "8px 10px",
+                  cursor: "pointer",
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "8px",
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    color: "var(--fg-subtle)",
+                  }}
+                >
+                  {item.kind === "scriptures" ? "Scripture" : "Song"}
+                </span>
+                <span
+                  style={{
+                    minWidth: 0,
+                    fontSize: "var(--text-xs)",
+                    color: "var(--fg-base)",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                  title={item.value}
+                >
+                  {item.value}
+                </span>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onRemoveFromSchedule(item.id);
+                  }}
+                  aria-label="Remove scheduled item"
+                  style={{
+                    width: 22,
+                    height: 22,
+                    border: "none",
+                    borderRadius: "3px",
+                    background: "transparent",
+                    color: "var(--fg-muted)",
+                    cursor: "pointer",
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "12px",
+                    lineHeight: 1,
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const initialTranscripts: TranscriptItem[] = [
   {
@@ -172,11 +439,21 @@ function App() {
   const [previewSlide, setPreviewSlide] = useState<ProjectorSlide | null>(toSlide(initialCards[0]));
   const [liveSlide, setLiveSlide] = useState<ProjectorSlide | null>(null);
   const [overlayMode, setOverlayMode] = useState<OverlayMode>("widescreen");
+  const [libraryTab, setLibraryTab] = useState<LibraryTab>("scriptures");
+  const [librarySearchQuery, setLibrarySearchQuery] = useState("");
+  const [librarySchedule, setLibrarySchedule] = useState<{ id: string; kind: "scriptures" | "songs"; value: string }[]>([
+    { id: "mock-scripture-1", kind: "scriptures", value: "John 3:16" },
+    { id: "mock-song-1", kind: "songs", value: "How Great Thou Art" },
+    { id: "mock-scripture-2", kind: "scriptures", value: "Romans 8:28" },
+  ]);
   const [theme] = useState<VerseTheme>("cross");
   const [uiTheme, setUiTheme] = useState<UiTheme>("dark");
   const [sessionStatus, setSessionStatus] = useState<SessionStatus>("idle");
   const [inputName, setInputName] = useState("Default Device");
   const [vadPercent, setVadPercent] = useState(85);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [authenticatedBranch, setAuthenticatedBranch] = useState<BranchAccount | null>(null);
+  const setUnit = useConfigStore((s) => s.setUnit);
 
   useEffect(() => {
     document.documentElement.dataset.theme = uiTheme;
@@ -296,12 +573,79 @@ function App() {
     setLiveSlide(slide);
   };
 
+  const addLibraryScheduleItem = () => {
+    const normalized = librarySearchQuery.trim();
+    if (!normalized || (libraryTab !== "scriptures" && libraryTab !== "songs")) {
+      return;
+    }
+
+    setLibrarySchedule((current) => {
+      const duplicate = current.some((item) => item.kind === libraryTab && item.value.toLowerCase() === normalized.toLowerCase());
+      if (duplicate) {
+        return current;
+      }
+
+      return [
+        ...current,
+        {
+          id: `${libraryTab}-${Date.now()}-${current.length}`,
+          kind: libraryTab,
+          value: normalized,
+        },
+      ];
+    });
+  };
+
+  const removeLibraryScheduleItem = (id: string) => {
+    setLibrarySchedule((current) => current.filter((item) => item.id !== id));
+  };
+
+  const toScheduledSlide = (item: { id: string; kind: "scriptures" | "songs"; value: string }): ProjectorSlide => {
+    if (item.kind === "scriptures") {
+      const exactPassage = passageLibrary.find((passage) => formatReference(passage).toLowerCase() === item.value.toLowerCase());
+      if (exactPassage) {
+        return toSlide(exactPassage);
+      }
+
+      const referenceMatch = item.value.match(/^(.+)\s+(\d+):(\d+)$/);
+      if (referenceMatch) {
+        const [, book, chapterText, verseText] = referenceMatch;
+        return {
+          reference: {
+            book: book.trim(),
+            chapter: Number.parseInt(chapterText, 10),
+            verse: Number.parseInt(verseText, 10),
+          },
+          text: item.value,
+          version: "KJV",
+        };
+      }
+    }
+
+    return {
+      reference: {
+        book: item.kind === "songs" ? "Song" : "Scheduled",
+        chapter: 1,
+        verse: 1,
+      },
+      text: item.value,
+      version: item.kind === "songs" ? "SONG" : "KJV",
+    };
+  };
+
+  const previewScheduledItem = (item: { id: string; kind: "scriptures" | "songs"; value: string }) => {
+    setPreviewSlide(toScheduledSlide(item));
+  };
+
+  const sendScheduledItemLive = (item: { id: string; kind: "scriptures" | "songs"; value: string }) => {
+    setLiveSlide(toScheduledSlide(item));
+  };
+
   const centerPanel = (() => {
     let panel = (
       <SuggestionDeckPanel
         cards={cards}
         previewReference={previewReference}
-        liveReference={liveReference}
         onPreview={(card) => setPreviewSlide(toSlide(card))}
         onSendLive={sendLiveCard}
         onClearAll={() => setCards([])}
@@ -336,6 +680,7 @@ function App() {
     onSync: () => undefined,
     onSessionStart: () => setSessionStatus("active"),
     onSessionEnd: () => setSessionStatus("ended"),
+    onOpenSettings: () => setIsSettingsOpen(true),
   } as unknown as Parameters<typeof AppLayout>[0]["header"];
 
   const projectorDeskProps = {
@@ -349,6 +694,20 @@ function App() {
     onPrevious: () => cycleLive(-1),
     onNext: () => cycleLive(1),
   };
+
+  if (!authenticatedBranch) {
+    return (
+      <>
+        <style>{shellReset}</style>
+        <AuthGate
+          onAuthenticated={(branch) => {
+            setUnit(branch.id, branch.name);
+            setAuthenticatedBranch(branch);
+          }}
+        />
+      </>
+    );
+  }
 
   return (
     <>
@@ -376,6 +735,35 @@ function App() {
         rightPanel={
           <ProjectorDeskPanel {...projectorDeskProps} />
         }
+        library={
+          <LocalLibraryPanel
+            previewReference={previewReference}
+            liveReference={liveReference}
+            activeTab={libraryTab}
+            searchQuery={librarySearchQuery}
+            onActiveTabChange={setLibraryTab}
+            onPreviewSlide={setPreviewSlide}
+            onSendLive={setLiveSlide}
+          />
+        }
+        librarySidePanel={
+          <LocalLibrarySearch
+            activeTab={libraryTab}
+            searchQuery={librarySearchQuery}
+            onSearchQueryChange={setLibrarySearchQuery}
+            scheduledItems={librarySchedule}
+            onAddToSchedule={addLibraryScheduleItem}
+            onRemoveFromSchedule={removeLibraryScheduleItem}
+            onSchedulePreview={previewScheduledItem}
+            onScheduleLive={sendScheduledItemLive}
+          />
+        }
+      />
+      <SettingsPanel
+        open={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        uiTheme={uiTheme}
+        onUiThemeChange={setUiTheme}
       />
     </>
   );

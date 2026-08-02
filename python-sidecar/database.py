@@ -29,6 +29,20 @@ def get_connection() -> sqlite3.Connection:
     return conn
 
 
+def get_writable_connection() -> sqlite3.Connection:
+    """Open a writable SQLite connection with dict-like rows."""
+    if not db_exists():
+        raise FileNotFoundError(
+            f"Bible DB not found at {DB_PATH}. "
+            "Run: python scripts/build_bible_db.py"
+        )
+
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
+
+
 def normalize_book(name: str) -> str:
     """Loosely normalize a book name/abbreviation for matching."""
     return "".join(name.lower().split())

@@ -21,7 +21,6 @@ function confidenceTone(confidence: number) {
 interface SuggestionDeckPanelProps {
   cards: SuggestionCard[];
   previewReference: string | null;
-  liveReference: string | null;
   onPreview: (card: SuggestionCard) => void;
   onSendLive: (card: SuggestionCard) => void;
   onClearAll: () => void;
@@ -30,7 +29,6 @@ interface SuggestionDeckPanelProps {
 export function SuggestionDeckPanel({
   cards,
   previewReference,
-  liveReference,
   onPreview,
   onSendLive,
   onClearAll,
@@ -177,10 +175,10 @@ export function SuggestionDeckPanel({
           const confidencePercent = Math.round(card.confidence * 100);
           const confidenceColor = confidenceTone(card.confidence);
           const isPreview = previewReference === label;
-          const isLive = liveReference === label;
           const isHovered = hoveredCardId === card.id;
           const previewRing = isPreview ? "inset 0 0 0 1px rgba(123, 47, 247, 0.2)" : "none";
           const hoverGlow = isHovered ? "0 0 0 1px rgba(255, 75, 96, 0.82), 0 0 8px rgba(255, 36, 74, 0.35)" : "none";
+          const accentColor = card.status === "sent" ? "var(--color-success)" : card.status === "dismissed" ? "var(--fg-subtle)" : "var(--color-error)";
 
           return (
             <article
@@ -190,17 +188,31 @@ export function SuggestionDeckPanel({
               onMouseEnter={() => setHoveredCardId(card.id)}
               onMouseLeave={() => setHoveredCardId((current) => (current === card.id ? null : current))}
               style={{
+                position: "relative",
+                overflow: "hidden",
                 border: `1px solid ${isPreview ? "var(--color-primary)" : "var(--border-base)"}`,
-                borderLeft: `6px solid ${isLive ? "#00ff9f" : "#ff003b"}`,
                 background: "var(--bg-elevated)",
                 borderRadius: "12px",
-                padding: "10px 12px",
+                padding: "8px 10px 8px 16px",
                 boxShadow: hoverGlow !== "none" ? `${previewRing !== "none" ? `${previewRing}, ` : ""}${hoverGlow}` : previewRing,
                 cursor: "pointer",
                 transition: "box-shadow 140ms ease",
               }}
               className="ss-suggestion-enter"
             >
+              <div
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: "6px",
+                  background: accentColor,
+                  boxShadow: `0 0 10px color-mix(in srgb, ${accentColor} 60%, transparent)`,
+                }}
+              />
+
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginBottom: "6px" }}>
                 <div style={{ color: "var(--fg-base)", fontWeight: 800, fontSize: "14px", lineHeight: 1.1, fontFamily: "Georgia, serif" }}>{label}</div>
                 <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
@@ -235,7 +247,7 @@ export function SuggestionDeckPanel({
                 </div>
               </div>
 
-              <div style={{ color: "var(--fg-muted)", fontSize: "13px", fontStyle: "italic", lineHeight: 1.32, fontFamily: "Georgia, serif" }}>{`"${card.text}"`}</div>
+              <div style={{ color: "var(--fg-muted)", fontSize: "12px", fontStyle: "italic", lineHeight: 1.32, fontFamily: "Georgia, serif" }}>{`"${card.text}"`}</div>
             </article>
           );
         })}
@@ -245,28 +257,41 @@ export function SuggestionDeckPanel({
           const confidencePercent = Math.round(card.confidence * 100);
           const confidenceColor = confidenceTone(card.confidence);
           const isPreview = previewReference === label;
-          const isLive = liveReference === label;
+          const accentColor = card.status === "sent" ? "var(--color-success)" : card.status === "dismissed" ? "var(--fg-subtle)" : "var(--color-error)";
 
           return (
             <article
               key={`exit-${card.id}`}
               className="ss-suggestion-exit"
               style={{
+                position: "relative",
                 overflow: "hidden",
                 border: `1px solid ${isPreview ? "var(--color-primary)" : "var(--border-base)"}`,
-                borderLeft: `6px solid ${isLive ? "#00ff9f" : "#ff003b"}`,
                 background: "var(--bg-elevated)",
                 borderRadius: "12px",
-                padding: "10px 12px",
+                padding: "8px 10px 8px 16px",
               }}
             >
+              <div
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: "6px",
+                  background: accentColor,
+                  boxShadow: `0 0 10px color-mix(in srgb, ${accentColor} 60%, transparent)`,
+                }}
+              />
+
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "8px", marginBottom: "6px" }}>
                 <div style={{ color: "var(--fg-base)", fontWeight: 800, fontSize: "14px", lineHeight: 1.1, fontFamily: "Georgia, serif" }}>{label}</div>
                 <span style={{ color: "var(--fg-muted)", fontFamily: "var(--font-mono)", fontSize: "9px", whiteSpace: "nowrap" }}>
                   Confidence: <span style={{ color: confidenceColor, fontWeight: 700 }}>{confidencePercent}%</span>
                 </span>
               </div>
-              <div style={{ color: "var(--fg-muted)", fontSize: "13px", fontStyle: "italic", lineHeight: 1.32, fontFamily: "Georgia, serif" }}>{`"${card.text}"`}</div>
+              <div style={{ color: "var(--fg-muted)", fontSize: "12px", fontStyle: "italic", lineHeight: 1.32, fontFamily: "Georgia, serif" }}>{`"${card.text}"`}</div>
             </article>
           );
         })}

@@ -10,6 +10,8 @@ interface AppLayoutProps {
   leftPanel: ReactNode;
   centerPanel: ReactNode;
   rightPanel: ReactNode;
+  library?: ReactNode;
+  librarySidePanel?: ReactNode;
 }
 
 const MIN_LEFT_PANEL_WIDTH = 220;
@@ -19,6 +21,8 @@ const MAX_LEFT_PANEL_RATIO = 0.33;
 const MAX_CENTER_PANEL_RATIO = 0.42;
 const DEFAULT_LEFT_WIDTH = 370;
 const DEFAULT_CENTER_WIDTH = 340;
+const MIN_LIBRARY_WIDTH = 1130;
+const MIN_LIBRARY_SEARCH_WIDTH = 320;
 const DIVIDER_WIDTH = 6;
 const PANEL_BOTTOM_INSET = 24;
 
@@ -143,9 +147,11 @@ function clampWidths(containerWidth: number, left: number, center: number): [num
   return [clampedLeft, clampedCenter];
 }
 
-export function AppLayout({ header, status, leftPanel, centerPanel, rightPanel }: AppLayoutProps) {
+export function AppLayout({ header, status, leftPanel, centerPanel, rightPanel, library, librarySidePanel }: AppLayoutProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const libraryRowRef = useRef<HTMLDivElement>(null);
   const [widths, setWidths] = useState({ left: DEFAULT_LEFT_WIDTH, center: DEFAULT_CENTER_WIDTH });
+  const [libraryWidth, setLibraryWidth] = useState<number | null>(null);
 
   const getContainerContentWidth = () => {
     const container = containerRef.current;
@@ -211,6 +217,42 @@ export function AppLayout({ header, status, leftPanel, centerPanel, rightPanel }
     });
   }, []);
 
+  const getLibraryWidth = useCallback(() => {
+    const row = libraryRowRef.current;
+    return row ? row.clientWidth : 0;
+  }, []);
+
+  const handleLibraryMouseDown = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    if (event.clientX < bounds.right - 10) {
+      return;
+    }
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = libraryWidth ?? MIN_LIBRARY_WIDTH;
+    const rowWidth = getLibraryWidth();
+    const maxWidth = Math.max(MIN_LIBRARY_WIDTH, rowWidth - MIN_LIBRARY_SEARCH_WIDTH);
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      setLibraryWidth(clamp(startWidth + moveEvent.clientX - startX, MIN_LIBRARY_WIDTH, maxWidth));
+    };
+    const handleMouseUp = () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+  }, [getLibraryWidth, libraryWidth]);
+
+  const resetLibraryWidth = useCallback(() => {
+    setLibraryWidth(MIN_LIBRARY_WIDTH);
+  }, []);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100dvh" }}>
       <HeaderBar {...header} />
@@ -236,7 +278,38 @@ export function AppLayout({ header, status, leftPanel, centerPanel, rightPanel }
           <PanelFrame style={{ flex: 1, minWidth: 0 }}>{rightPanel}</PanelFrame>
         </div>
       </div>
-      <div style={{ flex: "1 1 0", minHeight: 0 }} />
+      <div ref={libraryRowRef} style={{ flex: "1 1 0", minHeight: 0, display: "flex" }}>
+        <div
+          onMouseDown={handleLibraryMouseDown}
+          onDoubleClick={resetLibraryWidth}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize local library"
+          title="Drag to resize panels. Double-click to reset."
+          style={{
+            width: `${libraryWidth ?? MIN_LIBRARY_WIDTH}px`,
+            flexShrink: 0,
+            borderTop: "1px solid var(--border-base)",
+            borderRight: "1px solid var(--border-base)",
+            overflow: "hidden",
+            boxSizing: "border-box",
+            cursor: "col-resize",
+          }}
+        >
+          {library}
+        </div>
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            borderTop: "1px solid var(--border-base)",
+            overflow: "hidden",
+            boxSizing: "border-box",
+          }}
+        >
+          {librarySidePanel}
+        </div>
+      </div>
       <StatusBar {...status} />
     </div>
   );

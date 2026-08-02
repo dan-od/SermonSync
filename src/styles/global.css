@@ -1,26 +1,9 @@
 /**
  * SermonSync global styles (SS-005 scaffold).
  *
- * Pulls in Tailwind v4 and the design tokens, and applies the dark theme as
- * the default. TODO(Dee): map tokens into Tailwind's @theme so utilities like
- * `bg-surface` / `text-primary` are available, and build the component layer.
+ * Pulls in the design tokens and applies the dark theme as the default.
  */
-@import "tailwindcss";
 @import "./tokens.css";
-
-/* Expose tokens to Tailwind v4's theme so utilities can reference them. */
-@theme {
-  --color-primary: #7b2ff7;
-  --color-base: #0a0a0f;
-  --color-surface: #12121a;
-  --color-elevated: #1a1a2e;
-  --color-success: #22c55e;
-  --color-warning: #f59e0b;
-  --color-error: #ef4444;
-  --color-info: #3b82f6;
-  --font-mono: "JetBrains Mono", "Fira Code", monospace;
-  --font-sans: "Inter", system-ui, sans-serif;
-}
 
 html,
 body,
@@ -76,10 +59,8 @@ body {
   flex: 0 0 10px;
   align-self: stretch;
   margin-left: 6px;
-  border: 1px solid rgba(58, 71, 122, 0.58);
   border-radius: 999px;
-  background: linear-gradient(180deg, rgba(8, 12, 30, 0.72), rgba(13, 18, 42, 0.54));
-  box-shadow: inset 0 0 0 1px rgba(7, 10, 24, 0.72);
+  background: transparent;
   position: relative;
   overflow: hidden;
 }
@@ -100,4 +81,91 @@ body {
 
 .ss-scroll-thumb:active {
   cursor: grabbing;
+}
+
+/* Auth switches use a short directional push/pull, keeping the panel itself still. */
+.auth-form-panel {
+  overflow: hidden;
+  border-top: 1px solid color-mix(in srgb, var(--fg-base) 8%, transparent);
+}
+
+.auth-window-button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+  line-height: 1;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.auth-window-button:hover {
+  background: var(--color-primary-muted);
+  color: var(--fg-base);
+}
+
+.auth-window-button--close:hover {
+  background: #e0475a;
+  color: #ffffff;
+}
+
+.auth-pane-enter {
+  animation: auth-pane-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform, opacity;
+}
+
+.auth-pane-enter--forward {
+  --auth-pane-offset: 18px;
+}
+
+.auth-pane-enter--backward {
+  --auth-pane-offset: -18px;
+}
+
+@keyframes auth-pane-in {
+  from {
+    opacity: 0;
+    transform: translateX(var(--auth-pane-offset));
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-pane-enter {
+    animation-duration: 1ms;
+  }
+}
+
+/* Squared scripture browser scrollbars. */
+.scripture-scroll-pane {
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-primary) var(--bg-elevated);
+}
+
+.scripture-scroll-pane::-webkit-scrollbar {
+  width: 10px;
+}
+
+.scripture-scroll-pane::-webkit-scrollbar-track {
+  background: var(--bg-elevated);
+  border-left: 1px solid var(--border-base);
+}
+
+.scripture-scroll-pane::-webkit-scrollbar-thumb {
+  min-height: 36px;
+  border-radius: 0;
+  background: var(--color-primary);
+  border: 2px solid var(--bg-elevated);
+}
+
+.scripture-scroll-pane::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary-hover);
 }
