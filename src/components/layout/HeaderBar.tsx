@@ -14,6 +14,7 @@ export interface HeaderBarProps {
   onSync: () => void;
   onSessionStart: () => void;
   onSessionEnd: () => void;
+  onOpenSettings: () => void;
 }
 
 export function HeaderBar({
@@ -25,6 +26,7 @@ export function HeaderBar({
   onSync,
   onSessionStart,
   onSessionEnd,
+  onOpenSettings,
 }: HeaderBarProps) {
   const [isTauriWindow] = useState(() => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window);
   const [isMaximized, setIsMaximized] = useState(false);
@@ -120,6 +122,28 @@ export function HeaderBar({
     .ss-header-override.active {
       color: var(--fg-base);
       background: var(--color-primary-muted);
+    }
+
+    .ss-header-quick-project {
+      display: grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      border: none;
+      border-radius: 4px;
+      background: transparent;
+      color: var(--fg-muted);
+      cursor: pointer;
+      transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+    }
+    .ss-header-quick-project svg {
+      width: 13px;
+      height: 13px;
+    }
+    .ss-header-quick-project:hover {
+      background: var(--color-primary-muted);
+      color: var(--fg-base);
+      transform: translateY(-2px);
     }
 
     .ss-header-settings {
@@ -393,6 +417,20 @@ export function HeaderBar({
           </div>
         </div>
 
+        <button
+          type="button"
+          title="Quick Project — send the default idle screen to the connected display (extend/duplicate is set after output selection)"
+          aria-label="Quick project default background"
+          data-no-drag="true"
+          className="ss-header-quick-project"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 19V5" />
+            <path d="M6 11l6-6 6 6" />
+            <path d="M5 21h14" />
+          </svg>
+        </button>
+
         <div
           data-no-drag="true"
           className="ss-header-theme"
@@ -421,6 +459,7 @@ export function HeaderBar({
           aria-label="Settings"
           data-no-drag="true"
           className="ss-header-settings"
+          onClick={onOpenSettings}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />

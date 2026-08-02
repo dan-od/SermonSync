@@ -124,10 +124,19 @@ export interface ProjectorState {
 
 export type UiTheme = "dark" | "light";
 
+export interface BibleVersionSummary {
+  abbreviation: string;
+  name: string;
+  verse_count: number;
+  available: boolean;
+}
+
 export interface SystemConfig {
   unitId: string;
   unitName: string;
   bibleVersion: string;
+  bibleVersions: BibleVersionSummary[];
+  bibleNameOverrides: Record<string, string>;
   theme: UiTheme;
   groqApiKey: string | null;
   groqEnabled: boolean;

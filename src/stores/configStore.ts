@@ -7,11 +7,13 @@
  */
 import { create } from "zustand";
 
-import type { SystemConfig, UiTheme } from "../types/state";
+import type { BibleVersionSummary, SystemConfig, UiTheme } from "../types/state";
 
 interface ConfigStore extends SystemConfig {
   setUnit: (unitId: string, unitName: string) => void;
   setBibleVersion: (version: string) => void;
+  setBibleVersions: (versions: BibleVersionSummary[]) => void;
+  setBibleNameOverride: (abbreviation: string, name: string) => void;
   setTheme: (theme: UiTheme) => void;
   toggleTheme: () => void;
   setGroq: (apiKey: string | null, enabled: boolean) => void;
@@ -22,6 +24,8 @@ const initialState: SystemConfig = {
   unitId: "FSQ-PH-MGBUOGBA-01",
   unitName: "Foursquare Gospel Church, Mgbuogba",
   bibleVersion: "KJV",
+  bibleVersions: [],
+  bibleNameOverrides: {},
   theme: "dark",
   groqApiKey: null,
   groqEnabled: false,
@@ -33,6 +37,11 @@ export const useConfigStore = create<ConfigStore>((set) => ({
   setUnit: (unitId, unitName) => set({ unitId, unitName }),
 
   setBibleVersion: (bibleVersion) => set({ bibleVersion }),
+
+  setBibleVersions: (bibleVersions) => set({ bibleVersions }),
+
+  setBibleNameOverride: (abbreviation, name) =>
+    set((s) => ({ bibleNameOverrides: { ...s.bibleNameOverrides, [abbreviation]: name } })),
 
   setTheme: (theme) => set({ theme }),
 

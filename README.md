@@ -40,3 +40,34 @@ pytest tests/
 ```bash
 npm run tauri build
 ```
+
+## Troubleshooting
+
+### "Bible import failed" / connection refused to localhost:8000
+
+The Python sidecar must be running before the Tauri app can import or browse Bibles. When running in dev mode (`npx tauri dev`) the bundled binary is not used; start the sidecar manually in a separate terminal:
+
+```bash
+cd python-sidecar
+python main.py
+```
+
+Confirm it is up before retrying the import:
+
+```bash
+curl http://127.0.0.1:8000/health  # expect {"status":"ok"}
+```
+
+### "Bible API error: unknown canonical book 'X'"
+
+The imported XML uses a book name not in the 66-book Protestant canon. Common aliases (`Song of Songs`, `Psalm`, `Revelation of John`, etc.) are resolved automatically. If the name is truly non-canonical, rename the `bname` attribute in the XML to match a standard English book name.
+
+### "Bible API error: unknown chapter N" / chapters missing
+
+The Bible database may be partially built. Rebuild it:
+
+```bash
+python python-sidecar/scripts/build_bible_db.py
+```
+
+This is also required on a fresh clone before any import will work.
