@@ -135,6 +135,10 @@ class StreamingTranscriber:
                 seg["text"], is_final=True, timestamp=emit_ts
             ):
                 await manager.broadcast_json(sentence)
+                # SS-044: tie the transcript to the active session for archival.
+                from ..session.manager import get_manager
+
+                get_manager().record_event("sentence", sentence)
                 # SS-021: run the 4-stage matcher on each assembled sentence and
                 # broadcast suggestions (off-loop, fire-and-forget).
                 from ..matching.orchestrator import get_orchestrator
