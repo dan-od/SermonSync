@@ -22,7 +22,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import numpy as np  # noqa: E402
-
 from engine.eval.accuracy import POSITIVE_CASES  # noqa: E402
 
 
@@ -85,7 +84,8 @@ def main() -> None:
             check=True, timeout=30,
         )
         with wave.open(wav, "rb") as w:
-            audio = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2").astype("float32") / 32768.0
+            raw = w.readframes(w.getnframes())
+        audio = np.frombuffer(raw, dtype="<i2").astype("float32") / 32768.0
         secs = len(audio) / 16000.0
         infer_ms, _ = _timed(lambda: engine.transcribe(audio, language="en"))
         print(f"\nWhisper (tiny, CPU): load {load_ms:.0f} ms | "
