@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from engine.config.store import get_store
+from engine.health import system_health
 from engine.monitoring import monitor
 from engine.version import ENGINE_VERSION, pipeline_config
 from fastapi import APIRouter
@@ -21,6 +22,12 @@ def system_status() -> dict:
 def engine_info() -> dict:
     """Engine version + configured pipeline (SS-049)."""
     return pipeline_config()
+
+
+@router.get("/health")
+def health() -> dict:
+    """Per-component health + graceful-degradation status (SS-055)."""
+    return system_health()
 
 
 @router.get("/connectivity")
