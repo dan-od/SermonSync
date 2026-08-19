@@ -10,6 +10,7 @@ import logging
 from contextlib import asynccontextmanager
 
 import uvicorn
+from api.archive import router as archive_router
 from api.audio import router as audio_router
 from api.bible import router as bible_router
 from api.pipeline import router as pipeline_router
@@ -64,6 +65,7 @@ app.include_router(transcription_router)
 app.include_router(system_router)
 app.include_router(pipeline_router)
 app.include_router(session_router)
+app.include_router(archive_router)
 
 
 @app.get("/health")

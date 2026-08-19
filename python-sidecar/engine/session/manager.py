@@ -199,6 +199,69 @@ class SessionManager:
         finally:
             conn.close()
 
+    # ------------------------------------------------------------------
+    # Archive (SS-045)
+    # ------------------------------------------------------------------
+    def archive_summary(self) -> dict:
+        """Totals for the status-bar ARCHIVE indicator."""
+        conn = self._conn()
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) AS sessions, "
+                "COALESCE(SUM(elapsed_seconds), 0) AS total_seconds "
+                "FROM sessions WHERE status = 'ended'"
+            ).fetchone()
+            events = conn.execute(
+                "SELECT COUNT(*) AS c FROM session_events"
+            ).fetchone()["c"]
+            return {
+                "session_count": row["sessions"],
+                "total_seconds": int(row["total_seconds"]),
+                "event_count": events,
+            }
+        finally:
+            conn.close()
+
+    def full_archive(self, session_id: str) -> dict | None:
+        """Full archived session: metadata + transcript + suggestions + actions."""
+        session = self.get(session_id)
+        if session is None:
+            return None
+        grouped: dict[str, list] = {"sentence": [], "suggestion": [], "action": []}
+        for event in self.events(session_id):
+            grouped.setdefault(event["kind"], []).append(event)
+        return {
+            "session": session,
+            "transcript": grouped.get("sentence", []),
+            "suggestions": grouped.get("suggestion", []),
+            "actions": grouped.get("action", []),
+        }
+
+    def search_transcripts(self, query: str, limit: int = 25) -> list[dict]:
+        """Find transcript events whose text contains `query` (case-insensitive)."""
+        q = f"%{query.strip().lower()}%"
+        conn = self._conn()
+        try:
+            rows = conn.execute(
+                "SELECT session_id, payload, created_at FROM session_events "
+                "WHERE kind = 'sentence' AND LOWER(payload) LIKE ? "
+                "ORDER BY created_at DESC LIMIT ?",
+                (q, limit),
+            ).fetchall()
+            results = []
+            for r in rows:
+                payload = json.loads(r["payload"])
+                results.append(
+                    {
+                        "session_id": r["session_id"],
+                        "text": payload.get("text", ""),
+                        "created_at": r["created_at"],
+                    }
+                )
+            return results
+        finally:
+            conn.close()
+
     def events(self, session_id: str, kind: str | None = None) -> list[dict]:
         conn = self._conn()
         try:
