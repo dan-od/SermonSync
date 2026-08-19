@@ -14,9 +14,12 @@ from api.archive import router as archive_router
 from api.audio import router as audio_router
 from api.bible import router as bible_router
 from api.pipeline import router as pipeline_router
+from api.presets import router as presets_router
 from api.session import router as session_router
+from api.settings import router as settings_router
 from api.system import router as system_router
 from api.transcription import router as transcription_router
+from api.units import router as units_router
 from engine.audio.capture import capture_manager
 from engine.monitoring import status_emitter
 from engine.transcription.streaming import streaming_transcriber
@@ -66,6 +69,9 @@ app.include_router(system_router)
 app.include_router(pipeline_router)
 app.include_router(session_router)
 app.include_router(archive_router)
+app.include_router(presets_router)
+app.include_router(units_router)
+app.include_router(settings_router)
 
 
 @app.get("/health")
