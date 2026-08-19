@@ -7,9 +7,27 @@ import sqlite3
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "data", "bible.db")
 
+# Mutable application state (sessions, archive, presets, config) lives in a
+# SEPARATE writable DB so the bundled read-only bible.db is never polluted.
+APP_DB_PATH = os.path.join(os.path.dirname(__file__), "data", "app.db")
+
 
 def db_exists() -> bool:
     return os.path.exists(DB_PATH)
+
+
+def get_app_connection(path: str | None = None) -> sqlite3.Connection:
+    """Open (creating if needed) the writable app-state DB.
+
+    Used for sessions/archive/presets/config — anything the operator mutates at
+    runtime. Distinct from the read-only Bible DB.
+    """
+    db_path = path or APP_DB_PATH
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    conn = sqlite3.connect(db_path, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
 
 
 def get_connection() -> sqlite3.Connection:

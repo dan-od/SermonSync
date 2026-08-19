@@ -26,6 +26,9 @@ __pycache__/
 
 # Generated vector store (rebuilt via scripts/build_embeddings.py)
 python-sidecar/data/chroma/
+# Writable app state (sessions, archive, presets, config) — created at runtime
+python-sidecar/data/app.db
+python-sidecar/data/app.db-*
 # Downloaded models (Whisper/LLM/embeddings)
 python-sidecar/models/
 
