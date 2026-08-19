@@ -19,16 +19,23 @@ logger = logging.getLogger("sermonsync.ws")
 class ConnectionManager:
     def __init__(self) -> None:
         self._clients: set[WebSocket] = set()
-        self._lock = asyncio.Lock()
+        self._lock: asyncio.Lock | None = None
+
+    def _get_lock(self) -> asyncio.Lock:
+        # Create the lock lazily so it binds to the running event loop rather
+        # than whichever loop existed at construction time (Python 3.9).
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     async def connect(self, ws: WebSocket) -> None:
         await ws.accept()
-        async with self._lock:
+        async with self._get_lock():
             self._clients.add(ws)
         logger.info("ws client connected (%d total)", len(self._clients))
 
     async def disconnect(self, ws: WebSocket) -> None:
-        async with self._lock:
+        async with self._get_lock():
             self._clients.discard(ws)
         logger.info("ws client disconnected (%d total)", len(self._clients))
 
@@ -45,7 +52,7 @@ class ConnectionManager:
             except Exception:
                 dead.append(ws)
         if dead:
-            async with self._lock:
+            async with self._get_lock():
                 for ws in dead:
                     self._clients.discard(ws)
 
@@ -57,7 +64,7 @@ class ConnectionManager:
             except Exception:
                 dead.append(ws)
         if dead:
-            async with self._lock:
+            async with self._get_lock():
                 for ws in dead:
                     self._clients.discard(ws)
 
