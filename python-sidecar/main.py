@@ -13,6 +13,7 @@ import uvicorn
 from api.archive import router as archive_router
 from api.audio import router as audio_router
 from api.bible import router as bible_router
+from api.groq import router as groq_router
 from api.pipeline import router as pipeline_router
 from api.presets import router as presets_router
 from api.session import router as session_router
@@ -43,6 +44,10 @@ async def lifespan(app: FastAPI):
     # Route VAD-passed speech chunks into the streaming transcriber.
     capture_manager.speech_sink = streaming_transcriber.feed
     await streaming_transcriber.start()
+    # SS-050: apply any persisted Groq cloud-fallback config to Stage 3.
+    from engine.matching.llm_matcher import apply_persisted_groq
+
+    apply_persisted_groq()
     status_task = asyncio.create_task(status_emitter())
     logger.info("sidecar pipeline ready")
     yield
@@ -72,6 +77,7 @@ app.include_router(archive_router)
 app.include_router(presets_router)
 app.include_router(units_router)
 app.include_router(settings_router)
+app.include_router(groq_router)
 
 
 @app.get("/health")
