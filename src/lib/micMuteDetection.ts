@@ -10,23 +10,24 @@ const CHECK_INTERVAL_MS = 500;
 
 export function useMicMuteDetection(isCapturing: boolean, levelRms: number, levelPeak: number): boolean {
   const [isMuted, setIsMuted] = useState(false);
-  const lastSoundAtRef = useRef(Date.now());
-  const captureStartedAtRef = useRef(Date.now());
+  const lastSoundAtRef = useRef(0);
+  const captureStartedAtRef = useRef(0);
 
   useEffect(() => {
     if (!isCapturing) {
-      setIsMuted(false);
+      setTimeout(() => setIsMuted(false), 0);
       return;
     }
-    captureStartedAtRef.current = Date.now();
-    lastSoundAtRef.current = Date.now();
-    setIsMuted(false);
+    const now = Date.now();
+    captureStartedAtRef.current = now;
+    lastSoundAtRef.current = now;
+    setTimeout(() => setIsMuted(false), 0);
   }, [isCapturing]);
 
   useEffect(() => {
     if (levelRms > SILENCE_THRESHOLD || levelPeak > SILENCE_THRESHOLD) {
       lastSoundAtRef.current = Date.now();
-      setIsMuted(false);
+      setTimeout(() => setIsMuted(false), 0);
     }
   }, [levelRms, levelPeak]);
 
