@@ -194,7 +194,9 @@ pub fn run() {
             let sidecar_result = app
                 .shell()
                 .sidecar("python-sidecar")
-                .and_then(|command| command.spawn().map_err(|error| error.to_string()));
+                .and_then(|command| command.spawn())
+                .map(|(_rx, child)| child)
+                .map_err(|error| error.to_string());
 
             // Development runs use the current Python source so audio fixes
             // are exercised immediately; release builds use the bundled sidecar.
