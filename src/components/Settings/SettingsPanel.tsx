@@ -26,7 +26,7 @@ import { PresentationTab } from "./tabs/PresentationTab";
 import { ProfilesTab } from "./tabs/ProfilesTab";
 import { ThemeTab } from "./tabs/ThemeTab";
 import { DEFAULT_SETTINGS_PANEL_STATE, type SettingsPanelState } from "./types";
-import type { UiTheme } from "../../types/state";
+import type { AudioInputDevice, AudioStatus, UiTheme } from "../../types/state";
 
 export type SettingsTabId =
   | "general"
@@ -60,9 +60,36 @@ export interface SettingsPanelProps {
   onClose: () => void;
   uiTheme: UiTheme;
   onUiThemeChange: (theme: UiTheme) => void;
+  audioDevices: AudioInputDevice[];
+  selectedDevice: AudioInputDevice | null;
+  inputChannel: number;
+  audioStatus: AudioStatus;
+  audioError: string | null;
+  levelRms: number;
+  levelPeak: number;
+  vadSensitivity: number;
+  onAudioDeviceChange: (name: string) => void;
+  onAudioChannelChange: (channel: number) => void;
+  onVadSensitivityChange: (value: number) => void;
 }
 
-export function SettingsPanel({ open, onClose, uiTheme, onUiThemeChange }: SettingsPanelProps) {
+export function SettingsPanel({
+  open,
+  onClose,
+  uiTheme,
+  onUiThemeChange,
+  audioDevices,
+  selectedDevice,
+  inputChannel,
+  audioStatus,
+  audioError,
+  levelRms,
+  levelPeak,
+  vadSensitivity,
+  onAudioDeviceChange,
+  onAudioChannelChange,
+  onVadSensitivityChange,
+}: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<SettingsTabId>("general");
   const [panelState, setPanelState] = useState<SettingsPanelState>(DEFAULT_SETTINGS_PANEL_STATE);
 
@@ -104,7 +131,7 @@ export function SettingsPanel({ open, onClose, uiTheme, onUiThemeChange }: Setti
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "rgba(5, 5, 10, 0.7)",
+        background: "var(--overlay-backdrop)",
         backdropFilter: "blur(2px)",
       }}
       onMouseDown={(event) => {
@@ -233,7 +260,23 @@ export function SettingsPanel({ open, onClose, uiTheme, onUiThemeChange }: Setti
           <main style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "var(--space-6)" }}>
             <div style={{ maxWidth: "760px", margin: "0 auto" }}>
               {activeTab === "general" && <GeneralTab panelState={panelState} onPanelChange={handlePanelChange} />}
-              {activeTab === "audio" && <AudioDetectionTab panelState={panelState} onPanelChange={handlePanelChange} />}
+              {activeTab === "audio" && (
+                <AudioDetectionTab
+                  panelState={panelState}
+                  onPanelChange={handlePanelChange}
+                  audioDevices={audioDevices}
+                  selectedDevice={selectedDevice}
+                  inputChannel={inputChannel}
+                  audioStatus={audioStatus}
+                  audioError={audioError}
+                  levelRms={levelRms}
+                  levelPeak={levelPeak}
+                  vadSensitivity={vadSensitivity}
+                  onAudioDeviceChange={onAudioDeviceChange}
+                  onAudioChannelChange={onAudioChannelChange}
+                  onVadSensitivityChange={onVadSensitivityChange}
+                />
+              )}
               {activeTab === "intelligence" && <IntelligenceTab panelState={panelState} onPanelChange={handlePanelChange} />}
               {activeTab === "bible" && <BibleVersionsTab />}
               {activeTab === "display" && <DisplayMiddlewareTab panelState={panelState} onPanelChange={handlePanelChange} />}

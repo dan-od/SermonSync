@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { SuggestionCard } from "../types/state";
-import { ScrollArea } from "./ui/ScrollArea";
 
 function referenceLabel(card: SuggestionCard) {
   return `${card.reference.book} ${card.reference.chapter}:${card.reference.verse}`;
@@ -23,38 +22,73 @@ interface SuggestionDeckPanelProps {
   previewReference: string | null;
   onPreview: (card: SuggestionCard) => void;
   onSendLive: (card: SuggestionCard) => void;
+  onTogglePin: (card: SuggestionCard) => void;
+  onDismiss: (id: string) => void;
   onClearAll: () => void;
 }
+
+const PAGE_SIZE = 5;
+const MAX_DECK_SIZE = 20;
 
 export function SuggestionDeckPanel({
   cards,
   previewReference,
   onPreview,
   onSendLive,
+  onTogglePin,
+  onDismiss,
   onClearAll,
 }: SuggestionDeckPanelProps) {
-  const visibleCards = useMemo(() => cards.slice(0, 3), [cards]);
+  const orderedCards = useMemo(() => {
+    return [...cards].sort((a, b) => {
+      const pinDelta = Number(Boolean(b.pinned)) - Number(Boolean(a.pinned));
+      if (pinDelta !== 0) {
+        return pinDelta;
+      }
+      return (b.createdAt ?? 0) - (a.createdAt ?? 0);
+    });
+  }, [cards]);
+  const [renderCount, setRenderCount] = useState(PAGE_SIZE);
+  const visibleCards = useMemo(
+    () => orderedCards.slice(0, Math.min(renderCount, MAX_DECK_SIZE)),
+    [orderedCards, renderCount],
+  );
   const [exitingCards, setExitingCards] = useState<SuggestionCard[]>([]);
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
   const previousCardsRef = useRef<SuggestionCard[]>(visibleCards);
+
+  const hasMore = visibleCards.length < orderedCards.length;
+
+  const stageCardsForExit = (cardsToExit: SuggestionCard[]) => {
+    if (cardsToExit.length === 0) return;
+    setExitingCards((current) => {
+      const existingIds = new Set(current.map((card) => card.id));
+      return [...current, ...cardsToExit.filter((card) => !existingIds.has(card.id))];
+    });
+    const exitingIds = new Set(cardsToExit.map((card) => card.id));
+    window.setTimeout(() => {
+      setExitingCards((current) => current.filter((card) => !exitingIds.has(card.id)));
+    }, 320);
+  };
+
+  const handleClearAll = () => {
+    stageCardsForExit(visibleCards);
+    previousCardsRef.current = [];
+    onClearAll();
+  };
+
+  const handleDismiss = (card: SuggestionCard) => {
+    stageCardsForExit([card]);
+    onDismiss(card.id);
+  };
 
   useEffect(() => {
     const previousCards = previousCardsRef.current;
     const removed = previousCards.filter((prev) => !visibleCards.some((card) => card.id === prev.id));
 
     if (removed.length > 0) {
-      setExitingCards((current) => {
-        const existingIds = new Set(current.map((entry) => entry.id));
-        const next = removed.filter((entry) => !existingIds.has(entry.id));
-        return [...current, ...next];
-      });
-
-      const removedIds = new Set(removed.map((entry) => entry.id));
-      const timeout = window.setTimeout(() => {
-        setExitingCards((current) => current.filter((entry) => !removedIds.has(entry.id)));
-      }, 320);
-
-      return () => window.clearTimeout(timeout);
+      stageCardsForExit(removed);
     }
 
     previousCardsRef.current = visibleCards;
@@ -64,6 +98,28 @@ export function SuggestionDeckPanel({
   useEffect(() => {
     previousCardsRef.current = visibleCards;
   }, [visibleCards]);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) {
+      return;
+    }
+
+    viewport.style.scrollBehavior = "smooth";
+
+    const onScroll = () => {
+      if (!hasMore) {
+        return;
+      }
+      const remaining = viewport.scrollHeight - (viewport.scrollTop + viewport.clientHeight);
+      if (remaining < 180) {
+        setRenderCount((current) => Math.min(current + PAGE_SIZE, Math.min(orderedCards.length, MAX_DECK_SIZE)));
+      }
+    };
+
+    viewport.addEventListener("scroll", onScroll, { passive: true });
+    return () => viewport.removeEventListener("scroll", onScroll);
+  }, [hasMore, orderedCards.length]);
 
   return (
     <div
@@ -136,7 +192,7 @@ export function SuggestionDeckPanel({
         </div>
         <button
           type="button"
-          onClick={onClearAll}
+          onClick={handleClearAll}
           aria-label="Clear suggestion deck"
           title="Clear suggestion deck"
           style={{
@@ -160,9 +216,12 @@ export function SuggestionDeckPanel({
 
       <div style={{ height: "1px", background: "var(--border-base)" }} />
 
-      <ScrollArea
-        style={{ flex: 1, minHeight: 0 }}
-        contentStyle={{
+      <div
+        ref={viewportRef}
+        className="scripture-scroll-pane"
+        style={{
+          flex: 1,
+          minHeight: 0,
           display: "flex",
           flexDirection: "column",
           gap: "8px",
@@ -223,6 +282,31 @@ export function SuggestionDeckPanel({
                     type="button"
                     onClick={(event) => {
                       event.stopPropagation();
+                      onTogglePin(card);
+                    }}
+                    onDoubleClick={(event) => event.stopPropagation()}
+                    title={card.pinned ? "Unpin suggestion" : "Pin suggestion"}
+                    aria-label={card.pinned ? `Unpin ${label}` : `Pin ${label}`}
+                    style={{
+                      width: "24px",
+                      height: "24px",
+                      border: "1px solid var(--border-base)",
+                      background: card.pinned ? "var(--color-primary-muted)" : "var(--bg-surface)",
+                      color: card.pinned ? "var(--color-primary)" : "var(--fg-base)",
+                      borderRadius: "4px",
+                      padding: 0,
+                      fontFamily: "var(--font-mono)",
+                      fontSize: "10px",
+                      lineHeight: 1,
+                      cursor: "pointer",
+                    }}
+                  >
+                    📌
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
                       onSendLive(card);
                     }}
                     onDoubleClick={(event) => event.stopPropagation()}
@@ -244,6 +328,29 @@ export function SuggestionDeckPanel({
                   >
                     ▶
                   </button>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleDismiss(card);
+                    }}
+                    onDoubleClick={(event) => event.stopPropagation()}
+                    title="Dismiss suggestion"
+                    aria-label={`Dismiss ${label}`}
+                    style={{
+                      border: "1px solid var(--border-base)",
+                      background: "var(--bg-surface)",
+                      color: "var(--fg-muted)",
+                      borderRadius: "4px",
+                      padding: "4px 6px",
+                      fontFamily: "var(--font-mono)",
+                      fontSize: "8px",
+                      lineHeight: 1,
+                      cursor: "pointer",
+                    }}
+                  >
+                    DISMISS
+                  </button>
                 </div>
               </div>
 
@@ -251,6 +358,21 @@ export function SuggestionDeckPanel({
             </article>
           );
         })}
+
+        {hasMore ? (
+          <div
+            style={{
+              textAlign: "center",
+              color: "var(--fg-subtle)",
+              fontFamily: "var(--font-mono)",
+              fontSize: "10px",
+              letterSpacing: "0.06em",
+              padding: "8px 4px",
+            }}
+          >
+            Loading older suggestions...
+          </div>
+        ) : null}
 
         {exitingCards.map((card) => {
           const label = referenceLabel(card);
@@ -295,7 +417,7 @@ export function SuggestionDeckPanel({
             </article>
           );
         })}
-      </ScrollArea>
+      </div>
     </div>
   );
 }

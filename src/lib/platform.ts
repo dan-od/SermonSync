@@ -15,8 +15,8 @@ export function isMacOS(): boolean {
   return /Mac|iPhone|iPad/i.test(agentString());
 }
 
-/** Native OS controls replace the app's custom min/max/close buttons. */
-export const USE_NATIVE_WINDOW_CONTROLS = true;
+/** The custom header owns min/max/close controls when native decorations are off. */
+export const USE_NATIVE_WINDOW_CONTROLS = false;
 
 /**
  * On macOS the traffic lights are overlaid at the top-left (Overlay title-bar

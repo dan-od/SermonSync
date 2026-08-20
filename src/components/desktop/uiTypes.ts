@@ -1,12 +1,6 @@
-import type { ProjectorSlide } from "../../types/state";
+import type { ProjectorSlide, TranscriptItem } from "../../types/state";
 
-export interface TranscriptItem {
-  id: string;
-  timestamp: string;
-  speaker: string;
-  text: string;
-  matches: string[];
-}
+export type { TranscriptItem };
 
 export interface BiblePassage extends ProjectorSlide {
   searchText: string;

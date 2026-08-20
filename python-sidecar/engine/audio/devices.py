@@ -100,8 +100,24 @@ def select_device(index: int | None = None, name: str | None = None) -> dict:
 
     audio_state.device_index = chosen["index"]
     audio_state.device_name = chosen["name"]
+    audio_state.sample_rate = chosen["default_sample_rate"]
+    audio_state.chunk_samples = round(audio_state.sample_rate * 0.02)
+    audio_state.channels = min(audio_state.channels, chosen["channels"])
     logger.info("selected input device: [%s] %s", chosen["index"], chosen["name"])
     return chosen
+
+
+def set_channels(channels: int) -> int:
+    """Set the capture channel count for the selected input device."""
+    selected = get_selected_device()
+    if selected is None:
+        raise ValueError("no input device selected")
+    if channels < 1 or channels > selected["channels"]:
+        raise ValueError(
+            f"device '{selected['name']}' supports 1-{selected['channels']} input channels"
+        )
+    audio_state.channels = channels
+    return channels
 
 
 def get_selected_device() -> dict | None:

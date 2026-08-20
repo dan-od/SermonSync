@@ -30,7 +30,7 @@ def test_john_3_16(matcher):
 
 
 def test_psalm_23_1(matcher):
-    top = _top(matcher, "The Lord is my shepherd")
+    top = _top(matcher, "A Psalm of David The LORD is my shepherd")
     assert top is not None
     assert top["reference"] == "Psalms 23:1"
     assert top["confidence"] >= 0.8

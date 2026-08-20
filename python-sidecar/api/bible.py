@@ -31,13 +31,27 @@ _BOOK_ALIASES: dict[str, str] = {
     "apocalypseofjohn": "Revelation",
 }
 
+_VERSION_ALIASES: dict[str, str] = {
+    "englishnkjv": "ENGLISHNKJ",
+}
+
 
 class ImportBibleRequest(BaseModel):
     filename: str
     content: str
 
 
+class RenameBibleRequest(BaseModel):
+    name: str
+
+
+def _version_lookup_key(version: str) -> str:
+    normalized = _normalize_identifier(version, version)
+    return _VERSION_ALIASES.get(normalized.lower(), normalized)
+
+
 def _version_id(conn, version: str) -> int:
+    version = _version_lookup_key(version)
     row = conn.execute(
         "SELECT id FROM versions WHERE abbreviation = ? COLLATE NOCASE",
         (version,),
@@ -430,6 +444,57 @@ def list_versions() -> dict:
                 for r in rows
             ]
         }
+    finally:
+        conn.close()
+
+
+@router.patch("/versions/{version}")
+def rename_version(version: str, payload: RenameBibleRequest) -> dict:
+    """Rename a registered Bible version without changing its abbreviation."""
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="version name cannot be empty")
+
+    conn = get_writable_connection()
+    try:
+        lookup_key = _version_lookup_key(version)
+        row = conn.execute(
+            "SELECT id, abbreviation FROM versions WHERE abbreviation = ? COLLATE NOCASE",
+            (lookup_key,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"unknown version '{version}'")
+        conn.execute(
+            "UPDATE versions SET name = ? WHERE id = ?",
+            (name, row["id"]),
+        )
+        conn.commit()
+        return {"status": "ok", "abbreviation": row["abbreviation"], "name": name}
+    finally:
+        conn.close()
+
+
+@router.delete("/versions/{version}")
+def delete_version(version: str) -> dict:
+    """Delete a downloaded/imported version and its verse text."""
+    conn = get_writable_connection()
+    try:
+        lookup_key = _version_lookup_key(version)
+        row = conn.execute(
+            "SELECT id, abbreviation FROM versions WHERE abbreviation = ? COLLATE NOCASE",
+            (lookup_key,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"unknown version '{version}'")
+
+        conn.execute("DELETE FROM verses WHERE version_id = ?", (row["id"],))
+        conn.execute("DELETE FROM versions WHERE id = ?", (row["id"],))
+        _rebuild_fts(conn)
+        conn.commit()
+        return {"status": "ok", "abbreviation": row["abbreviation"]}
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 

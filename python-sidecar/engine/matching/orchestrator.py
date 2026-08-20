@@ -144,11 +144,17 @@ class PipelineOrchestrator:
             ],
         }
 
-    async def match_and_emit(self, sentence: str, context: list[str] | None = None) -> dict:
+    async def match_and_emit(self, sentence: str, context: list[str] | None = None) -> dict | None:
         """Run the pipeline off-loop and broadcast suggestions over the WS hub."""
         import asyncio
 
-        payload = await asyncio.to_thread(self.build_payload, sentence, context)
+        try:
+            payload = await asyncio.to_thread(self.build_payload, sentence, context)
+        except Exception:
+            # Fire-and-forget task — never let a matcher bug take down the
+            # asyncio loop's exception logging for the whole session.
+            logger.exception("scripture matching failed for sentence")
+            return None
         if payload["results"]:
             await manager.broadcast_json(payload)
             # SS-044: tie generated suggestions to the active session.

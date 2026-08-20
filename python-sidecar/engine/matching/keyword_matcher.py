@@ -42,6 +42,14 @@ class KeywordMatcher:
                 "SELECT id FROM versions WHERE abbreviation = ? COLLATE NOCASE",
                 (version,),
             ).fetchone()
+            if vid is None:
+                # Requested version isn't imported — fall back to whatever is,
+                # rather than crashing every sentence for the life of the process.
+                vid = conn.execute("SELECT id FROM versions LIMIT 1").fetchone()
+            if vid is None:
+                logger.warning("no Bible version imported; keyword matcher disabled")
+                self._built = True
+                return
             rows = conn.execute(
                 """
                 SELECT b.name, ch.number, v.verse_number, v.text

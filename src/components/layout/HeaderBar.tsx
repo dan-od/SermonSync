@@ -12,10 +12,18 @@ export interface HeaderBarProps {
   uiTheme: UiTheme;
   onUiThemeChange: (theme: UiTheme) => void;
   sessionStatus: SessionStatus;
-  onSync: () => void;
+  sessionElapsedSeconds: number;
   onSessionStart: () => void;
   onSessionEnd: () => void;
   onOpenSettings: () => void;
+}
+
+function formatElapsed(seconds: number) {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const hh = String(Math.floor(safeSeconds / 3600)).padStart(2, "0");
+  const mm = String(Math.floor((safeSeconds % 3600) / 60)).padStart(2, "0");
+  const ss = String(safeSeconds % 60).padStart(2, "0");
+  return `${hh}:${mm}:${ss}`;
 }
 
 export function HeaderBar({
@@ -24,7 +32,7 @@ export function HeaderBar({
   uiTheme,
   onUiThemeChange,
   sessionStatus,
-  onSync,
+  sessionElapsedSeconds,
   onSessionStart,
   onSessionEnd,
   onOpenSettings,
@@ -101,8 +109,8 @@ export function HeaderBar({
       color: var(--fg-base);
     }
     .ss-header-win--danger:hover {
-      background: #e0475a;
-      color: #ffffff;
+      background: var(--color-error);
+      color: var(--fg-on-accent);
     }
 
     .ss-header-override {
@@ -127,28 +135,6 @@ export function HeaderBar({
     .ss-header-override.active {
       color: var(--fg-base);
       background: var(--color-primary-muted);
-    }
-
-    .ss-header-quick-project {
-      display: grid;
-      place-items: center;
-      width: 24px;
-      height: 24px;
-      border: none;
-      border-radius: 4px;
-      background: transparent;
-      color: var(--fg-muted);
-      cursor: pointer;
-      transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
-    }
-    .ss-header-quick-project svg {
-      width: 13px;
-      height: 13px;
-    }
-    .ss-header-quick-project:hover {
-      background: var(--color-primary-muted);
-      color: var(--fg-base);
-      transform: translateY(-2px);
     }
 
     .ss-header-settings {
@@ -364,14 +350,24 @@ export function HeaderBar({
         >
           {sessionStatus === "active" ? "END SESSION" : "START SESSION"}
         </button>
-        <button
-          type="button"
+        <span
           data-no-drag="true"
-          className="ss-header-session"
-          onClick={onSync}
+          style={{
+            padding: "4px 8px",
+            borderRadius: "4px",
+            background: "var(--bg-elevated)",
+            color: "var(--fg-on-accent)",
+            fontFamily: "var(--font-mono)",
+            fontSize: "9px",
+            fontWeight: 700,
+            letterSpacing: "0.06em",
+            lineHeight: 1,
+          }}
+          aria-label="Session timer"
+          title="Session elapsed"
         >
-          SYNC
-        </button>
+          {formatElapsed(sessionElapsedSeconds)}
+        </span>
       </div>
 
       <div
@@ -421,20 +417,6 @@ export function HeaderBar({
             })}
           </div>
         </div>
-
-        <button
-          type="button"
-          title="Quick Project — send the default idle screen to the connected display (extend/duplicate is set after output selection)"
-          aria-label="Quick project default background"
-          data-no-drag="true"
-          className="ss-header-quick-project"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 19V5" />
-            <path d="M6 11l6-6 6 6" />
-            <path d="M5 21h14" />
-          </svg>
-        </button>
 
         <div
           data-no-drag="true"
