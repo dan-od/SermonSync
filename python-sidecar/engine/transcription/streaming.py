@@ -39,11 +39,15 @@ class StreamingTranscriber:
         min_infer_seconds: float = 1.5,
         max_buffer_seconds: float = 15.0,
         poll_interval: float = 0.25,
+        language: str | None = "en",
     ) -> None:
         self.sample_rate = sample_rate
         self.min_infer_seconds = min_infer_seconds
         self.max_buffer_seconds = max_buffer_seconds
         self.poll_interval = poll_interval
+        # Pin the language (default English) so short/quiet clips aren't
+        # mis-detected as another language. Set None to auto-detect.
+        self.language = language
         self._buf = bytearray()
         self._lock = None  # created lazily on the loop's thread
         self._running = False
@@ -104,7 +108,7 @@ class StreamingTranscriber:
         audio = pcm16_to_float(pcm)
         infer_start = time.time()
         try:
-            segments = await asyncio.to_thread(engine.transcribe, audio)
+            segments = await asyncio.to_thread(engine.transcribe, audio, self.language)
         except Exception as exc:  # pragma: no cover
             logger.error("transcription failed: %s", exc)
             monitor.flag_error("transcription")
