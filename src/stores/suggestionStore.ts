@@ -61,6 +61,8 @@ function mergeCards(existing: SuggestionCard[], incoming: SuggestionCard[]) {
       deck[index] = {
         ...current,
         ...next,
+        pinned: current.pinned,
+        status: current.status,
         createdAt: current.createdAt ?? next.createdAt,
       };
     }
