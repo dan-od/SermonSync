@@ -110,8 +110,8 @@ function toProjectorSlide(book: string, chapter: number, verse: BibleVerse, vers
   };
 }
 
-async function fetchBibleJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${BIBLE_API_BASE}${path}`);
+async function fetchBibleJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(`${BIBLE_API_BASE}${path}`, { signal });
   if (!response.ok) {
     let detail = `Bible API error (${response.status})`;
     try {
@@ -360,48 +360,59 @@ function ScripturesTab({
   useEffect(() => {
     const trimmedQuery = searchQuery.trim();
     const shouldSearch = Boolean(textSearchQuery) && trimmedQuery.length >= 2 && Boolean(selectedBible?.available);
+    const abortController = new AbortController();
+    let timeoutId: number | null = null;
     let cancelled = false;
 
-    queueMicrotask(() => {
-      if (cancelled) {
-        return;
-      }
-
-      if (!shouldSearch) {
+    if (!shouldSearch) {
+      queueMicrotask(() => {
+        if (cancelled) {
+          return;
+        }
         setWholeBibleResults([]);
         setWholeBibleSearchError(null);
         setIsSearchingWholeBible(false);
-        return;
-      }
+      });
+    } else {
+      timeoutId = window.setTimeout(() => {
+        if (cancelled) {
+          return;
+        }
 
-      setIsSearchingWholeBible(true);
-      setWholeBibleSearchError(null);
+        setIsSearchingWholeBible(true);
+        setWholeBibleSearchError(null);
 
-      fetchBibleJson<{ results: { book: string; chapter: number; verse: number; text: string }[] }>(
-        `/api/bible/search?q=${encodeURIComponent(trimmedQuery)}&version=${encodeURIComponent(selectedVersion)}&limit=40`,
-      )
-        .then((payload) => {
-          if (cancelled) return;
-          setWholeBibleResults(
-            payload.results.map((entry) => ({
-              book: entry.book,
-              chapter: entry.chapter,
-              verse: { verse: entry.verse, text: entry.text },
-            })),
-          );
-        })
-        .catch((error: unknown) => {
-          if (cancelled) return;
-          setWholeBibleResults([]);
-          setWholeBibleSearchError(error instanceof Error ? error.message : "Bible search failed");
-        })
-        .finally(() => {
-          if (!cancelled) setIsSearchingWholeBible(false);
-        });
-    });
+        fetchBibleJson<{ results: { book: string; chapter: number; verse: number; text: string }[] }>(
+          `/api/bible/search?q=${encodeURIComponent(trimmedQuery)}&version=${encodeURIComponent(selectedVersion)}&limit=40`,
+          abortController.signal,
+        )
+          .then((payload) => {
+            if (cancelled) return;
+            setWholeBibleResults(
+              payload.results.map((entry) => ({
+                book: entry.book,
+                chapter: entry.chapter,
+                verse: { verse: entry.verse, text: entry.text },
+              })),
+            );
+          })
+          .catch((error: unknown) => {
+            if (cancelled || (error instanceof DOMException && error.name === "AbortError")) return;
+            setWholeBibleResults([]);
+            setWholeBibleSearchError(error instanceof Error ? error.message : "Bible search failed");
+          })
+          .finally(() => {
+            if (!cancelled) setIsSearchingWholeBible(false);
+          });
+      }, 180);
+    }
 
     return () => {
       cancelled = true;
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+      abortController.abort();
     };
   }, [textSearchQuery, searchQuery, selectedVersion, selectedBible?.available]);
 
