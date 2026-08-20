@@ -36,14 +36,16 @@ class StreamingTranscriber:
     def __init__(
         self,
         sample_rate: int = 16000,
-        min_infer_seconds: float = 1.5,
-        max_buffer_seconds: float = 15.0,
-        poll_interval: float = 0.25,
+        min_infer_seconds: float = 1.0,
+        max_buffer_seconds: float = 2.0,
+        poll_interval: float = 0.02,
+        matching_enabled: bool = False,
     ) -> None:
         self.sample_rate = sample_rate
         self.min_infer_seconds = min_infer_seconds
         self.max_buffer_seconds = max_buffer_seconds
         self.poll_interval = poll_interval
+        self.matching_enabled = matching_enabled
         self._buf = bytearray()
         self._lock = None  # created lazily on the loop's thread
         self._running = False
@@ -60,7 +62,7 @@ class StreamingTranscriber:
         if self._first_chunk_ts is None:
             self._first_chunk_ts = time.time()
         self._buf.extend(pcm)
-        # Cap runaway buffering.
+        # Keep only a short recent window while inference is busy.
         max_bytes = int(self.max_buffer_seconds * self.sample_rate * 2)
         if len(self._buf) > max_bytes:
             del self._buf[: len(self._buf) - max_bytes]
@@ -71,6 +73,9 @@ class StreamingTranscriber:
             return
         self._running = True
         self._task = asyncio.create_task(self._run())
+        # Pay model-load cost during sidecar startup so the first spoken word
+        # is not delayed by lazy initialization.
+        await asyncio.to_thread(whisper_engine.get_engine)
         logger.info("streaming transcriber started")
 
     async def stop(self) -> None:
@@ -85,10 +90,19 @@ class StreamingTranscriber:
     def _buffered_seconds(self) -> float:
         return len(self._buf) / (self.sample_rate * 2)
 
+    def _expire_stale_buffer(self, now: float | None = None) -> None:
+        if self._first_chunk_ts is None:
+            return
+        current_time = now if now is not None else time.time()
+        if current_time - self._first_chunk_ts > self.max_buffer_seconds:
+            self._buf.clear()
+            self._first_chunk_ts = None
+
     async def _run(self) -> None:
         try:
             while self._running:
                 await asyncio.sleep(self.poll_interval)
+                self._expire_stale_buffer()
                 if self._buffered_seconds() < self.min_infer_seconds:
                     continue
                 chunk = bytes(self._buf)
@@ -135,15 +149,14 @@ class StreamingTranscriber:
                 seg["text"], is_final=True, timestamp=emit_ts
             ):
                 await manager.broadcast_json(sentence)
-                # SS-021: run the 4-stage matcher on each assembled sentence and
-                # broadcast suggestions (off-loop, fire-and-forget).
-                from ..matching.orchestrator import get_orchestrator
+                if self.matching_enabled:
+                    from ..matching.orchestrator import get_orchestrator
 
-                asyncio.create_task(
-                    get_orchestrator().match_and_emit(
-                        sentence["text"], sentence.get("context")
+                    asyncio.create_task(
+                        get_orchestrator().match_and_emit(
+                            sentence["text"], sentence.get("context")
+                        )
                     )
-                )
                 # SS-022: refresh sermon themes periodically / on topic shift.
                 from ..context_detector import get_detector
 

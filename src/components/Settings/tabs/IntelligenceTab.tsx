@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useConfigStore } from "../../../stores/configStore";
+import type { ModelProviderId } from "../../../types/state";
 import { IconRefresh, IconSparkles } from "../icons";
-import { InfoBanner, SectionIntro, SettingsCard, StatusPill, TextRow, ToggleRow } from "../primitives";
+import { InfoBanner, SectionIntro, SelectRow, SettingsCard, StatusPill, TextRow, ToggleRow } from "../primitives";
 import type { SettingsPanelState } from "../types";
 
 interface IntelligenceTabProps {
@@ -10,22 +11,75 @@ interface IntelligenceTabProps {
   onPanelChange: <K extends keyof SettingsPanelState>(key: K, value: SettingsPanelState[K]) => void;
 }
 
+const MODEL_PROVIDER_LABELS: Record<ModelProviderId, string> = {
+  groq: "Groq",
+  openai: "OpenAI",
+  anthropic: "Anthropic",
+  gemini: "Gemini",
+};
+
 export function IntelligenceTab({ panelState, onPanelChange }: IntelligenceTabProps) {
   const groqApiKey = useConfigStore((s) => s.groqApiKey);
   const groqEnabled = useConfigStore((s) => s.groqEnabled);
   const setGroq = useConfigStore((s) => s.setGroq);
+  const modelProviderKeys = useConfigStore((s) => s.modelProviderKeys);
+  const setModelProviderKey = useConfigStore((s) => s.setModelProviderKey);
+  const loadProviderKey = useConfigStore((s) => s.loadProviderKey);
+  const defaultModelProvider = useConfigStore((s) => s.defaultModelProvider);
+  const setDefaultModelProvider = useConfigStore((s) => s.setDefaultModelProvider);
 
   const [testStatus, setTestStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [groqDraft, setGroqDraft] = useState("");
+  const [providerDrafts, setProviderDrafts] = useState({ openai: "", anthropic: "", gemini: "" });
+  const [isLoadingKeys, setIsLoadingKeys] = useState(true);
+  const [isSavingKeys, setIsSavingKeys] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([loadProviderKey("groq"), loadProviderKey("openai"), loadProviderKey("anthropic"), loadProviderKey("gemini")]).then(
+      ([groq, openai, anthropic, gemini]) => {
+        if (cancelled) return;
+        setGroqDraft(groq ?? "");
+        setProviderDrafts({ openai: openai ?? "", anthropic: anthropic ?? "", gemini: gemini ?? "" });
+        setIsLoadingKeys(false);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [loadProviderKey]);
+
+  const configuredProviders: ModelProviderId[] = [
+    ...(groqApiKey && groqEnabled ? (["groq"] as const) : []),
+    ...(Object.keys(modelProviderKeys) as Exclude<ModelProviderId, "groq">[]).filter((id) => Boolean(modelProviderKeys[id])),
+  ];
+
+  const handleSaveKeys = async () => {
+    setIsSavingKeys(true);
+    setSaveMessage(null);
+    try {
+      await setGroq(groqDraft || null, groqEnabled);
+      await setModelProviderKey("openai", providerDrafts.openai || null);
+      await setModelProviderKey("anthropic", providerDrafts.anthropic || null);
+      await setModelProviderKey("gemini", providerDrafts.gemini || null);
+      setSaveMessage("API keys saved securely on this device.");
+    } catch (saveError) {
+      setSaveMessage(saveError instanceof Error ? saveError.message : "Could not save API keys securely.");
+    } finally {
+      setIsSavingKeys(false);
+    }
+  };
 
   const handleTestConnection = () => {
     setTestStatus("loading");
     setTimeout(() => {
-      if (!groqApiKey || groqApiKey.trim().length < 8) {
+      if (!groqDraft || groqDraft.trim().length < 8) {
         setTestStatus("error");
-        setGroq(groqApiKey, false);
+        void setGroq(groqDraft || null, false);
       } else {
         setTestStatus("success");
-        setGroq(groqApiKey, true);
+        void setGroq(groqDraft, true);
       }
     }, 1200);
   };
@@ -74,8 +128,8 @@ export function IntelligenceTab({ panelState, onPanelChange }: IntelligenceTabPr
         <TextRow
           label="Groq API Key"
           secret
-          value={groqApiKey ?? ""}
-          onChange={(value) => setGroq(value, groqEnabled)}
+          value={groqDraft}
+          onChange={setGroqDraft}
           placeholder="gsk_xxxxxxxxxxxxxxxxxxxxxxxx"
           hint="Stored locally. Never uploaded to any SermonSync telemetry server."
         />
@@ -84,6 +138,66 @@ export function IntelligenceTab({ panelState, onPanelChange }: IntelligenceTabPr
         ) : null}
         {testStatus === "error" ? (
           <InfoBanner tone="warning">Could not verify key. Double-check it was copied correctly from console.groq.com.</InfoBanner>
+        ) : null}
+      </SettingsCard>
+
+      <button
+        type="button"
+        disabled={isLoadingKeys || isSavingKeys}
+        onClick={() => void handleSaveKeys()}
+        style={{
+          alignSelf: "flex-start",
+          border: "none",
+          borderRadius: "var(--radius-md)",
+          background: "var(--color-primary)",
+          color: "var(--fg-on-accent)",
+          padding: "9px 14px",
+          fontSize: "var(--text-xs)",
+          fontWeight: 700,
+          cursor: isLoadingKeys || isSavingKeys ? "wait" : "pointer",
+        }}
+      >
+        {isLoadingKeys ? "Loading secure keys..." : isSavingKeys ? "Saving securely..." : "Save API Keys"}
+      </button>
+      {saveMessage ? <InfoBanner tone={saveMessage.startsWith("API keys") ? "info" : "warning"}>{saveMessage}</InfoBanner> : null}
+
+      <SettingsCard icon={<IconSparkles />} title="Other Model Providers" subtitle="Optional keys for additional AI providers">
+        <TextRow
+          label="OpenAI API Key"
+          secret
+          value={providerDrafts.openai}
+          onChange={(value) => setProviderDrafts((current) => ({ ...current, openai: value }))}
+          placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxx"
+        />
+        <TextRow
+          label="Anthropic API Key"
+          secret
+          value={providerDrafts.anthropic}
+          onChange={(value) => setProviderDrafts((current) => ({ ...current, anthropic: value }))}
+          placeholder="sk-ant-xxxxxxxxxxxxxxxxxxxxxxxx"
+        />
+        <TextRow
+          label="Gemini API Key"
+          secret
+          value={providerDrafts.gemini}
+          onChange={(value) => setProviderDrafts((current) => ({ ...current, gemini: value }))}
+          placeholder="AIzaSyxxxxxxxxxxxxxxxxxxxxxxxx"
+        />
+      </SettingsCard>
+
+      <SettingsCard icon={<IconSparkles />} title="Default Model Provider" subtitle="Shown live in the status bar once a key is set">
+        <SelectRow
+          label="Default provider"
+          hint="Only providers with a configured API key can be selected."
+          value={defaultModelProvider ?? ""}
+          options={[
+            { value: "", label: "None" },
+            ...configuredProviders.map((id) => ({ value: id, label: MODEL_PROVIDER_LABELS[id] })),
+          ]}
+          onChange={(value) => setDefaultModelProvider(value ? (value as ModelProviderId) : null)}
+        />
+        {configuredProviders.length === 0 ? (
+          <InfoBanner tone="warning">Add and verify an API key above before choosing a default provider.</InfoBanner>
         ) : null}
       </SettingsCard>
 

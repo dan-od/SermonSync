@@ -5,7 +5,6 @@ import { CHURCH_ID_PREFIX, CHURCH_ID_SUFFIX_LENGTH } from "./types";
 interface ChurchIdInputProps {
   value: string;
   onChange: (value: string) => void;
-  autoFocus?: boolean;
 }
 
 const ALLOWED_CHARS = /^[A-Z0-9]$/;
@@ -16,7 +15,7 @@ const ALLOWED_CHARS = /^[A-Z0-9]$/;
  * the 6-character suffix, one box at a time (auto-advances forward on
  * entry, back on backspace) — matching the requested FSQ-3A5HE6 format.
  */
-export function ChurchIdInput({ value, onChange, autoFocus }: ChurchIdInputProps) {
+export function ChurchIdInput({ value, onChange }: ChurchIdInputProps) {
   const boxRefs = useRef<(HTMLInputElement | null)[]>([]);
   const chars = Array.from({ length: CHURCH_ID_SUFFIX_LENGTH }, (_, i) => value[i] ?? "");
 
@@ -108,7 +107,6 @@ export function ChurchIdInput({ value, onChange, autoFocus }: ChurchIdInputProps
             onKeyDown={(e) => handleKeyDown(index, e)}
             onPaste={(e) => handlePaste(index, e)}
             onFocus={(e) => e.currentTarget.select()}
-            autoFocus={autoFocus && index === 0}
             maxLength={1}
             inputMode="text"
             aria-label={`Church ID character ${index + 1}`}

@@ -4,7 +4,15 @@ import sqlite3
 
 import database
 import pytest
-from api.bible import ImportBibleRequest, import_bible, list_versions, lookup
+from api.bible import (
+  ImportBibleRequest,
+  RenameBibleRequest,
+  delete_version,
+  import_bible,
+  list_versions,
+  lookup,
+  rename_version,
+)
 from fastapi import HTTPException
 
 SCHEMA = """
@@ -178,6 +186,52 @@ def test_malformed_xml_raises_400(bible_db):
         import_bible(ImportBibleRequest(filename="bad.xml", content="<UNCLOSED>"))
     assert exc_info.value.status_code == 400
     assert "invalid XML" in exc_info.value.detail
+
+
+def test_version_can_be_renamed_and_deleted(bible_db):
+    import_bible(
+        ImportBibleRequest(
+            filename="managed.xml",
+            content="""
+                <XMLBIBLE biblename="MANAGED">
+                  <BIBLEBOOK bname="John" bsname="JHN">
+                    <CHAPTER cnumber="3">
+                      <VERS vnumber="16">Managed text.</VERS>
+                    </CHAPTER>
+                  </BIBLEBOOK>
+                </XMLBIBLE>
+            """,
+        )
+    )
+
+    renamed = rename_version("MANAGED", RenameBibleRequest(name="My Study Bible"))
+    assert renamed["name"] == "My Study Bible"
+    assert any(version["name"] == "My Study Bible" for version in list_versions()["versions"])
+
+    deleted = delete_version("MANAGED")
+    assert deleted["abbreviation"] == "MANAGED"
+    assert not any(version["abbreviation"] == "MANAGED" for version in list_versions()["versions"])
+
+
+def test_legacy_nkjv_identifier_can_rename_installed_nkj(bible_db):
+    import_bible(
+        ImportBibleRequest(
+            filename="EnglishNKJ.xml",
+            content="""
+                <XMLBIBLE biblename="English NKJ">
+                  <BIBLEBOOK bname="John" bsname="JHN">
+                    <CHAPTER cnumber="3">
+                      <VERS vnumber="16">Imported text.</VERS>
+                    </CHAPTER>
+                  </BIBLEBOOK>
+                </XMLBIBLE>
+            """,
+        )
+    )
+
+    renamed = rename_version("ENGLISHNKJV", RenameBibleRequest(name="NKJ Study"))
+    assert renamed["abbreviation"] == "ENGLISHNKJ"
+    assert any(version["name"] == "NKJ Study" for version in list_versions()["versions"])
 
 
 def test_empty_verse_text_raises_400(bible_db):

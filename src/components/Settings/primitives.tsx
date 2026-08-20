@@ -198,7 +198,7 @@ export function ToggleRow({
             width: "16px",
             height: "16px",
             borderRadius: "50%",
-            background: "#fff",
+            background: "var(--fg-on-accent)",
             transition: "left 150ms ease",
           }}
         />
@@ -611,9 +611,9 @@ export function ChipEditor({
 
 export function StatusPill({ tone, label }: { tone: "success" | "warning" | "error" | "neutral"; label: string }) {
   const styleMap: Record<string, { color: string; background: string }> = {
-    success: { color: "var(--color-success)", background: "rgba(34, 197, 94, 0.16)" },
-    warning: { color: "var(--color-warning)", background: "rgba(245, 158, 11, 0.16)" },
-    error: { color: "var(--color-error)", background: "rgba(239, 68, 68, 0.16)" },
+    success: { color: "var(--color-success)", background: "var(--color-success-muted)" },
+    warning: { color: "var(--color-warning)", background: "var(--color-warning-muted)" },
+    error: { color: "var(--color-error)", background: "var(--color-error-muted)" },
     neutral: { color: "var(--fg-subtle)", background: "var(--bg-elevated)" },
   };
   const { color, background } = styleMap[tone];

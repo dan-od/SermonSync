@@ -42,7 +42,11 @@ def test_float_to_pcm16_range_and_length():
 
 
 class _FakeStream:
+    instances = []
+
     def __init__(self, **kwargs):
+        self.kwargs = kwargs
+        self.__class__.instances.append(self)
         self.started = False
         self.closed = False
 
@@ -68,6 +72,16 @@ def test_start_stop_lifecycle(monkeypatch):
     fake_sd = type("SD", (), {"InputStream": _FakeStream})()
     monkeypatch.setattr(capture, "_sd", fake_sd)
     monkeypatch.setattr(capture, "backend_available", lambda: True)
+    monkeypatch.setattr(
+        capture,
+        "list_input_devices",
+        lambda: [{
+            "index": 1,
+            "name": "Test Input",
+            "channels": 1,
+            "default_sample_rate": 16000,
+        }],
+    )
     audio_state.device_index = 1
 
     async def run():
@@ -77,5 +91,37 @@ def test_start_stop_lifecycle(monkeypatch):
         await capture.capture_manager.stop()
         assert capture.capture_manager.is_capturing is False
         assert audio_state.is_capturing is False
+
+    asyncio.run(run())
+
+
+def test_start_retries_without_unsupported_never_drop_input(monkeypatch):
+    class _FlagRejectingStream(_FakeStream):
+        def __init__(self, **kwargs):
+            if kwargs.get("never_drop_input"):
+                raise RuntimeError("Invalid flag [PaErrorCode -9995]")
+            super().__init__(**kwargs)
+
+    fake_sd = type("SD", (), {"InputStream": _FlagRejectingStream})()
+    monkeypatch.setattr(capture, "_sd", fake_sd)
+    monkeypatch.setattr(capture, "backend_available", lambda: True)
+    monkeypatch.setattr(
+        capture,
+        "list_input_devices",
+        lambda: [{
+            "index": 1,
+            "name": "Test Input",
+            "channels": 1,
+            "default_sample_rate": 16000,
+        }],
+    )
+    audio_state.device_index = 1
+
+    async def run():
+        await capture.capture_manager.start()
+        stream = capture.capture_manager._stream
+        assert stream is not None
+        assert "never_drop_input" not in stream.kwargs
+        await capture.capture_manager.stop()
 
     asyncio.run(run())

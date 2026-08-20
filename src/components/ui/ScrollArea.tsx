@@ -6,6 +6,7 @@ interface ScrollAreaProps {
   style?: CSSProperties;
   contentStyle?: CSSProperties;
   orientation?: "vertical" | "both";
+  viewportRef?: React.MutableRefObject<HTMLDivElement | null>;
 }
 
 const MIN_THUMB_SIZE = 36;
@@ -16,12 +17,13 @@ export function ScrollArea({
   style,
   contentStyle,
   orientation = "vertical",
+  viewportRef,
 }: ScrollAreaProps) {
-  const viewportRef = useRef<HTMLDivElement>(null);
+  const localViewportRef = useRef<HTMLDivElement>(null);
   const [thumb, setThumb] = useState({ height: 0, top: 0, visible: false });
 
   const updateThumb = useCallback(() => {
-    const viewport = viewportRef.current;
+    const viewport = localViewportRef.current;
     if (!viewport) {
       return;
     }
@@ -41,7 +43,7 @@ export function ScrollArea({
   }, []);
 
   useEffect(() => {
-    const viewport = viewportRef.current;
+    const viewport = localViewportRef.current;
     if (!viewport) {
       return;
     }
@@ -59,7 +61,7 @@ export function ScrollArea({
   }, [updateThumb, children]);
 
   const handleThumbPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    const viewport = viewportRef.current;
+    const viewport = localViewportRef.current;
     if (!viewport || !thumb.visible) {
       return;
     }
@@ -88,7 +90,12 @@ export function ScrollArea({
   return (
     <div className={className} style={{ minHeight: 0, minWidth: 0, display: "flex", ...style }}>
       <div
-        ref={viewportRef}
+        ref={(node) => {
+          localViewportRef.current = node;
+          if (viewportRef) {
+            viewportRef.current = node;
+          }
+        }}
         className="ss-scroll-viewport"
         onScroll={updateThumb}
         style={{
