@@ -56,7 +56,7 @@ export function LoginPane({ directory, onSuccess }: LoginPaneProps) {
       {error ? <AuthErrorBanner>{error}</AuthErrorBanner> : null}
 
       <AuthField label="Church ID" required hint="Assigned by Foursquare HQ on first launch. Format: FSQ-XXXXXX">
-        <ChurchIdInput value={suffix} onChange={setSuffix} autoFocus />
+        <ChurchIdInput value={suffix} onChange={setSuffix} />
       </AuthField>
 
       <AuthField label="Branch Password" required>

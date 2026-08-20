@@ -44,15 +44,24 @@ class TrieMatcher:
         self._verses: list[tuple] = []
         self._built = False
 
-    def build_from_db(self, version: str = "KJV") -> None:
+    def build_from_db(self, version: str | None = None) -> None:
         conn = get_connection()
         try:
-            vid = conn.execute(
-                "SELECT id FROM versions WHERE abbreviation = ? COLLATE NOCASE",
-                (version,),
-            ).fetchone()
+            vid = (
+                conn.execute(
+                    "SELECT id, abbreviation FROM versions WHERE abbreviation = ? COLLATE NOCASE",
+                    (version,),
+                ).fetchone()
+                if version
+                else conn.execute(
+                    "SELECT id, abbreviation FROM versions ORDER BY id LIMIT 1"
+                ).fetchone()
+            )
             if vid is None:
-                raise RuntimeError(f"version {version} not found")
+                logger.warning("no Bible version imported; trie matcher disabled")
+                self._built = True
+                return
+            selected_version = vid["abbreviation"]
             rows = conn.execute(
                 """
                 SELECT b.name, ch.number, v.verse_number, v.text
@@ -75,7 +84,7 @@ class TrieMatcher:
             self._insert(words[:MAX_PREFIX_WORDS], verse_id)
 
         self._built = True
-        logger.info("trie built from %d %s verses", len(self._verses), version)
+        logger.info("trie built from %d %s verses", len(self._verses), selected_version)
 
     def _insert(self, words: list[str], verse_id: int) -> None:
         node = self._root

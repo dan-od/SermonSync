@@ -99,7 +99,7 @@ class WhisperEngine:
         segments, info = self._model.transcribe(
             audio,
             language=language,
-            beam_size=5,
+            beam_size=1,
             vad_filter=False,  # our own VAD already gates the stream
         )
         results = []

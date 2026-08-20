@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import { MAC_TRAFFIC_LIGHT_INSET, USE_NATIVE_WINDOW_CONTROLS, isMacOS } from "../../lib/platform";
@@ -88,6 +88,20 @@ export function AuthGate({ onAuthenticated }: AuthGateProps) {
   const [activeTab, setActiveTab] = useState<AuthTab>("login");
   const [transitionDirection, setTransitionDirection] = useState<"forward" | "backward">("forward");
   const [directory, setDirectory] = useState<BranchAccount[]>(INITIAL_BRANCH_DIRECTORY);
+  const paneContentRef = useRef<HTMLDivElement>(null);
+  const [paneHeight, setPaneHeight] = useState<number>();
+
+  useLayoutEffect(() => {
+    const el = paneContentRef.current;
+    if (!el) return;
+    setPaneHeight(el.scrollHeight);
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) setPaneHeight(entry.target.scrollHeight);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [activeTab]);
 
   const handleRegistered = (branch: BranchAccount) => {
     setDirectory((prev) => [branch, ...prev]);
@@ -110,12 +124,13 @@ export function AuthGate({ onAuthenticated }: AuthGateProps) {
   return (
     <div
       style={{
-        minHeight: "100dvh",
+        height: "100dvh",
         width: "100%",
         display: "flex",
         flexDirection: "column",
         background: "var(--bg-base)",
         color: "var(--fg-base)",
+        overflow: "hidden",
       }}
     >
       <AuthTitleBar />
@@ -123,6 +138,8 @@ export function AuthGate({ onAuthenticated }: AuthGateProps) {
       <main
         style={{
           flex: 1,
+          minHeight: 0,
+          overflowY: "auto",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -230,12 +247,20 @@ export function AuthGate({ onAuthenticated }: AuthGateProps) {
               </button>
             </div>
 
-            <div key={activeTab} className={`auth-pane-enter auth-pane-enter--${transitionDirection}`}>
-              {activeTab === "login" ? (
-                <LoginPane directory={directory} onSuccess={onAuthenticated} />
-              ) : (
-                <RegisterPane directory={directory} onRegistered={handleRegistered} onProceedToLogin={handleProceedToLogin} />
-              )}
+            <div
+              style={{
+                height: paneHeight !== undefined ? `${paneHeight}px` : "auto",
+                overflow: "hidden",
+                transition: "height 260ms cubic-bezier(0.22, 1, 0.36, 1)",
+              }}
+            >
+              <div key={activeTab} ref={paneContentRef} className={`auth-pane-enter auth-pane-enter--${transitionDirection}`}>
+                {activeTab === "login" ? (
+                  <LoginPane directory={directory} onSuccess={onAuthenticated} />
+                ) : (
+                  <RegisterPane directory={directory} onRegistered={handleRegistered} onProceedToLogin={handleProceedToLogin} />
+                )}
+              </div>
             </div>
           </div>
         </div>

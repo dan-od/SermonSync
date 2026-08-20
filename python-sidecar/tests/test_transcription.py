@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
 import numpy as np
 from engine.audio.capture import float_to_pcm16
@@ -24,6 +25,28 @@ def test_mock_engine_returns_text():
     assert len(segs) == 1
     assert "mock transcription" in segs[0]["text"]
     assert segs[0]["end"] == 1.0
+
+
+def test_streaming_buffer_keeps_recent_audio_only():
+    transcriber = streaming.StreamingTranscriber(
+        sample_rate=16000,
+        max_buffer_seconds=2.0,
+    )
+    transcriber._running = True
+
+    transcriber.feed(float_to_pcm16(np.zeros(16000 * 5, dtype="float32")))
+
+    assert transcriber._buffered_seconds() == 2.0
+
+
+def test_streaming_discards_stale_partial_buffer():
+    transcriber = streaming.StreamingTranscriber(sample_rate=16000)
+    transcriber._running = True
+    transcriber.feed(float_to_pcm16(np.zeros(8000, dtype="float32")))
+    transcriber._expire_stale_buffer(time.time() + 3.0)
+
+    assert transcriber._buffered_seconds() == 0.0
+    assert transcriber._first_chunk_ts is None
 
 
 def test_streaming_emits_transcription(monkeypatch):

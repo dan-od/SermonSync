@@ -2,12 +2,17 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { matchScriptureReferenceIncremental } from "../lib/scriptureSearch";
 import { useConfigStore } from "../stores/configStore";
+import { useTemplateStore } from "../stores/templateStore";
 import type { ProjectorSlide } from "../types/state";
+import { TemplateEditorModal } from "./Templates/TemplateEditorModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type LibraryTab = "scriptures" | "songs" | "media" | "templates";
+/** "words" free-text searches verse content; "reference" only matches an explicit book/chapter/verse lookup, FreeShow-style. */
+export type ScriptureSearchMode = "words" | "reference";
 type TemplateFilter = "scriptures" | "songs";
 
 interface SearchableLibraryTabProps {
@@ -65,6 +70,7 @@ interface LocalLibraryPanelProps {
   liveReference: string | null;
   activeTab: LibraryTab;
   searchQuery: string;
+  searchMode: ScriptureSearchMode;
   onActiveTabChange: (tab: LibraryTab) => void;
   onPreviewSlide: (slide: ProjectorSlide) => void;
   onSendLive: (slide: ProjectorSlide) => void;
@@ -231,14 +237,20 @@ function isTauriRuntime() {
   return "__TAURI_INTERNALS__" in window;
 }
 
-function ScripturesTab({ previewReference, liveReference, onPreviewSlide, onSendLive, searchQuery }: SearchableLibraryTabProps) {
+function ScripturesTab({
+  previewReference,
+  liveReference,
+  onPreviewSlide,
+  onSendLive,
+  searchQuery,
+  searchMode,
+}: SearchableLibraryTabProps & { searchMode: ScriptureSearchMode }) {
   const [localOpen, setLocalOpen] = useState(true);
   const [apiOpen, setApiOpen] = useState(false);
   const defaultBibleVersion = useConfigStore((state) => state.bibleVersion);
+  const configuredVersions = useConfigStore((state) => state.bibleVersions);
   const setDefaultBibleVersion = useConfigStore((state) => state.setBibleVersion);
   const setBibleVersions = useConfigStore((state) => state.setBibleVersions);
-  const bibleNameOverrides = useConfigStore((state) => state.bibleNameOverrides);
-  const setBibleNameOverride = useConfigStore((state) => state.setBibleNameOverride);
   const [versions, setVersions] = useState<BibleVersionEntry[]>([]);
   const [books, setBooks] = useState<BibleBook[]>([]);
   const [bookPayload, setBookPayload] = useState<BibleBookPayload | null>(null);
@@ -251,6 +263,19 @@ function ScripturesTab({ previewReference, liveReference, onPreviewSlide, onSend
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
+  // Chapter/verse a reference search resolved to, applied once the matching book's
+  // payload finishes loading — otherwise loadBook's "default to chapter 1" reset wins the race.
+  const pendingReferenceRef = useRef<{ book: string; chapter: number; verse: number | null } | null>(null);
+  const verseRowRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      if (configuredVersions.length > 0) {
+        setVersions(configuredVersions);
+      }
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [configuredVersions]);
 
   const localBibles = useMemo(
     () =>
@@ -258,11 +283,11 @@ function ScripturesTab({ previewReference, liveReference, onPreviewSlide, onSend
         .filter((version) => version.available)
         .map((version) => ({
           id: version.abbreviation.toLowerCase(),
-          name: bibleNameOverrides[version.abbreviation] ?? version.name,
+          name: version.name,
           abbreviation: version.abbreviation,
           available: version.available,
         })),
-    [versions, bibleNameOverrides],
+    [versions],
   );
 
   const selectedBible = useMemo(
@@ -273,36 +298,146 @@ function ScripturesTab({ previewReference, liveReference, onPreviewSlide, onSend
   const activeBookPayload = selectedBook && selectedBible?.available ? bookPayload : null;
   const selectedChapterData = activeBookPayload?.chapters.find((chapter) => chapter.number === selectedChapter) ?? null;
   const selectedVerseData = selectedChapterData?.verses.find((verse) => verse.verse === selectedVerse) ?? null;
-  const normalizedSearchQuery = normalizeSearch(searchQuery);
+  const resolvedSearchReference = useMemo(
+    () => (searchMode === "reference" ? matchScriptureReferenceIncremental(searchQuery, books.map((entry) => entry.name)) : null),
+    [searchMode, searchQuery, books],
+  );
+  const textSearchQuery = searchMode === "words" ? normalizeSearch(searchQuery) : "";
+
+  const [wholeBibleResults, setWholeBibleResults] = useState<{ book: string; chapter: number; verse: BibleVerse }[]>([]);
+  const [isSearchingWholeBible, setIsSearchingWholeBible] = useState(false);
+
+  // Distinct books/chapters that actually contain a hit, so the Book and Chapter
+  // panes behave as narrowing filters over the search results instead of the
+  // full catalog. A book or chapter can (and often will) reappear here once per
+  // matching verse it contains — that's expected, every hit still surfaces.
+  const searchedBookNames = useMemo(() => new Set(wholeBibleResults.map((row) => row.book)), [wholeBibleResults]);
+  const searchedChapterNumbers = useMemo(() => {
+    if (!selectedBook) {
+      return [];
+    }
+    const numbers = new Set(wholeBibleResults.filter((row) => row.book === selectedBook).map((row) => row.chapter));
+    return Array.from(numbers).sort((a, b) => a - b);
+  }, [selectedBook, wholeBibleResults]);
+
   const filteredBooks = useMemo(() => {
-    if (!normalizedSearchQuery) {
+    if (textSearchQuery) {
+      // Below the sidecar's 2-char search threshold there's no result set yet — show
+      // the full catalog rather than an empty list until a real search has run.
+      if (searchQuery.trim().length < 2) {
+        return books;
+      }
+      return books.filter((entry) => searchedBookNames.has(entry.name));
+    }
+
+    if (!resolvedSearchReference || !searchQuery.trim()) {
       return books;
     }
 
-    return books.filter((entry) =>
-      `${entry.name} ${entry.abbreviation} ${entry.testament}`.toLowerCase().includes(normalizedSearchQuery),
-    );
-  }, [books, normalizedSearchQuery]);
-  const displayedVerseRows = useMemo(() => {
+    return books.filter((entry) => resolvedSearchReference.candidateBooks.includes(entry.name));
+  }, [books, resolvedSearchReference, searchQuery, searchedBookNames, textSearchQuery]);
+  const filteredChapterNumbers = useMemo(() => {
+    if (textSearchQuery) {
+      return searchedChapterNumbers;
+    }
+
     if (!activeBookPayload) {
       return [];
     }
 
-    if (normalizedSearchQuery) {
-      return activeBookPayload.chapters.flatMap((chapter) =>
-        chapter.verses
-          .filter((verse) =>
-            `${activeBookPayload.book.name} ${activeBookPayload.book.abbreviation} ${chapter.number}:${verse.verse} ${verse.text}`
-              .toLowerCase()
-              .includes(normalizedSearchQuery),
-          )
-          .map((verse) => ({ chapter: chapter.number, verse })),
+    if (resolvedSearchReference?.chapter != null) {
+      return activeBookPayload.chapters
+        .filter((chapter) => chapter.number === resolvedSearchReference.chapter)
+        .map((chapter) => chapter.number);
+    }
+
+    return activeBookPayload.chapters.map((chapter) => chapter.number);
+  }, [activeBookPayload, resolvedSearchReference, searchedChapterNumbers, textSearchQuery]);
+  const [wholeBibleSearchError, setWholeBibleSearchError] = useState<string | null>(null);
+
+  // Free-text queries search every book via the sidecar's FTS5 index, not just
+  // whichever book happens to be selected in the Book pane.
+  useEffect(() => {
+    const trimmedQuery = searchQuery.trim();
+    const shouldSearch = Boolean(textSearchQuery) && trimmedQuery.length >= 2 && Boolean(selectedBible?.available);
+    let cancelled = false;
+
+    queueMicrotask(() => {
+      if (cancelled) {
+        return;
+      }
+
+      if (!shouldSearch) {
+        setWholeBibleResults([]);
+        setWholeBibleSearchError(null);
+        setIsSearchingWholeBible(false);
+        return;
+      }
+
+      setIsSearchingWholeBible(true);
+      setWholeBibleSearchError(null);
+
+      fetchBibleJson<{ results: { book: string; chapter: number; verse: number; text: string }[] }>(
+        `/api/bible/search?q=${encodeURIComponent(trimmedQuery)}&version=${encodeURIComponent(selectedVersion)}&limit=40`,
+      )
+        .then((payload) => {
+          if (cancelled) return;
+          setWholeBibleResults(
+            payload.results.map((entry) => ({
+              book: entry.book,
+              chapter: entry.chapter,
+              verse: { verse: entry.verse, text: entry.text },
+            })),
+          );
+        })
+        .catch((error: unknown) => {
+          if (cancelled) return;
+          setWholeBibleResults([]);
+          setWholeBibleSearchError(error instanceof Error ? error.message : "Bible search failed");
+        })
+        .finally(() => {
+          if (!cancelled) setIsSearchingWholeBible(false);
+        });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [textSearchQuery, searchQuery, selectedVersion, selectedBible?.available]);
+
+  const displayedVerseRows = useMemo(() => {
+    if (textSearchQuery) {
+      return wholeBibleResults.filter(
+        (row) => (!selectedBook || row.book === selectedBook) && (selectedChapter === null || row.chapter === selectedChapter),
       );
     }
 
+    if (!activeBookPayload) {
+      return [];
+    }
+
+    const bookName = activeBookPayload.book.name;
     const verses = selectedVerseData ? [selectedVerseData] : selectedChapterData?.verses ?? [];
-    return verses.map((verse) => ({ chapter: selectedChapter ?? selectedChapterData?.number ?? 1, verse }));
-  }, [activeBookPayload, normalizedSearchQuery, selectedChapter, selectedChapterData?.number, selectedChapterData?.verses, selectedVerseData]);
+    return verses.map((verse) => ({ book: bookName, chapter: selectedChapter ?? selectedChapterData?.number ?? 1, verse }));
+  }, [
+    activeBookPayload,
+    selectedBook,
+    selectedChapter,
+    selectedChapterData?.number,
+    selectedChapterData?.verses,
+    selectedVerseData,
+    textSearchQuery,
+    wholeBibleResults,
+  ]);
+
+  // Scroll the resolved verse into view once its row exists, e.g. after a reference search.
+  useEffect(() => {
+    if (selectedVerse == null) {
+      return;
+    }
+    const row = verseRowRefs.current.get(selectedVerse);
+    row?.scrollIntoView({ block: "center" });
+  }, [selectedVerse, displayedVerseRows]);
 
   const loadCatalog = useCallback(
     async (preferredVersion?: string) => {
@@ -374,6 +509,37 @@ function ScripturesTab({ previewReference, liveReference, onPreviewSlide, onSend
   }, [loadCatalog]);
 
   useEffect(() => {
+    if (searchMode !== "reference" || !resolvedSearchReference?.matchedBook) {
+      return;
+    }
+
+    const targetBook = resolvedSearchReference.matchedBook;
+    const targetChapter = resolvedSearchReference.chapter;
+    const targetVerse = resolvedSearchReference.verse;
+
+    const timeoutId = window.setTimeout(() => {
+      if (selectedBook !== targetBook) {
+        // New book: its payload isn't loaded yet, so queue the chapter/verse for
+        // loadBook to apply once fetched instead of racing it here.
+        pendingReferenceRef.current = targetChapter != null ? { book: targetBook, chapter: targetChapter, verse: targetVerse } : null;
+        setSelectedBook(targetBook);
+        return;
+      }
+
+      // Same book already selected and its payload is already loaded — apply directly.
+      if (targetChapter != null && targetChapter !== selectedChapter) {
+        setSelectedChapter(targetChapter);
+      }
+      if (targetVerse !== selectedVerse) {
+        const chapterData = bookPayload?.chapters.find((chapter) => chapter.number === (targetChapter ?? selectedChapter));
+        const verseExists = targetVerse != null && chapterData?.verses.some((verse) => verse.verse === targetVerse);
+        setSelectedVerse(verseExists ? targetVerse : null);
+      }
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [bookPayload, resolvedSearchReference, searchMode, selectedBook, selectedChapter, selectedVerse]);
+
+  useEffect(() => {
     if (!selectedBook || !selectedBible?.available) {
       return;
     }
@@ -390,9 +556,21 @@ function ScripturesTab({ previewReference, liveReference, onPreviewSlide, onSend
         );
 
         setBookPayload(payload);
-        setSelectedChapter(payload.chapters[0]?.number ?? null);
-        setSelectedVerse(null);
+
+        const pending = pendingReferenceRef.current;
+        if (pending && pending.book === bookName) {
+          pendingReferenceRef.current = null;
+          const matchedChapter = payload.chapters.find((chapter) => chapter.number === pending.chapter);
+          const verseExists = pending.verse != null && matchedChapter?.verses.some((verse) => verse.verse === pending.verse);
+          setSelectedChapter(matchedChapter?.number ?? payload.chapters[0]?.number ?? null);
+          setSelectedVerse(verseExists ? pending.verse : null);
+        } else {
+          pendingReferenceRef.current = null;
+          setSelectedChapter(payload.chapters[0]?.number ?? null);
+          setSelectedVerse(null);
+        }
       } catch {
+        pendingReferenceRef.current = null;
         setBookPayload(null);
         setSelectedChapter(null);
         setSelectedVerse(null);
@@ -471,12 +649,12 @@ function ScripturesTab({ previewReference, liveReference, onPreviewSlide, onSend
     [loadCatalog],
   );
 
-  const handleTextClick = (chapter: number, verse: BibleVerse) => {
-    onPreviewSlide(toProjectorSlide(selectedBook ?? bookPayload?.book.name ?? "", chapter, verse, selectedVersion));
+  const handleTextClick = (book: string, chapter: number, verse: BibleVerse) => {
+    onPreviewSlide(toProjectorSlide(book, chapter, verse, selectedVersion));
   };
 
-  const handleTextDoubleClick = (chapter: number, verse: BibleVerse) => {
-    onSendLive(toProjectorSlide(selectedBook ?? bookPayload?.book.name ?? "", chapter, verse, selectedVersion));
+  const handleTextDoubleClick = (book: string, chapter: number, verse: BibleVerse) => {
+    onSendLive(toProjectorSlide(book, chapter, verse, selectedVersion));
   };
 
   return (
@@ -512,7 +690,6 @@ function ScripturesTab({ previewReference, liveReference, onPreviewSlide, onSend
                 bible={bible}
                 isSelected={selectedBibleId === bible.id}
                 onSelect={() => selectBible(bible)}
-                onRename={(newName) => setBibleNameOverride(bible.abbreviation, newName)}
               />
             ))}
             {localBibles.length === 0 && (
@@ -620,37 +797,54 @@ function ScripturesTab({ previewReference, liveReference, onPreviewSlide, onSend
         </ScripturePane>
 
         <ScripturePane title="Chapter">
-          {activeBookPayload?.chapters.map((chapter) => (
+          {filteredChapterNumbers.map((chapterNumber) => (
             <ScriptureCellButton
-              key={chapter.number}
+              key={chapterNumber}
               align="center"
-              isActive={selectedChapter === chapter.number}
+              isActive={selectedChapter === chapterNumber}
               onClick={() => {
-                setSelectedChapter(chapter.number);
+                setSelectedChapter(chapterNumber);
                 setSelectedVerse(null);
               }}
             >
-              {chapter.number}
+              {chapterNumber}
             </ScriptureCellButton>
           ))}
-          {!activeBookPayload && <PaneEmpty>{selectedBible?.available === false ? "Unavailable" : "Select a book"}</PaneEmpty>}
+          {textSearchQuery ? (
+            <>
+              {!selectedBook && <PaneEmpty>Select a book to narrow results</PaneEmpty>}
+              {selectedBook && filteredChapterNumbers.length === 0 && <PaneEmpty>No matches in this book</PaneEmpty>}
+            </>
+          ) : (
+            <>
+              {!activeBookPayload && <PaneEmpty>{selectedBible?.available === false ? "Unavailable" : "Select a book"}</PaneEmpty>}
+              {activeBookPayload && filteredChapterNumbers.length === 0 && <PaneEmpty>No matching chapter</PaneEmpty>}
+            </>
+          )}
         </ScripturePane>
 
-        <ScripturePane title="Verse">
-          {displayedVerseRows.map(({ chapter, verse }) => {
-            const slide = toProjectorSlide(selectedBook ?? bookPayload?.book.name ?? "", chapter, verse, selectedVersion);
+        <ScripturePane title={textSearchQuery ? "Search Results" : "Verse"}>
+          {displayedVerseRows.map(({ book, chapter, verse }) => {
+            const slide = toProjectorSlide(book, chapter, verse, selectedVersion);
             const label = referenceLabel(slide);
 
             return (
               <button
-                key={`${chapter}-${verse.verse}`}
+                key={`${book}-${chapter}-${verse.verse}`}
                 type="button"
-                onClick={() => handleTextClick(chapter, verse)}
-                onDoubleClick={() => handleTextDoubleClick(chapter, verse)}
+                ref={(el) => {
+                  if (el) {
+                    verseRowRefs.current.set(verse.verse, el);
+                  } else {
+                    verseRowRefs.current.delete(verse.verse);
+                  }
+                }}
+                onClick={() => handleTextClick(book, chapter, verse)}
+                onDoubleClick={() => handleTextDoubleClick(book, chapter, verse)}
                 style={{
                   width: "100%",
                   display: "grid",
-                  gridTemplateColumns: "56px minmax(0, 1fr)",
+                  gridTemplateColumns: textSearchQuery ? "96px minmax(0, 1fr)" : "56px minmax(0, 1fr)",
                   gap: "var(--space-2)",
                   padding: "8px 12px",
                   background: liveReference === label || previewReference === label ? "var(--color-primary-muted)" : "transparent",
@@ -669,13 +863,24 @@ function ScripturesTab({ previewReference, liveReference, onPreviewSlide, onSend
               >
                 <span
                   style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "2px",
+                    minWidth: 0,
                     color: liveReference === label ? "var(--color-success)" : "var(--color-primary)",
                     fontFamily: "var(--font-mono)",
                     fontSize: "var(--text-xs)",
                     fontWeight: 700,
                   }}
                 >
-                  {chapter}:{verse.verse}
+                  {textSearchQuery ? (
+                    <>
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{book}</span>
+                      <span>{chapter}:{verse.verse}</span>
+                    </>
+                  ) : (
+                    <span>{chapter}:{verse.verse}</span>
+                  )}
                 </span>
                 <span style={{ color: "var(--fg-muted)", fontSize: "var(--text-xs)", lineHeight: 1.45 }}>
                   {verse.text}
@@ -683,12 +888,14 @@ function ScripturesTab({ previewReference, liveReference, onPreviewSlide, onSend
               </button>
             );
           })}
-          {displayedVerseRows.length === 0 && (
+          {textSearchQuery && isSearchingWholeBible && <PaneEmpty>Searching the whole Bible...</PaneEmpty>}
+          {textSearchQuery && !isSearchingWholeBible && wholeBibleSearchError && <PaneEmpty>{wholeBibleSearchError}</PaneEmpty>}
+          {displayedVerseRows.length === 0 && !(textSearchQuery && (isSearchingWholeBible || wholeBibleSearchError)) && (
             <PaneEmpty>
               {isLoading
                 ? "Loading scriptures..."
-                : normalizedSearchQuery && activeBookPayload
-                  ? "No matching verses in this book"
+                : textSearchQuery
+                  ? "No matching verses in the whole Bible"
                   : selectedBible?.available === false
                     ? "This Bible has no local text yet"
                     : "Select a verse"}
@@ -784,90 +991,15 @@ function BibleItem({
   bible,
   isSelected,
   onSelect,
-  onRename,
 }: {
   bible: LocalBibleEntry;
   isSelected: boolean;
   onSelect: () => void;
-  onRename: (newName: string) => void;
 }) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editValue, setEditValue] = useState(bible.name);
-  const [isHovered, setIsHovered] = useState(false);
   const isDisabled = !bible.available;
 
-  const commitRename = () => {
-    const trimmed = editValue.trim();
-    if (trimmed && trimmed !== bible.name) {
-      onRename(trimmed);
-    } else {
-      setEditValue(bible.name);
-    }
-    setIsEditing(false);
-  };
-
-  if (isEditing) {
-    return (
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "var(--space-2)",
-          width: "100%",
-          padding: "5px 8px 5px 24px",
-          background: "var(--color-primary-muted)",
-          borderLeft: "2px solid var(--color-primary)",
-        }}
-      >
-        <span
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: "0.65rem",
-            fontWeight: 700,
-            letterSpacing: "0.04em",
-            background: "var(--color-primary)",
-            color: "#fff",
-            padding: "1px 4px",
-            borderRadius: "var(--radius-sm)",
-            flexShrink: 0,
-          }}
-        >
-          {bible.abbreviation}
-        </span>
-        <input
-          autoFocus
-          value={editValue}
-          onChange={(e) => setEditValue(e.target.value)}
-          onBlur={commitRename}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") commitRename();
-            if (e.key === "Escape") {
-              setEditValue(bible.name);
-              setIsEditing(false);
-            }
-          }}
-          style={{
-            flex: 1,
-            minWidth: 0,
-            background: "var(--bg-base)",
-            color: "var(--fg-base)",
-            border: "1px solid var(--color-primary)",
-            borderRadius: "var(--radius-sm)",
-            padding: "2px 6px",
-            fontSize: "var(--text-xs)",
-            outline: "none",
-          }}
-        />
-      </div>
-    );
-  }
-
   return (
-    <div
-      style={{ position: "relative" }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
+    <div style={{ position: "relative" }}>
       <button
         type="button"
         disabled={isDisabled}
@@ -877,7 +1009,7 @@ function BibleItem({
           alignItems: "center",
           gap: "var(--space-2)",
           width: "100%",
-          padding: "5px 28px 5px 24px",
+          padding: "5px 12px 5px 24px",
           background: isSelected ? "var(--color-primary-muted)" : "transparent",
           border: "none",
           borderLeft: isSelected ? "2px solid var(--color-primary)" : "2px solid transparent",
@@ -891,22 +1023,10 @@ function BibleItem({
       >
         <span
           style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: "0.65rem",
-            fontWeight: 700,
-            letterSpacing: "0.04em",
-            background: isSelected ? "var(--color-primary)" : "var(--bg-elevated)",
-            color: isSelected ? "#fff" : "var(--fg-subtle)",
-            padding: "1px 4px",
-            borderRadius: "var(--radius-sm)",
-          }}
-        >
-          {bible.abbreviation}
-        </span>
-        <span
-          style={{
             flex: 1,
             minWidth: 0,
+            fontFamily: "var(--font-mono)",
+            fontWeight: 700,
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
@@ -926,32 +1046,6 @@ function BibleItem({
           </span>
         )}
       </button>
-      {isHovered && !isDisabled && (
-        <button
-          type="button"
-          title="Rename"
-          onClick={(e) => {
-            e.stopPropagation();
-            setEditValue(bible.name);
-            setIsEditing(true);
-          }}
-          style={{
-            position: "absolute",
-            right: 4,
-            top: "50%",
-            transform: "translateY(-50%)",
-            background: "transparent",
-            border: "none",
-            cursor: "pointer",
-            padding: "2px 3px",
-            color: "var(--fg-subtle)",
-            fontSize: "0.65rem",
-            lineHeight: 1,
-          }}
-        >
-          ✎
-        </button>
-      )}
     </div>
   );
 }
@@ -989,7 +1083,7 @@ function AddScriptureModal({
         style={{
           position: "absolute",
           inset: 0,
-          background: "rgba(0,0,0,0.55)",
+          background: "var(--overlay-backdrop-strong)",
         }}
       />
 
@@ -1041,8 +1135,8 @@ function AddScriptureModal({
               marginTop: "var(--space-3)",
               padding: "8px 10px",
               borderRadius: "var(--radius-sm)",
-              border: "1px solid rgba(239, 68, 68, 0.4)",
-              background: "rgba(239, 68, 68, 0.1)",
+              border: "1px solid var(--color-error-border)",
+              background: "var(--color-error-muted)",
               color: "var(--fg-base)",
               fontSize: "var(--text-xs)",
               lineHeight: 1.45,
@@ -1577,11 +1671,147 @@ function MediaTab() {
 
 // ─── Templates tab ────────────────────────────────────────────────────────────
 
+type TemplateMenuAction = "edit" | "makeDefault" | "rename" | "delete" | "duplicate";
+
+interface TemplateMenuState {
+  templateId: string;
+  x: number;
+  y: number;
+}
+
+function templateCategoryLabel(category: TemplateFilter) {
+  return category === "scriptures" ? "Scripture" : "Song";
+}
+
+function updatedLabel(timestamp: number) {
+  const deltaMs = Math.max(0, Date.now() - timestamp);
+  const mins = Math.floor(deltaMs / 60000);
+  if (mins < 1) {
+    return "Updated now";
+  }
+  if (mins < 60) {
+    return `Updated ${mins}m ago`;
+  }
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) {
+    return `Updated ${hrs}h ago`;
+  }
+  return `Updated ${Math.floor(hrs / 24)}d ago`;
+}
+
 function TemplatesTab() {
   const [activeFilter, setActiveFilter] = useState<TemplateFilter>("scriptures");
+  const [menuState, setMenuState] = useState<TemplateMenuState | null>(null);
+  const [editorMode, setEditorMode] = useState<"create" | "edit">("create");
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorTemplateId, setEditorTemplateId] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const initialized = useTemplateStore((s) => s.initialized);
+  const loading = useTemplateStore((s) => s.loading);
+  const templates = useTemplateStore((s) => s.templates);
+  const defaults = useTemplateStore((s) => s.defaults);
+  const initialize = useTemplateStore((s) => s.initialize);
+  const makeDefault = useTemplateStore((s) => s.makeDefault);
+  const renameTemplate = useTemplateStore((s) => s.renameTemplate);
+  const deleteTemplate = useTemplateStore((s) => s.deleteTemplate);
+  const duplicateTemplate = useTemplateStore((s) => s.duplicateTemplate);
+
+  const visibleTemplates = useMemo(
+    () => templates.filter((entry) => entry.category === activeFilter),
+    [activeFilter, templates],
+  );
+
+  const menuTemplate = useMemo(
+    () => (menuState ? templates.find((entry) => entry.id === menuState.templateId) ?? null : null),
+    [menuState, templates],
+  );
+
+  useEffect(() => {
+    void initialize();
+  }, [initialize]);
+
+  useEffect(() => {
+    if (!menuState) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setMenuState(null);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMenuState(null);
+      }
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [menuState]);
+
+  const openCreateModal = () => {
+    setEditorMode("create");
+    setEditorTemplateId(null);
+    setEditorOpen(true);
+    setMenuState(null);
+  };
+
+  const openEditModal = (templateId: string) => {
+    setEditorMode("edit");
+    setEditorTemplateId(templateId);
+    setEditorOpen(true);
+    setMenuState(null);
+  };
+
+  const executeMenuAction = async (action: TemplateMenuAction) => {
+    if (!menuTemplate) {
+      setMenuState(null);
+      return;
+    }
+
+    if (action === "edit") {
+      openEditModal(menuTemplate.id);
+      return;
+    }
+
+    if (action === "makeDefault") {
+      await makeDefault(menuTemplate.category, menuTemplate.id);
+      setMenuState(null);
+      return;
+    }
+
+    if (action === "rename") {
+      const renamed = window.prompt(`Rename ${menuTemplate.name}`, menuTemplate.name);
+      if (renamed !== null && renamed.trim().length > 0) {
+        await renameTemplate(menuTemplate.id, renamed.trim());
+      }
+      setMenuState(null);
+      return;
+    }
+
+    if (action === "delete") {
+      await deleteTemplate(menuTemplate.id);
+      setMenuState(null);
+      return;
+    }
+
+    if (action === "duplicate") {
+      await duplicateTemplate(menuTemplate.id);
+      setMenuState(null);
+    }
+  };
+
+  const menuLeft = menuState ? Math.min(menuState.x, window.innerWidth - 236) : 0;
+  const menuTop = menuState ? Math.min(menuState.y, window.innerHeight - 250) : 0;
 
   return (
-    <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
+    <div style={{ display: "flex", height: "100%", overflow: "hidden", position: "relative" }}>
       <div
         style={{
           width: 160,
@@ -1600,8 +1830,193 @@ function TemplatesTab() {
             onClick={() => setActiveFilter(filter)}
           />
         ))}
+
+        <div
+          style={{
+            marginTop: "auto",
+            padding: "10px",
+            borderTop: "1px solid var(--border-base)",
+            display: "flex",
+            justifyContent: "flex-start",
+          }}
+        >
+          <button
+            type="button"
+              onClick={openCreateModal}
+            aria-label={`Add ${templateCategoryLabel(activeFilter).toLowerCase()} template`}
+            title={`Add ${templateCategoryLabel(activeFilter)} template`}
+            style={{
+              width: "30px",
+              height: "30px",
+              border: "none",
+              borderRadius: "8px",
+              background: "var(--bg-elevated)",
+              color: "var(--fg-base)",
+              fontFamily: "var(--font-mono)",
+              fontSize: "18px",
+              lineHeight: 1,
+              cursor: "pointer",
+            }}
+          >
+            +
+          </button>
+        </div>
       </div>
-      <LibraryEmptyState title="No templates available" />
+
+      <div style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: "auto", padding: "14px" }}>
+        {!initialized || loading ? (
+          <LibraryEmptyState title="Loading templates..." />
+        ) : visibleTemplates.length === 0 ? (
+          <LibraryEmptyState title={`No ${templateCategoryLabel(activeFilter).toLowerCase()} templates yet`} />
+        ) : (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+              gap: "12px",
+            }}
+          >
+            {visibleTemplates.map((template) => {
+              const isDefault = defaults[template.category] === template.id;
+              const previewLines = template.lines;
+
+              return (
+                <article
+                  key={template.id}
+                  onDoubleClick={() => openEditModal(template.id)}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setMenuState({ templateId: template.id, x: event.clientX, y: event.clientY });
+                  }}
+                  style={{
+                    border: isDefault ? "1px solid var(--color-primary)" : "1px solid var(--border-base)",
+                    borderRadius: "10px",
+                    background: "var(--bg-elevated)",
+                    overflow: "hidden",
+                    boxShadow: "var(--shadow-sm)",
+                  }}
+                >
+                  <div
+                    style={{
+                      aspectRatio: "16 / 9",
+                      background: `linear-gradient(155deg, ${template.backgroundStart}, ${template.backgroundEnd})`,
+                      padding: "10px",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
+                      boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${template.accent} 55%, transparent)`,
+                    }}
+                  >
+                    <span style={{ color: "rgba(255,255,255,0.9)", fontFamily: "var(--font-mono)", fontSize: "10px", letterSpacing: "0.06em" }}>
+                      {template.label}
+                    </span>
+                    <div style={{ display: "grid", gap: "4px" }}>
+                      {previewLines.map((line) => (
+                        <span
+                          key={line}
+                          style={{
+                            color: "rgba(255,255,255,0.94)",
+                            fontFamily: "var(--font-sans)",
+                            fontSize: `${Math.round(11 * template.fontScale)}px`,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            textAlign: template.textAlign,
+                          }}
+                        >
+                          {line}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ padding: "10px", display: "grid", gap: "4px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                      <span style={{ color: "var(--fg-base)", fontSize: "13px", fontWeight: 700 }}>{template.name}</span>
+                      {isDefault ? (
+                        <span
+                          style={{
+                            padding: "2px 6px",
+                            borderRadius: "999px",
+                            background: "var(--color-primary-muted)",
+                            color: "var(--color-primary)",
+                            fontSize: "10px",
+                            fontFamily: "var(--font-mono)",
+                            fontWeight: 700,
+                            letterSpacing: "0.05em",
+                          }}
+                        >
+                          DEFAULT
+                        </span>
+                      ) : null}
+                    </div>
+                    <span style={{ color: "var(--fg-muted)", fontSize: "11px", lineHeight: 1.35 }}>{template.subtitle}</span>
+                    <span style={{ color: "var(--fg-subtle)", fontSize: "10px", fontFamily: "var(--font-mono)", letterSpacing: "0.05em" }}>
+                      {updatedLabel(template.updatedAt)}
+                    </span>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {menuState && menuTemplate ? (
+        <div
+          ref={menuRef}
+          role="menu"
+          style={{
+            position: "fixed",
+            left: `${menuLeft}px`,
+            top: `${menuTop}px`,
+            width: "220px",
+            background: "var(--bg-surface)",
+            border: "1px solid var(--border-base)",
+            borderRadius: "8px",
+            boxShadow: "var(--shadow-lg)",
+            padding: "4px",
+            zIndex: 90,
+          }}
+        >
+          {([
+            { id: "edit", label: "Edit" },
+            { id: "makeDefault", label: `Make default ${templateCategoryLabel(menuTemplate.category)} theme` },
+            { id: "rename", label: "Rename" },
+            { id: "delete", label: "Delete" },
+            { id: "duplicate", label: "Duplicate" },
+          ] as Array<{ id: TemplateMenuAction; label: string }>).map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              role="menuitem"
+              onClick={() => executeMenuAction(entry.id)}
+              style={{
+                width: "100%",
+                border: "none",
+                background: "transparent",
+                borderRadius: "6px",
+                padding: "8px 9px",
+                textAlign: "left",
+                color: entry.id === "delete" ? "var(--color-error)" : "var(--fg-base)",
+                fontFamily: "var(--font-sans)",
+                fontSize: "12px",
+                cursor: "pointer",
+              }}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      <TemplateEditorModal
+        open={editorOpen}
+        mode={editorMode}
+        category={activeFilter}
+        templateId={editorTemplateId}
+        onClose={() => setEditorOpen(false)}
+      />
     </div>
   );
 }
@@ -1679,6 +2094,7 @@ const TABS: { id: LibraryTab; label: string }[] = [
 export function LocalLibraryPanel({
   activeTab,
   searchQuery,
+  searchMode,
   onActiveTabChange,
   previewReference,
   liveReference,
@@ -1770,7 +2186,7 @@ export function LocalLibraryPanel({
 
       {/* Tab content */}
       <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
-        {activeTab === "scriptures" && <ScripturesTab {...searchableProps} />}
+        {activeTab === "scriptures" && <ScripturesTab {...searchableProps} searchMode={searchMode} />}
         {activeTab === "songs" && <SongsTab {...searchableProps} />}
         {activeTab === "media" && <MediaTab />}
         {activeTab === "templates" && <TemplatesTab />}

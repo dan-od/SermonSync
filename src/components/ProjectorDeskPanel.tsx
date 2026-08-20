@@ -7,6 +7,7 @@ import { ProjectorView } from "./ProjectorView";
 const SPLIT_DIVIDER_WIDTH = 6;
 const MIN_SCREEN_WIDTH = 260;
 const DEFAULT_SPLIT_RATIO = 0.5;
+const PROJECTION_FONT_SIZE_PX = 48;
 
 interface ProjectorDeskPanelProps {
   previewSlide: ProjectorSlide | null;
@@ -33,7 +34,6 @@ export function ProjectorDeskPanel({
 }: ProjectorDeskPanelProps) {
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef({ clientX: 0, previewWidth: 0 });
-  const [fontSizePx, setFontSizePx] = useState(48);
   const [autoSendEnabled, setAutoSendEnabled] = useState(true);
   const [splitWidth, setSplitWidth] = useState(0);
   const [previewWidth, setPreviewWidth] = useState(0);
@@ -133,17 +133,6 @@ export function ProjectorDeskPanel({
       >
         <span style={{ color: "var(--fg-base)", letterSpacing: "0.1em", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>PROJECTION SIMULATION</span>
         <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0, flexShrink: 0 }}>
-          <span style={{ color: "var(--fg-muted)" }}>FONT SIZE :</span>
-          <input
-            type="range"
-            min={28}
-            max={72}
-            value={fontSizePx}
-            onChange={(event) => setFontSizePx(Number(event.target.value))}
-            style={{ width: "70px", accentColor: "var(--color-primary)" }}
-          />
-          <span style={{ color: "var(--fg-base)", minWidth: "32px" }}>{fontSizePx}px</span>
-          <span style={{ color: "var(--fg-subtle)" }}>|</span>
           <span style={{ color: "var(--fg-muted)" }}>AUTO SEND :</span>
           <button
             type="button"
@@ -166,7 +155,7 @@ export function ProjectorDeskPanel({
                 width: "16px",
                 height: "16px",
                 borderRadius: "50%",
-                background: "#fff",
+                background: "var(--fg-on-accent)",
                 position: "absolute",
                 left: "2px",
                 transform: autoSendEnabled ? "translateX(16px)" : "translateX(0)",
@@ -236,7 +225,7 @@ export function ProjectorDeskPanel({
             padding: "8px",
           }}
         >
-          <ProjectorView title="PREVIEW" slide={previewSlide} feedOverride="live" overlayMode={overlayMode} theme={theme} isLive={false} fontSizePx={fontSizePx} />
+          <ProjectorView title="PREVIEW" slide={previewSlide} feedOverride="live" overlayMode={overlayMode} theme={theme} isLive={false} fontSizePx={PROJECTION_FONT_SIZE_PX} />
         </div>
 
         <div
@@ -273,7 +262,7 @@ export function ProjectorDeskPanel({
             padding: "8px",
           }}
         >
-          <ProjectorView title="LIVE" slide={liveSlide} feedOverride={feedOverride} overlayMode={overlayMode} theme={theme} isLive={liveSlide !== null} fontSizePx={fontSizePx} />
+          <ProjectorView title="LIVE" slide={liveSlide} feedOverride={feedOverride} overlayMode={overlayMode} theme={theme} isLive={liveSlide !== null} fontSizePx={PROJECTION_FONT_SIZE_PX} />
         </div>
 
         <div style={{ gridColumn: "1", gridRow: "2", display: "grid", gridTemplateColumns: "1fr", gap: "6px", minWidth: 0, overflow: "hidden" }}>

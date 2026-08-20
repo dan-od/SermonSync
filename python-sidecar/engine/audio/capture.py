@@ -1,8 +1,8 @@
 """Raw PCM audio capture and streaming (SS-009).
 
-Captures 16 kHz mono float32 audio from the selected input device, converts to
-16-bit PCM, and streams chunks over the /ws/audio WebSocket as binary frames.
-RMS/peak levels are emitted as JSON for the frontend waveform visualizer.
+Captures float32 audio from the selected input device, converts speech chunks
+to 16-bit PCM for transcription, and emits RMS/peak levels as JSON for the
+frontend waveform visualizer.
 
 The sounddevice InputStream callback runs in a PortAudio thread; results are
 handed back to the asyncio loop via run_coroutine_threadsafe.
@@ -18,7 +18,7 @@ import math
 from ws_hub import manager
 
 from . import vad, worship_detector
-from .devices import AudioBackendError, backend_available
+from .devices import AudioBackendError, backend_available, list_input_devices
 from .state import audio_state
 
 logger = logging.getLogger("sermonsync.audio.capture")
@@ -65,6 +65,20 @@ def float_to_pcm16(samples) -> bytes:
     return (clipped * 32767.0).astype("<i2").tobytes()
 
 
+def resample_to_transcription_rate(samples, source_rate: int, target_rate: int = 16000):
+    """Convert device-rate samples to mono at the transcription sample rate."""
+    if np is None:  # pragma: no cover
+        raise RuntimeError("numpy required for audio resampling")
+    arr = np.asarray(samples, dtype="float32")
+    arr = np.mean(arr, axis=1) if arr.ndim > 1 else arr.ravel()
+    if source_rate == target_rate or arr.size == 0:
+        return arr
+    target_size = max(1, round(arr.size * target_rate / source_rate))
+    source_positions = np.linspace(0, arr.size - 1, num=arr.size)
+    target_positions = np.linspace(0, arr.size - 1, num=target_size)
+    return np.interp(target_positions, source_positions, arr).astype("float32")
+
+
 # ---------------------------------------------------------------------------
 # Capture manager
 # ---------------------------------------------------------------------------
@@ -74,8 +88,8 @@ class CaptureManager:
         self._stream = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._chunk_counter = 0
-        # Emit an audio_level JSON roughly every ~100 ms (every 3rd 30 ms chunk).
-        self._level_every = 3
+        # Emit meter updates at 10 Hz; capture callbacks must stay lightweight.
+        self._level_every = 5
         self._last_is_speech = False
         self._last_acoustic_state = worship_detector.SILENCE
         # Emit a worship/scene decision roughly every ~0.5 s (every 16th frame).
@@ -96,6 +110,20 @@ class CaptureManager:
         if audio_state.device_index is None:
             raise ValueError("no input device selected")
 
+        selected_device = next(
+            (
+                device
+                for device in list_input_devices()
+                if device["index"] == audio_state.device_index
+            ),
+            None,
+        )
+        if selected_device is None:
+            raise ValueError("selected input device is no longer available")
+        audio_state.sample_rate = selected_device["default_sample_rate"]
+        audio_state.chunk_samples = round(audio_state.sample_rate * 0.02)
+        audio_state.channels = min(audio_state.channels, selected_device["channels"])
+
         self._loop = asyncio.get_running_loop()
         self._chunk_counter = 0
 
@@ -103,14 +131,34 @@ class CaptureManager:
             # Opening the PortAudio stream blocks until the OS resolves the
             # microphone-permission prompt. Run it off the event loop so the
             # sidecar (health/WS) stays responsive while permission is pending.
-            stream = _sd.InputStream(
-                samplerate=audio_state.sample_rate,
-                channels=audio_state.channels,
-                dtype="float32",
-                blocksize=audio_state.chunk_samples,
-                device=audio_state.device_index,
-                callback=self._on_audio,
-            )
+            check_input_settings = getattr(_sd, "check_input_settings", None)
+            if check_input_settings is not None:
+                check_input_settings(
+                    device=audio_state.device_index,
+                    samplerate=audio_state.sample_rate,
+                    channels=audio_state.channels,
+                )
+            stream_options = {
+                "samplerate": audio_state.sample_rate,
+                "channels": audio_state.channels,
+                "dtype": "float32",
+                "blocksize": audio_state.chunk_samples,
+                "device": audio_state.device_index,
+                "latency": "high",
+                "never_drop_input": True,
+                "callback": self._on_audio,
+            }
+            try:
+                stream = _sd.InputStream(**stream_options)
+            except Exception as exc:
+                if "invalid flag" not in str(exc).lower() and "-9995" not in str(exc):
+                    raise
+                logger.warning(
+                    "PortAudio does not support never_drop_input; "
+                    "retrying without that option"
+                )
+                stream_options.pop("never_drop_input")
+                stream = _sd.InputStream(**stream_options)
             stream.start()
             return stream
 
@@ -145,7 +193,7 @@ class CaptureManager:
         try:
             samples = indata.copy()
             rms, peak = compute_levels(samples)
-            pcm = float_to_pcm16(samples)
+            pcm = float_to_pcm16(resample_to_transcription_rate(samples, audio_state.sample_rate))
         except Exception as exc:  # pragma: no cover
             logger.error("audio processing error: %s", exc)
             return
@@ -178,12 +226,13 @@ class CaptureManager:
         emit_scene = scene_changed or (self._chunk_counter % self._scene_every == 0)
         self._last_acoustic_state = scene
 
-        self._schedule(
-            self._emit(
-                pcm, rms, peak, emit_level, is_speech, vad_conf, vad_changed,
-                scene, scene_conf, emit_scene,
+        if emit_level or vad_changed or emit_scene:
+            self._schedule(
+                self._emit(
+                    rms, peak, emit_level, is_speech, vad_conf, vad_changed,
+                    scene, scene_conf, emit_scene,
+                )
             )
-        )
 
     def _schedule(self, coro) -> None:
         if self._loop is None:
@@ -193,7 +242,6 @@ class CaptureManager:
 
     async def _emit(
         self,
-        pcm: bytes,
         rms: float,
         peak: float,
         emit_level: bool,
@@ -204,7 +252,6 @@ class CaptureManager:
         scene_conf: float,
         emit_scene: bool,
     ) -> None:
-        await manager.broadcast_bytes(pcm)
         if emit_level:
             await manager.broadcast_json(
                 {"type": "audio_level", "rms": round(rms, 4), "peak": round(peak, 4)}

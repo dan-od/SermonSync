@@ -1,5 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
+import { resolveRichTextTokens } from "../lib/richText";
+import { useTemplateStore } from "../stores/templateStore";
+import type { TemplateLayer, TemplateScene } from "../types/templates";
 import type { OverlayMode, ProjectorSlide, VerseTheme } from "../types/state";
 
 const OVERLAY_WIDTH = 1920;
@@ -8,6 +11,17 @@ const VIEWPORT_SAFE_INSET = 2;
 
 function referenceLabel(slide: ProjectorSlide) {
   return `${slide.reference.book} ${slide.reference.chapter}:${slide.reference.verse}`;
+}
+
+function removeOuterQuotes(text: string) {
+  const trimmed = text.trim();
+  const quotePairs: Array<[string, string]> = [["\"", "\""], ["“", "”"], ["‘", "’"]];
+  for (const [opening, closing] of quotePairs) {
+    if (trimmed.startsWith(opening) && trimmed.endsWith(closing)) {
+      return trimmed.slice(opening.length, -closing.length).trim();
+    }
+  }
+  return text;
 }
 
 function accent(theme: VerseTheme) {
@@ -30,6 +44,155 @@ function themeLabel(theme: VerseTheme) {
   return "SALVATION";
 }
 
+function inferSlideCategory(slide: ProjectorSlide): "scriptures" | "songs" {
+  const book = slide.reference.book.trim().toLowerCase();
+  if (slide.version === "SONG" || book === "song") {
+    return "songs";
+  }
+  return "scriptures";
+}
+
+function resolveLayerText(content: string, slide: ProjectorSlide, category: "scriptures" | "songs") {
+  const scriptureReference = referenceLabel(slide);
+  const replacements: Record<string, string> = {
+    scripture_text: removeOuterQuotes(slide.text),
+    scripture_reference: scriptureReference,
+    scripture_name: slide.version,
+    song_lines: category === "songs" ? removeOuterQuotes(slide.text) : "",
+  };
+
+  return resolveRichTextTokens(content, replacements);
+}
+
+function renderTemplateLayer(layer: TemplateLayer, text: string) {
+  if (layer.type === "shape") {
+    const hasOutline = layer.borderWidth > 0 && Boolean(layer.borderColor);
+
+    if (layer.shapeKind === "triangle") {
+      return (
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ width: "100%", height: "100%" }}>
+          <polygon
+            points="50,2 98,98 2,98"
+            fill={layer.fill || "transparent"}
+            stroke={hasOutline ? layer.borderColor : "none"}
+            strokeWidth={hasOutline ? Math.max(0.5, layer.borderWidth * 1.5) : 0}
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
+      );
+    }
+
+    const borderRadius = layer.shapeKind === "circle" ? "50%" : `${layer.radius}px`;
+    return (
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          background: layer.fill || "transparent",
+          border: hasOutline ? `${layer.borderWidth}px solid ${layer.borderColor}` : "none",
+          borderRadius,
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        color: layer.color || "transparent",
+        WebkitTextStrokeColor: layer.outlineColor || "transparent",
+        WebkitTextStrokeWidth: layer.outlineColor && layer.outlineWidth > 0 ? `${layer.outlineWidth}px` : "0px",
+        fontFamily: layer.fontFamily,
+        fontStyle: layer.fontStyle,
+        fontSize: `${layer.fontSize}px`,
+        fontWeight: layer.fontWeight,
+        textAlign: layer.align,
+        lineHeight: layer.lineHeight,
+        whiteSpace: "pre-wrap",
+        overflowWrap: "break-word",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: layer.align === "left" ? "flex-start" : layer.align === "right" ? "flex-end" : "center",
+        padding: "8px",
+        boxSizing: "border-box",
+      }}
+    >
+      {layer.type === "text" ? <span dangerouslySetInnerHTML={{ __html: text }} /> : null}
+    </div>
+  );
+}
+
+function TemplateSceneOverlay({ scene, slide, category }: { scene: TemplateScene; slide: ProjectorSlide; category: "scriptures" | "songs" }) {
+  const ordered = [...scene.layers].sort((a, b) => a.zIndex - b.zIndex);
+  const media = scene.backgroundMedia;
+  const sceneStyle: CSSProperties = {
+    width: "100%",
+    height: "100%",
+    position: "relative",
+    overflow: "hidden",
+    background: `linear-gradient(155deg, ${scene.backgroundStart}, ${scene.backgroundEnd})`,
+  };
+
+  return (
+    <div style={sceneStyle}>
+      {media ? (
+        <div
+          style={{
+            position: "absolute",
+            left: `${media.x}%`,
+            top: `${media.y}%`,
+            width: `${media.width}%`,
+            height: `${media.height}%`,
+            opacity: media.opacity,
+            zIndex: 0,
+            overflow: "hidden",
+          }}
+        >
+          {media.type === "video" ? (
+            <video
+              src={media.src}
+              autoPlay
+              muted
+              loop={media.loop}
+              playsInline
+              style={{ width: "100%", height: "100%", objectFit: media.fit }}
+            />
+          ) : (
+            <img src={media.src} alt="" style={{ width: "100%", height: "100%", objectFit: media.fit }} />
+          )}
+        </div>
+      ) : null}
+
+      {ordered.map((layer) => {
+        if (!layer.visible) {
+          return null;
+        }
+        const resolved = layer.type === "text" ? resolveLayerText(layer.content, slide, category) : "";
+        return (
+          <div
+            key={layer.id}
+            style={{
+              position: "absolute",
+              left: `${layer.x}%`,
+              top: `${layer.y}%`,
+              width: `${layer.width}%`,
+              height: `${layer.height}%`,
+              opacity: layer.opacity,
+              transform: `rotate(${layer.rotation}deg)`,
+              transformOrigin: "center",
+              zIndex: layer.zIndex,
+            }}
+          >
+            {renderTemplateLayer(layer, resolved)}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 interface ProjectorViewProps {
   title: string;
   slide: ProjectorSlide | null;
@@ -43,6 +206,8 @@ interface ProjectorViewProps {
 export function ProjectorView({ title, slide, feedOverride, overlayMode, theme, isLive, fontSizePx }: ProjectorViewProps) {
   const stageRef = useRef<HTMLDivElement>(null);
   const [viewportSize, setViewportSize] = useState({ width: OVERLAY_WIDTH, height: OVERLAY_HEIGHT });
+  const templates = useTemplateStore((s) => s.templates);
+  const defaults = useTemplateStore((s) => s.defaults);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -95,6 +260,17 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, theme, 
   const isClearOverride = feedOverride === "clear";
   const isLogoOverride = feedOverride === "logo";
   const showSlide = feedOverride === "live";
+  const templateCategory = useMemo(() => (slide ? inferSlideCategory(slide) : null), [slide]);
+  const activeTemplate = useMemo(() => {
+    if (!templateCategory) {
+      return null;
+    }
+    const templateId = defaults[templateCategory];
+    if (!templateId) {
+      return null;
+    }
+    return templates.find((entry) => entry.id === templateId && entry.category === templateCategory) ?? null;
+  }, [defaults, templateCategory, templates]);
 
   return (
     <div
@@ -133,18 +309,17 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, theme, 
           }
         `}</style>
         <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span style={{ width: "10px", height: "10px", borderRadius: "50%", background: "#b02845" }} />
+          <span style={{ width: "10px", height: "10px", borderRadius: "50%", background: "var(--projector-status-idle)" }} />
           {title}
         </span>
         <span style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <span style={{ color: "var(--projector-header-subtext)" }}>Scale:{fontSizePx}px</span>
           <span
             style={{
-              border: isLive ? "none" : "1px solid #5b2035",
+              border: isLive ? "none" : "1px solid var(--projector-status-idle-border)",
               borderRadius: "8px",
               padding: "4px 8px",
-              background: isLive ? "#ffffff" : "transparent",
-              color: isLive ? "#c32b4b" : "var(--projector-header-status-text)",
+              background: isLive ? "var(--fg-on-accent)" : "transparent",
+              color: isLive ? "var(--projector-status-live)" : "var(--projector-header-status-text)",
               fontSize: "10px",
               fontWeight: 700,
             }}
@@ -152,7 +327,7 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, theme, 
             {isLive ? (
               <span style={{ animation: "ssOnAirBlink 1800ms ease-in-out infinite" }}>ON-AIR</span>
             ) : (
-              "STANDBY"
+              "IDLE"
             )}
           </span>
         </span>
@@ -178,6 +353,8 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, theme, 
             height: `${viewportSize.height}px`,
             position: "relative",
             borderRadius: "var(--radius-lg)",
+            opacity: isClearOverride ? 0 : 1,
+            transition: "opacity 220ms ease",
             background: isBlackOverride
               ? "#000000"
               : "linear-gradient(180deg, rgba(16, 20, 44, 0.95), rgba(8, 9, 18, 1))",
@@ -203,6 +380,13 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, theme, 
             }}
           >
             {showSlide && slide ? (
+              activeTemplate ? (
+                <TemplateSceneOverlay
+                  scene={activeTemplate.scene}
+                  slide={slide}
+                  category={templateCategory ?? "scriptures"}
+                />
+              ) : (
               isLowerThird ? (
                 <div
                   style={{
@@ -363,7 +547,7 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, theme, 
                       overflowWrap: "break-word",
                     }}
                   >
-                    {`"${slide.text}"`}
+                    {`${slide.text}`}
                   </div>
                   <div style={{ color: accentColor, fontFamily: "var(--font-sans)", fontSize: referenceFontSize, fontWeight: 800 }}>
                     {referenceLabel(slide)}
@@ -376,6 +560,7 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, theme, 
                     {slide.version}
                   </div>
                 </div>
+              )
               )
             ) : isLogoOverride ? (
               <div

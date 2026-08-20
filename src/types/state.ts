@@ -38,15 +38,25 @@ export interface AudioInputDevice {
   name: string;
   channels: number;
   defaultSampleRate: number;
+  isDefault?: boolean;
 }
 
 export interface AudioPipelineState {
+  availableDevices: AudioInputDevice[];
   inputDevice: AudioInputDevice | null;
+  inputChannel: number;
   isCapturing: boolean;
   /** VAD sensitivity threshold, 0.0 - 1.0 */
   vadSensitivity: number;
   sampleRate: number;
   latencyMs: number;
+  levelRms: number;
+  levelPeak: number;
+  isSpeech: boolean;
+  speechConfidence: number;
+  acousticState: "silence" | "speech" | "worship";
+  acousticConfidence: number;
+  lastError: string | null;
   status: AudioStatus;
 }
 
@@ -64,6 +74,27 @@ export interface TranscriptionEvent {
   type: TranscriptionEventType;
   /** 0.0 - 1.0 */
   confidence: number;
+  isFinal?: boolean;
+  language?: string;
+  latencyMs?: number;
+  context?: string[];
+}
+
+export interface TranscriptItem {
+  id: string;
+  timestamp: string;
+  speaker: string;
+  text: string;
+  matches: string[];
+}
+
+export interface TranscriptionState {
+  events: TranscriptionEvent[];
+  timeline: TranscriptItem[];
+  latestPartial: string;
+  contextWindow: string[];
+  themes: string[];
+  themeConfidence: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -93,6 +124,9 @@ export interface SuggestionCard {
   version: string;
   /** theme/context labels, e.g. ["DIVINE SALVATION", "ETERNAL HOPE"] */
   themes: string[];
+  /** epoch ms at ingest/creation time; used for chronological deck ordering */
+  createdAt?: number;
+  pinned?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -110,9 +144,12 @@ export interface ProjectorSlide {
 
 export interface ProjectorState {
   isLive: boolean;
+  previewSlide: ProjectorSlide | null;
+  liveSlide: ProjectorSlide | null;
   currentSlide: ProjectorSlide | null;
   overlayMode: OverlayMode;
   theme: VerseTheme;
+  feedOverride: "live" | "logo" | "black" | "clear";
   /** display id/name for HDMI output selection */
   outputDisplay: string | null;
   ndiEnabled: boolean;
@@ -131,13 +168,124 @@ export interface BibleVersionSummary {
   available: boolean;
 }
 
+export type ModelProviderId = "groq" | "openai" | "anthropic" | "gemini";
+
 export interface SystemConfig {
   unitId: string;
   unitName: string;
   bibleVersion: string;
   bibleVersions: BibleVersionSummary[];
-  bibleNameOverrides: Record<string, string>;
   theme: UiTheme;
   groqApiKey: string | null;
   groqEnabled: boolean;
+  /** API keys for non-Groq providers; Groq keeps its own dedicated fields above. */
+  modelProviderKeys: Partial<Record<Exclude<ModelProviderId, "groq">, string>>;
+  defaultModelProvider: ModelProviderId | null;
 }
+
+// ---------------------------------------------------------------------------
+// Sidecar websocket payloads
+// ---------------------------------------------------------------------------
+
+export interface SidecarAckEvent {
+  type: "ack";
+  message: string;
+}
+
+export interface SidecarAudioLevelEvent {
+  type: "audio_level";
+  rms: number;
+  peak: number;
+}
+
+export interface SidecarVadStateEvent {
+  type: "vad_state";
+  is_speech: boolean;
+  confidence: number;
+}
+
+export interface SidecarAudioStateChangeEvent {
+  type: "state_change";
+  state: "silence" | "speech" | "worship";
+  confidence: number;
+}
+
+export interface SidecarAudioErrorEvent {
+  type: "audio_error";
+  error: string;
+  detail: string;
+}
+
+export interface SidecarTranscriptionEvent {
+  type: "transcription";
+  text: string;
+  timestamp: number;
+  is_final: boolean;
+  confidence: number;
+  language?: string;
+  latency_ms?: number;
+}
+
+export interface SidecarSentenceEvent {
+  type: "sentence";
+  text: string;
+  timestamp: number;
+  context: string[];
+}
+
+export interface SidecarSuggestionResult {
+  reference: string;
+  book: string;
+  chapter: number;
+  verse: number;
+  text: string;
+  version: string;
+  confidence: number;
+  confidence_pct: number;
+  stage: number;
+  source_stages: number[];
+}
+
+export interface SidecarSuggestionsEvent {
+  type: "suggestions";
+  sentence: string;
+  results: SidecarSuggestionResult[];
+}
+
+export interface SidecarContextUpdateEvent {
+  type: "context_update";
+  themes: string[];
+  confidence: number;
+}
+
+export interface StageMetrics {
+  avg_ms: number;
+  last_ms: number;
+  max_ms: number;
+  errors: number;
+  healthy: boolean;
+}
+
+export interface SidecarSystemStatusEvent {
+  type: "system_status";
+  uptime_seconds: number;
+  latency_ms: number;
+  latency_avg_ms: number;
+  latency_peak_ms: number;
+  status: "idle" | "stable" | "degraded" | "alert";
+  alert: boolean;
+  pipeline_stages_healthy: boolean[];
+  stages: Record<string, StageMetrics>;
+}
+
+export type SidecarWsEvent =
+  | SidecarAckEvent
+  | SidecarAudioLevelEvent
+  | SidecarVadStateEvent
+  | SidecarAudioStateChangeEvent
+  | SidecarAudioErrorEvent
+  | SidecarTranscriptionEvent
+  | SidecarSentenceEvent
+  | SidecarSuggestionsEvent
+  | SidecarContextUpdateEvent
+  | SidecarSystemStatusEvent;
