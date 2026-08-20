@@ -12,11 +12,12 @@
   "app": {
     "windows": [
       {
-        "title": "SermonSync",
+        "title": "",
         "width": 1920,
         "height": 1080,
         "resizable": true,
-        "decorations": false
+        "decorations": true,
+        "titleBarStyle": "Overlay"
       }
     ],
     "security": {
