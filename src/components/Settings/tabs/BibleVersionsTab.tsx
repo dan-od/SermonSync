@@ -1,11 +1,10 @@
 import { useEffect, useState, type CSSProperties } from "react";
 
+import { getSidecarHttpBase } from "../../../lib/sidecarClient";
 import { useConfigStore } from "../../../stores/configStore";
 import type { BibleVersionSummary } from "../../../types/state";
 import { IconBook, IconUpload } from "../icons";
 import { InfoBanner, SectionIntro, SelectRow, SettingsCard, StatusPill } from "../primitives";
-
-const BIBLE_API_BASE = "http://127.0.0.1:8000";
 const DOWNLOADABLE_VERSIONS: BibleVersionSummary[] = [
   { abbreviation: "NIV", name: "New International Version", verse_count: 31103, available: false },
   { abbreviation: "NKJV", name: "New King James Version", verse_count: 31102, available: false },
@@ -16,7 +15,7 @@ const DOWNLOADABLE_VERSIONS: BibleVersionSummary[] = [
 ];
 
 async function fetchVersions() {
-  const response = await fetch(`${BIBLE_API_BASE}/api/bible/versions`);
+  const response = await fetch(`${getSidecarHttpBase()}/api/bible/versions`);
   if (!response.ok) throw new Error(`Bible API error (${response.status})`);
   return (await response.json() as { versions: BibleVersionSummary[] }).versions;
 }
@@ -91,7 +90,7 @@ export function BibleVersionsTab() {
     setBusyVersion(version.abbreviation);
     setError(null);
     try {
-      const response = await fetch(`${BIBLE_API_BASE}/api/bible/versions/${encodeURIComponent(version.abbreviation)}`, {
+      const response = await fetch(`${getSidecarHttpBase()}/api/bible/versions/${encodeURIComponent(version.abbreviation)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
@@ -114,7 +113,7 @@ export function BibleVersionsTab() {
     setBusyVersion(version.abbreviation);
     setError(null);
     try {
-      const response = await fetch(`${BIBLE_API_BASE}/api/bible/versions/${encodeURIComponent(version.abbreviation)}`, { method: "DELETE" });
+      const response = await fetch(`${getSidecarHttpBase()}/api/bible/versions/${encodeURIComponent(version.abbreviation)}`, { method: "DELETE" });
       if (!response.ok) throw new Error(await responseError(response, `Could not delete ${version.abbreviation}.`));
       const nextVersions = versions.filter((entry) => entry.abbreviation !== version.abbreviation);
       setVersions(nextVersions);
