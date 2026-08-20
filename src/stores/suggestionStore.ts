@@ -41,6 +41,7 @@ function mergeCards(existing: SuggestionCard[], incoming: SuggestionCard[]) {
     createdAt: card.createdAt ?? Date.now(),
     pinned: card.pinned ?? false,
   }));
+  const newCards: SuggestionCard[] = [];
 
   for (const candidate of incoming) {
     const next = {
@@ -51,7 +52,7 @@ function mergeCards(existing: SuggestionCard[], incoming: SuggestionCard[]) {
     const key = cardKey(next);
     const index = deck.findIndex((card) => cardKey(card) === key);
     if (index === -1) {
-      deck.unshift(next);
+      newCards.push(next);
       continue;
     }
 
@@ -67,7 +68,7 @@ function mergeCards(existing: SuggestionCard[], incoming: SuggestionCard[]) {
     }
   }
 
-  return deck.slice(0, MAX_DECK_SIZE);
+  return [...newCards, ...deck].slice(0, MAX_DECK_SIZE);
 }
 
 export const useSuggestionStore = create<SuggestionStore>((set) => ({
