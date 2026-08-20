@@ -46,9 +46,9 @@ BOOKS = [
     ("3 John", "3Jn"), ("Jude", "Jud"), ("Revelation", "Rev"),
 ]
 
-VERSIONS = [
-    ("King James Version", "KJV", True),
-]
+# Text versions are imported by the user. The previous bundled KJV was not a
+# reliable source and must not be recreated by future database builds.
+VERSIONS: list[tuple[str, str, bool]] = []
 
 SCHEMA = """
 -- Keep the distributable DB a single file (no -wal/-shm sidecars); it is
@@ -134,10 +134,8 @@ def build(source: str, out: str) -> None:
                 (name, abbr),
             )
             version_ids[abbr] = cur.lastrowid
-        kjv_id = version_ids["KJV"]
-
-        # Books + chapters + verses (KJV only)
-        verse_rows = 0
+        # Books + chapters are seeded from the source shape; verse text is
+        # added only through an explicit user import.
         for pos, (book, book_data) in enumerate(zip(BOOKS, kjv), start=1):
             name, abbr = book
             testament = "OT" if pos <= 39 else "NT"
@@ -148,26 +146,18 @@ def build(source: str, out: str) -> None:
             )
             book_id = book_cur.lastrowid
             chapters = book_data["chapters"] if isinstance(book_data, dict) else book_data
-            for c_num, verses in enumerate(chapters, start=1):
-                chap_cur = conn.execute(
+            for c_num, _verses in enumerate(chapters, start=1):
+                conn.execute(
                     "INSERT INTO chapters (book_id, number) VALUES (?, ?)",
                     (book_id, c_num),
                 )
-                chapter_id = chap_cur.lastrowid
-                for v_num, text in enumerate(verses, start=1):
-                    conn.execute(
-                        "INSERT INTO verses (chapter_id, verse_number, text, version_id) "
-                        "VALUES (?, ?, ?, ?)",
-                        (chapter_id, v_num, text.strip(), kjv_id),
-                    )
-                    verse_rows += 1
 
         # Populate FTS from the content table.
         conn.execute(
             "INSERT INTO verses_fts (rowid, text) SELECT id, text FROM verses"
         )
         conn.commit()
-        print(f"KJV populated: {verse_rows} verses across {len(BOOKS)} books.")
+        print(f"Seeded {len(BOOKS)} books; no Bible text bundled.")
         print(f"Wrote {out} ({os.path.getsize(out) / 1_048_576:.1f} MB)")
     finally:
         conn.close()

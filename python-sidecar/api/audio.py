@@ -20,6 +20,7 @@ class SelectDeviceRequest(BaseModel):
     # works on Python 3.9 (PEP 604 `int | None` isn't runtime-evaluable there).
     index: Optional[int] = None
     name: Optional[str] = None
+    channels: Optional[int] = Field(default=None, ge=1)
 
 
 @router.get("/devices")
@@ -45,11 +46,13 @@ def select_device(req: SelectDeviceRequest) -> dict:
         raise HTTPException(status_code=503, detail="audio backend unavailable")
     try:
         chosen = devices.select_device(index=req.index, name=req.name)
+        if req.channels is not None:
+            devices.set_channels(req.channels)
     except devices.AudioBackendError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"selected": chosen}
+    return {"selected": {**chosen, "channels": audio_state.channels}}
 
 
 @router.post("/start-capture")
@@ -62,8 +65,18 @@ async def start_capture() -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # PortAudio / permission errors
+        detail = str(exc)
+        permission_words = ("permission", "access denied", "not authorized", "paaccessdenied")
+        if any(word in detail.lower() for word in permission_words):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "microphone permission is required for this input device; "
+                    "grant access in the operating system settings and try again"
+                ),
+            ) from exc
         raise HTTPException(
-            status_code=500, detail=f"could not start capture: {exc}"
+            status_code=500, detail=f"could not start capture: {detail}"
         ) from exc
     return {
         "capturing": True,

@@ -113,7 +113,7 @@ body {
 }
 
 .auth-pane-enter {
-  animation: auth-pane-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: auth-pane-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
   will-change: transform, opacity;
 }
 
@@ -139,6 +139,10 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .auth-pane-enter {
     animation-duration: 1ms;
+  }
+
+  .auth-form-panel * {
+    transition-duration: 1ms !important;
   }
 }
 

@@ -5,6 +5,13 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_sidecar_smoke:
+        description: Run sidecar smoke test after frontend checks
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   lint-frontend:
@@ -42,6 +49,18 @@ jobs:
       - run: npm ci
       - run: npx tsc --noEmit
 
+  test-frontend:
+    name: Test frontend (Vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npm run test
+
   build-frontend:
     name: Build frontend (Vite)
     runs-on: ubuntu-latest
@@ -53,6 +72,55 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+
+  sidecar-smoke:
+    name: Sidecar smoke (optional)
+    runs-on: ubuntu-latest
+    needs: [lint-frontend, lint-backend, type-check, test-frontend, build-frontend]
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_sidecar_smoke }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Install sidecar dependencies
+        run: pip install -r python-sidecar/requirements.txt
+      - name: Start sidecar
+        run: |
+          python -m uvicorn main:app --host 127.0.0.1 --port 8000 --app-dir python-sidecar > sidecar.log 2>&1 &
+          echo $! > sidecar.pid
+      - name: Wait for sidecar health
+        run: |
+          for i in {1..40}; do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then
+              echo "Sidecar is healthy"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Sidecar failed to become healthy"
+          tail -n 200 sidecar.log || true
+          exit 1
+      - name: Run sidecar smoke test
+        run: npm run smoke:sidecar -- 5000
+      - name: Upload sidecar log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sidecar-log
+          path: sidecar.log
+      - name: Stop sidecar
+        if: always()
+        run: |
+          if [ -f sidecar.pid ]; then
+            kill "$(cat sidecar.pid)" || true
+          fi
 
   build-tauri:
     name: Build Tauri app

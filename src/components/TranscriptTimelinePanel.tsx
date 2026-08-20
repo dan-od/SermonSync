@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { TranscriptItem } from "./desktop/uiTypes";
-import { ScrollArea } from "./ui/ScrollArea";
 
 interface TranscriptTimelinePanelProps {
   items: TranscriptItem[];
@@ -14,8 +13,11 @@ export function TranscriptTimelinePanel({
 }: TranscriptTimelinePanelProps) {
   const [manualText, setManualText] = useState("");
   const [exitingItems, setExitingItems] = useState<TranscriptItem[]>([]);
-  const displayedItems = useMemo(() => items.slice(0, 4), [items]);
+  const displayedItems = useMemo(() => items, [items]);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
   const previousItemsRef = useRef<TranscriptItem[]>(displayedItems);
+
+  const totalEvents = items.length;
 
   useEffect(() => {
     const previousItems = previousItemsRef.current;
@@ -42,6 +44,16 @@ export function TranscriptTimelinePanel({
 
   useEffect(() => {
     previousItemsRef.current = displayedItems;
+  }, [displayedItems]);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) {
+      return;
+    }
+
+    // Newest entries are prepended, so auto-scroll keeps at top.
+    viewport.scrollTop = 0;
   }, [displayedItems]);
 
   return (
@@ -118,11 +130,12 @@ export function TranscriptTimelinePanel({
           style={{
             fontFamily: "var(--font-mono)",
             fontSize: "10px",
-            color: "var(--fg-muted)",
+            color: "var(--color-primary)",
+            fontWeight: 700,
             letterSpacing: "0.06em",
           }}
         >
-          STANDBY
+          {`${totalEvents} EVENTS`}
         </div>
       </div>
 
@@ -174,9 +187,12 @@ export function TranscriptTimelinePanel({
         </button>
       </form>
 
-      <ScrollArea
-        style={{ flex: 1, minHeight: 0 }}
-        contentStyle={{
+      <div
+        ref={viewportRef}
+        className="scripture-scroll-pane"
+        style={{
+          flex: 1,
+          minHeight: 0,
           display: "flex",
           flexDirection: "column",
           gap: "3px",
@@ -196,8 +212,8 @@ export function TranscriptTimelinePanel({
           >
             <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", lineHeight: 1.34, color: "var(--fg-base)" }}>
               <span style={{ color: "var(--fg-subtle)" }}>{item.timestamp} </span>
-              <strong style={{ color: "var(--color-primary)" }}>[TRANSCRIPTION]</strong>{" "}
-              <span style={{ fontStyle: "italic" }}>{item.text}</span>
+              <strong style={{ color: "var(--color-primary)" }}>[SPEECH]</strong>{" "}
+              <span>{item.text}</span>
             </div>
           </div>
         ))}
@@ -215,12 +231,12 @@ export function TranscriptTimelinePanel({
           >
             <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", lineHeight: 1.34, color: "var(--fg-base)" }}>
               <span style={{ color: "var(--fg-subtle)" }}>{item.timestamp} </span>
-              <strong style={{ color: "var(--color-primary)" }}>[TRANSCRIPTION]</strong>{" "}
-              <span style={{ fontStyle: "italic" }}>{item.text}</span>
+              <strong style={{ color: "var(--color-primary)" }}>[SPEECH]</strong>{" "}
+              <span>{item.text}</span>
             </div>
           </div>
         ))}
-      </ScrollArea>
+      </div>
     </div>
   );
 }

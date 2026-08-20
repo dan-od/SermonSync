@@ -11,21 +11,31 @@
   --color-primary-muted: rgba(123, 47, 247, 0.15);
 
   /* Dark backgrounds */
-  --bg-base: #0a0a0f;
-  --bg-surface: #12121a;
-  --bg-elevated: #1a1a2e;
+  --bg-base: #181818;
+  --bg-surface: #1f1f1f;
+  --bg-elevated: #2a2a2a;
 
   /* Foreground / text */
   --fg-base: #e8e8f0;
   --fg-muted: #9a9ab0;
   --fg-subtle: #6a6a80;
-  --border-base: #24243a;
+  --border-base: #343434;
 
   /* Status accents */
   --color-success: #22c55e;
   --color-warning: #f59e0b;
   --color-error: #ef4444;
   --color-info: #3b82f6;
+  --color-success-muted: rgba(34, 197, 94, 0.16);
+  --color-error-muted: rgba(239, 68, 68, 0.12);
+  --color-warning-muted: rgba(245, 158, 11, 0.16);
+  --overlay-backdrop: rgba(5, 5, 10, 0.7);
+  --overlay-backdrop-strong: rgba(0, 0, 0, 0.55);
+  --color-error-border: rgba(239, 68, 68, 0.4);
+  --fg-on-accent: #ffffff;
+  --projector-status-idle: #b02845;
+  --projector-status-idle-border: #5b2035;
+  --projector-status-live: #c32b4b;
 
   /* Verse title themes (Cup / Cross / Crown) */
   --theme-cup: #f59e0b;
@@ -33,11 +43,11 @@
   --theme-crown: #eab308;
 
   /* Projector header chrome */
-  --projector-header-bg: rgba(10, 12, 27, 0.78);
-  --projector-header-border: #30204e;
-  --projector-header-text: #96a2c4;
-  --projector-header-subtext: #7f8db3;
-  --projector-header-status-text: #a9b4d0;
+  --projector-header-bg: rgba(24, 24, 24, 0.78);
+  --projector-header-border: #3d2d4d;
+  --projector-header-text: #c7c4d8;
+  --projector-header-subtext: #a7a4b9;
+  --projector-header-status-text: #dad7ea;
 
   /* Typography */
   --font-mono: "JetBrains Mono", "Fira Code", monospace;
@@ -80,6 +90,16 @@
   --fg-muted: #55556a;
   --fg-subtle: #8a8aa0;
   --border-base: #d8d8e4;
+  --color-success-muted: rgba(34, 197, 94, 0.12);
+  --color-error-muted: rgba(239, 68, 68, 0.1);
+  --color-warning-muted: rgba(245, 158, 11, 0.12);
+  --overlay-backdrop: rgba(30, 30, 45, 0.42);
+  --overlay-backdrop-strong: rgba(30, 30, 45, 0.32);
+  --color-error-border: rgba(190, 60, 75, 0.42);
+  --fg-on-accent: #ffffff;
+  --projector-status-idle: #9b3650;
+  --projector-status-idle-border: #c28a9a;
+  --projector-status-live: #9b2442;
 
   --projector-header-bg: #444854;
   --projector-header-border: #3b3f4a;

@@ -15,10 +15,12 @@ import type {
 } from "../types/state";
 
 interface ProjectorStore extends ProjectorState {
+  setPreview: (slide: ProjectorSlide | null) => void;
   sendLive: (slide: ProjectorSlide) => void;
   clearScreen: () => void;
   setOverlayMode: (mode: OverlayMode) => void;
   setTheme: (theme: VerseTheme) => void;
+  setFeedOverride: (mode: ProjectorState["feedOverride"]) => void;
   setOutputDisplay: (display: string | null) => void;
   toggleLive: (isLive?: boolean) => void;
   setNdiEnabled: (enabled: boolean) => void;
@@ -27,9 +29,12 @@ interface ProjectorStore extends ProjectorState {
 
 const initialState: ProjectorState = {
   isLive: false,
+  previewSlide: null,
+  liveSlide: null,
   currentSlide: null,
   overlayMode: "widescreen",
   theme: "cross",
+  feedOverride: "live",
   outputDisplay: null,
   ndiEnabled: false,
 };
@@ -37,14 +42,20 @@ const initialState: ProjectorState = {
 export const useProjectorStore = create<ProjectorStore>((set) => ({
   ...initialState,
 
-  // TODO(Dee): render `slide` to the projector window and mark it live.
-  sendLive: (currentSlide) => set({ currentSlide, isLive: true }),
+  setPreview: (previewSlide) => set({ previewSlide }),
 
-  clearScreen: () => set({ currentSlide: null, isLive: false }),
+  // TODO(Dee): render `slide` to the projector window and mark it live.
+  sendLive: (currentSlide) =>
+    set({ currentSlide, liveSlide: currentSlide, isLive: true }),
+
+  clearScreen: () =>
+    set({ currentSlide: null, liveSlide: null, isLive: false }),
 
   setOverlayMode: (overlayMode) => set({ overlayMode }),
 
   setTheme: (theme) => set({ theme }),
+
+  setFeedOverride: (feedOverride) => set({ feedOverride }),
 
   setOutputDisplay: (outputDisplay) => set({ outputDisplay }),
 

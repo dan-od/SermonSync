@@ -25,6 +25,7 @@ const MIN_LIBRARY_WIDTH = 1130;
 const MIN_LIBRARY_SEARCH_WIDTH = 320;
 const DIVIDER_WIDTH = 6;
 const PANEL_BOTTOM_INSET = 24;
+const LIBRARY_RESIZE_HANDLE_WIDTH = 10;
 
 function PanelFrame({
   children,
@@ -280,12 +281,6 @@ export function AppLayout({ header, status, leftPanel, centerPanel, rightPanel, 
       </div>
       <div ref={libraryRowRef} style={{ flex: "1 1 0", minHeight: 0, display: "flex" }}>
         <div
-          onMouseDown={handleLibraryMouseDown}
-          onDoubleClick={resetLibraryWidth}
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize local library"
-          title="Drag to resize panels. Double-click to reset."
           style={{
             width: `${libraryWidth ?? MIN_LIBRARY_WIDTH}px`,
             flexShrink: 0,
@@ -293,10 +288,28 @@ export function AppLayout({ header, status, leftPanel, centerPanel, rightPanel, 
             borderRight: "1px solid var(--border-base)",
             overflow: "hidden",
             boxSizing: "border-box",
-            cursor: "col-resize",
+            position: "relative",
           }}
         >
           {library}
+          <div
+            onMouseDown={handleLibraryMouseDown}
+            onDoubleClick={resetLibraryWidth}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize local library"
+            title="Drag to resize panels. Double-click to reset."
+            style={{
+              position: "absolute",
+              top: 0,
+              right: 0,
+              width: `${LIBRARY_RESIZE_HANDLE_WIDTH}px`,
+              height: "100%",
+              cursor: "col-resize",
+              zIndex: 5,
+              touchAction: "none",
+            }}
+          />
         </div>
         <div
           style={{
