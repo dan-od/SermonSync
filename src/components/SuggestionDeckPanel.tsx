@@ -359,21 +359,6 @@ export function SuggestionDeckPanel({
           );
         })}
 
-        {hasMore ? (
-          <div
-            style={{
-              textAlign: "center",
-              color: "var(--fg-subtle)",
-              fontFamily: "var(--font-mono)",
-              fontSize: "10px",
-              letterSpacing: "0.06em",
-              padding: "8px 4px",
-            }}
-          >
-            Loading older suggestions...
-          </div>
-        ) : null}
-
         {exitingCards.map((card) => {
           const label = referenceLabel(card);
           const confidencePercent = Math.round(card.confidence * 100);
