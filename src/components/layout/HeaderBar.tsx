@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { MAC_TRAFFIC_LIGHT_INSET, USE_NATIVE_WINDOW_CONTROLS, isMacOS } from "../../lib/platform";
 import type { SessionStatus, UiTheme } from "../../types/state";
 
 export interface HeaderBarProps {
@@ -30,6 +31,10 @@ export function HeaderBar({
 }: HeaderBarProps) {
   const [isTauriWindow] = useState(() => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window);
   const [isMaximized, setIsMaximized] = useState(false);
+  // The OS now draws the window controls (native decorations per-OS), so the
+  // app hides its own. On macOS the traffic lights overlay the bar's top-left.
+  const showCustomControls = isTauriWindow && !USE_NATIVE_WINDOW_CONTROLS;
+  const macInset = isTauriWindow && isMacOS();
 
   useEffect(() => {
     if (!isTauriWindow) {
@@ -306,10 +311,10 @@ export function HeaderBar({
       onDoubleClick={handleHeaderDoubleClick}
       style={{
         display: "grid",
-        gridTemplateColumns: isTauriWindow ? "1fr 1fr auto" : "1fr 1fr",
+        gridTemplateColumns: showCustomControls ? "1fr 1fr auto" : "1fr 1fr",
         alignItems: "center",
         gap: "12px",
-        padding: "0 12px 0 12px",
+        padding: `0 12px 0 ${macInset ? MAC_TRAFFIC_LIGHT_INSET : 12}px`,
         height: "34px",
         background: "var(--bg-base)",
         borderBottom: "1px solid var(--border-base)",
@@ -468,7 +473,7 @@ export function HeaderBar({
         </button>
       </div>
 
-      {isTauriWindow ? (
+      {showCustomControls ? (
         <div
           data-no-drag="true"
           style={{
