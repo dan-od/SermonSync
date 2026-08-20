@@ -12,6 +12,7 @@ import { SuggestionDeckPanel } from "./components/SuggestionDeckPanel";
 import { TranscriptTimelinePanel } from "./components/TranscriptTimelinePanel";
 import type { BiblePassage, DbTable, TranscriptItem } from "./components/desktop/uiTypes";
 import { AppLayout } from "./components/layout/AppLayout";
+import { SIDECAR_HTTP, sidecarPost, useLiveFeed } from "./lib/liveFeed";
 import { useConfigStore } from "./stores/configStore";
 import type { OverlayMode, ProjectorSlide, SessionStatus, SuggestionCard, UiTheme, VerseTheme } from "./types/state";
 
@@ -455,6 +456,73 @@ function App() {
   const [authenticatedBranch, setAuthenticatedBranch] = useState<BranchAccount | null>(null);
   const setUnit = useConfigStore((s) => s.setUnit);
 
+  // --- Live feed (WebSocket → UI) -----------------------------------------
+  const [liveConnected, setLiveConnected] = useState(false);
+  const [engineVersion, setEngineVersion] = useState("v0.1.0-native");
+  const liveTranscriptsRef = useRef(false); // mock cleared once real data lands
+  const liveCardsRef = useRef(false);
+  const themesRef = useRef<string[]>([]);
+
+  useLiveFeed({
+    onConnected: setLiveConnected,
+    onContext: (e) => {
+      themesRef.current = e.themes;
+    },
+    onSentence: (e) => {
+      const item: TranscriptItem = {
+        id: `t-${Math.round(e.timestamp * 1000)}-${Math.random().toString(36).slice(2, 7)}`,
+        timestamp: new Date(e.timestamp * 1000).toLocaleTimeString("en-GB", { hour12: false }),
+        speaker: "Live",
+        text: e.text,
+        matches: [],
+      };
+      setTranscripts((items) => {
+        const base = liveTranscriptsRef.current ? items : [];
+        liveTranscriptsRef.current = true;
+        return [item, ...base].slice(0, 50);
+      });
+    },
+    onSuggestions: (e) => {
+      if (!e.results || e.results.length === 0) return;
+      const incoming: SuggestionCard[] = e.results.map((r) => ({
+        id: `c-${r.reference}-${Date.now()}`,
+        reference: { book: r.book, chapter: r.chapter, verse: r.verse },
+        text: r.text,
+        confidence: r.confidence,
+        pipelineStage: Math.min(4, Math.max(1, r.stage)) as SuggestionCard["pipelineStage"],
+        status: "pending",
+        version: r.version,
+        themes: themesRef.current,
+      }));
+      setCards((current) => {
+        const base = liveCardsRef.current ? current : [];
+        liveCardsRef.current = true;
+        const seen = new Set<string>();
+        const merged: SuggestionCard[] = [];
+        for (const c of [...incoming, ...base]) {
+          const key = `${c.reference.book} ${c.reference.chapter}:${c.reference.verse}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          merged.push(c);
+        }
+        return merged.slice(0, 15);
+      });
+    },
+    onSessionUpdate: (session) => {
+      setSessionStatus(session ? (session.status === "active" ? "active" : "ended") : "idle");
+    },
+  });
+
+  // Real engine version for the status bar (SS-049).
+  useEffect(() => {
+    fetch(`${SIDECAR_HTTP}/api/system/engine`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { version?: string } | null) => {
+        if (d?.version) setEngineVersion(`v${d.version}`);
+      })
+      .catch(() => undefined);
+  }, []);
+
   useEffect(() => {
     document.documentElement.dataset.theme = uiTheme;
   }, [uiTheme]);
@@ -559,6 +627,10 @@ function App() {
         status: entry.id === card.id ? "sent" : entry.status,
       })),
     );
+    sidecarPost("/api/archive/action", {
+      action: "sent",
+      reference: formatReference(card),
+    }).catch(() => undefined);
   };
 
   const cycleLive = (direction: -1 | 1) => {
@@ -678,8 +750,16 @@ function App() {
     onUiThemeChange: setUiTheme,
     sessionStatus,
     onSync: () => undefined,
-    onSessionStart: () => setSessionStatus("active"),
-    onSessionEnd: () => setSessionStatus("ended"),
+    onSessionStart: () => {
+      setSessionStatus("active");
+      sidecarPost("/api/session/start", {
+        unit_name: authenticatedBranch?.name,
+      }).catch(() => undefined);
+    },
+    onSessionEnd: () => {
+      setSessionStatus("ended");
+      sidecarPost("/api/session/end").catch(() => undefined);
+    },
     onOpenSettings: () => setIsSettingsOpen(true),
   } as unknown as Parameters<typeof AppLayout>[0]["header"];
 
@@ -721,8 +801,8 @@ function App() {
           isSessionLive: sessionStatus === "active",
           vadPercent,
           onVadPercentChange: setVadPercent,
-          sampleRateLabel: "44.1 kHz PCM",
-          engineVersion: "v0.1.0-native",
+          sampleRateLabel: liveConnected ? "16 kHz · LIVE" : "16 kHz PCM",
+          engineVersion,
           locationLabel: "Foursquare Nigeria © 2026",
         }}
         leftPanel={
