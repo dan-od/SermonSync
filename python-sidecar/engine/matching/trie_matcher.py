@@ -58,7 +58,9 @@ class TrieMatcher:
                 ).fetchone()
             )
             if vid is None:
-                raise RuntimeError(f"version {version or '<any installed version>'} not found")
+                logger.warning("no Bible version imported; trie matcher disabled")
+                self._built = True
+                return
             selected_version = vid["abbreviation"]
             rows = conn.execute(
                 """
