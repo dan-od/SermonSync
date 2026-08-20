@@ -142,7 +142,7 @@ class CaptureManager:
                 "samplerate": audio_state.sample_rate,
                 "channels": audio_state.channels,
                 "dtype": "float32",
-                "blocksize": 0,
+                "blocksize": audio_state.chunk_samples,
                 "device": audio_state.device_index,
                 "latency": "high",
                 "never_drop_input": True,
