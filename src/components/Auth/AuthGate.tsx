@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
+import { MAC_TRAFFIC_LIGHT_INSET, USE_NATIVE_WINDOW_CONTROLS, isMacOS } from "../../lib/platform";
 import { IconLogIn, IconPlusCircle } from "./icons";
 import { LoginPane } from "./LoginPane";
 import { RegisterPane } from "./RegisterPane";
@@ -11,6 +12,8 @@ type AuthTab = "login" | "register";
 function AuthTitleBar() {
   const [isMaximized, setIsMaximized] = useState(false);
   const isTauriWindow = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  const showCustomControls = isTauriWindow && !USE_NATIVE_WINDOW_CONTROLS;
+  const macInset = isTauriWindow && isMacOS();
 
   const handleWindowAction = async (action: "minimize" | "maximize" | "close") => {
     if (!isTauriWindow) return;
@@ -40,7 +43,7 @@ function AuthTitleBar() {
         alignItems: "center",
         justifyContent: "space-between",
         height: "34px",
-        padding: "0 8px 0 12px",
+        padding: `0 8px 0 ${macInset ? MAC_TRAFFIC_LIGHT_INSET : 12}px`,
         background: "var(--bg-base)",
         borderBottom: "1px solid var(--border-base)",
         color: "var(--fg-base)",
@@ -54,7 +57,7 @@ function AuthTitleBar() {
       <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 700, letterSpacing: "0.08em" }}>
         SermonSync
       </span>
-      {isTauriWindow ? (
+      {showCustomControls ? (
         <div style={{ display: "flex", gap: "2px" }}>
           {([
             ["minimize", "−"],

@@ -157,6 +157,10 @@ class PipelineOrchestrator:
             return None
         if payload["results"]:
             await manager.broadcast_json(payload)
+            # SS-044: tie generated suggestions to the active session.
+            from ..session.manager import get_manager
+
+            get_manager().record_event("suggestion", payload)
         return payload
 
 

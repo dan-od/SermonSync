@@ -126,7 +126,11 @@ class CaptureManager:
 
         self._loop = asyncio.get_running_loop()
         self._chunk_counter = 0
-        try:
+
+        def _open_stream():
+            # Opening the PortAudio stream blocks until the OS resolves the
+            # microphone-permission prompt. Run it off the event loop so the
+            # sidecar (health/WS) stays responsive while permission is pending.
             check_input_settings = getattr(_sd, "check_input_settings", None)
             if check_input_settings is not None:
                 check_input_settings(
@@ -145,7 +149,7 @@ class CaptureManager:
                 "callback": self._on_audio,
             }
             try:
-                self._stream = _sd.InputStream(**stream_options)
+                stream = _sd.InputStream(**stream_options)
             except Exception as exc:
                 if "invalid flag" not in str(exc).lower() and "-9995" not in str(exc):
                     raise
@@ -154,8 +158,12 @@ class CaptureManager:
                     "retrying without that option"
                 )
                 stream_options.pop("never_drop_input")
-                self._stream = _sd.InputStream(**stream_options)
-            self._stream.start()
+                stream = _sd.InputStream(**stream_options)
+            stream.start()
+            return stream
+
+        try:
+            self._stream = await asyncio.to_thread(_open_stream)
         except Exception as exc:  # PortAudioError, permission denied, etc.
             self._stream = None
             logger.error("failed to start capture: %s", exc)

@@ -36,15 +36,19 @@ class StreamingTranscriber:
     def __init__(
         self,
         sample_rate: int = 16000,
-        min_infer_seconds: float = 1.0,
-        max_buffer_seconds: float = 2.0,
-        poll_interval: float = 0.02,
-        matching_enabled: bool = False,
+        min_infer_seconds: float = 1.5,
+        max_buffer_seconds: float = 15.0,
+        poll_interval: float = 0.25,
+        language: str | None = "en",
+        matching_enabled: bool = True,
     ) -> None:
         self.sample_rate = sample_rate
         self.min_infer_seconds = min_infer_seconds
         self.max_buffer_seconds = max_buffer_seconds
         self.poll_interval = poll_interval
+        # Pin the language (default English) so short/quiet clips aren't
+        # mis-detected as another language. Set None to auto-detect.
+        self.language = language
         self.matching_enabled = matching_enabled
         self._buf = bytearray()
         self._lock = None  # created lazily on the loop's thread
@@ -118,7 +122,7 @@ class StreamingTranscriber:
         audio = pcm16_to_float(pcm)
         infer_start = time.time()
         try:
-            segments = await asyncio.to_thread(engine.transcribe, audio)
+            segments = await asyncio.to_thread(engine.transcribe, audio, self.language)
         except Exception as exc:  # pragma: no cover
             logger.error("transcription failed: %s", exc)
             monitor.flag_error("transcription")
@@ -149,6 +153,13 @@ class StreamingTranscriber:
                 seg["text"], is_final=True, timestamp=emit_ts
             ):
                 await manager.broadcast_json(sentence)
+                # SS-044: tie the transcript to the active session for archival.
+                from ..session.manager import get_manager
+
+                get_manager().record_event("sentence", sentence)
+                # SS-021: run the 4-stage matcher on each assembled sentence and
+                # broadcast suggestions (off-loop, fire-and-forget), unless
+                # disabled (e.g. by tests that don't stub the matcher chain).
                 if self.matching_enabled:
                     from ..matching.orchestrator import get_orchestrator
 

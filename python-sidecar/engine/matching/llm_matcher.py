@@ -185,3 +185,35 @@ def get_matcher():
 def set_matcher(matcher) -> None:
     global _matcher
     _matcher = matcher
+
+
+def configure_groq(enabled: bool, api_key: str | None, model: str | None = None) -> None:
+    """Route Stage 3 to the Groq cloud fallback (SS-050), or clear it.
+
+    When enabled with a key, installs a GroqMatcher. When disabled, resets so the
+    next get_matcher() re-evaluates (local GGUF → mock).
+    """
+    global _matcher
+    if enabled and api_key:
+        from .groq_matcher import DEFAULT_GROQ_MODEL, GroqMatcher
+
+        _matcher = GroqMatcher(api_key=api_key, model=model or DEFAULT_GROQ_MODEL)
+        logger.info("Stage 3 routed to Groq cloud fallback")
+    else:
+        _matcher = None
+
+
+def apply_persisted_groq() -> None:
+    """Load Groq config from the app settings on startup and apply it."""
+    try:
+        from engine.config.store import get_store
+
+        store = get_store()
+        if store.get_setting("groq_enabled") and store.get_setting("groq_api_key"):
+            configure_groq(
+                True,
+                store.get_setting("groq_api_key"),
+                store.get_setting("groq_model"),
+            )
+    except Exception as exc:  # pragma: no cover
+        logger.warning("could not apply persisted groq config: %s", exc)
