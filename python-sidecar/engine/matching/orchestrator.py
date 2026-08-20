@@ -39,6 +39,8 @@ class PipelineOrchestrator:
         self._keyword = keyword
         self._llm = llm
         self._semantic = semantic
+        self._async_match_lock = None
+        self._semantic_disabled = False
 
     # Lazy accessors so the (heavy) matchers build only when first used.
     def _trie_m(self):
@@ -95,10 +97,18 @@ class PipelineOrchestrator:
         if self._max_conf(s3) >= self.thresholds.llm:
             return self._finalize(collected, stages_run)
 
-        # Stage 4 — Neural / semantic (final fallback, low-confidence)
-        s4 = self._semantic_m().match(sentence)
-        collected.extend(s4)
-        stages_run.append(4)
+        # Stage 4 — Neural / semantic (final fallback, low-confidence). A
+        # broken vector store is disabled for the process after its first
+        # failure, rather than retried for every sentence.
+        if not self._semantic_disabled:
+            try:
+                s4 = self._semantic_m().match(sentence)
+            except Exception:
+                logger.exception("stage 4 (semantic) matcher failed; disabling it for this run")
+                self._semantic_disabled = True
+                s4 = []
+            collected.extend(s4)
+            stages_run.append(4)
         return self._finalize(collected, stages_run)
 
     def _finalize(self, results: list[dict], stages_run: list[int]) -> list[dict]:
@@ -149,7 +159,13 @@ class PipelineOrchestrator:
         import asyncio
 
         try:
-            payload = await asyncio.to_thread(self.build_payload, sentence, context)
+            # Matchers build large in-memory indexes on first use. Keep one
+            # sentence at a time in flight so those builds cannot race each
+            # other and multiply CPU/IO pressure during live transcription.
+            if self._async_match_lock is None:
+                self._async_match_lock = asyncio.Lock()
+            async with self._async_match_lock:
+                payload = await asyncio.to_thread(self.build_payload, sentence, context)
         except Exception:
             # Fire-and-forget task — never let a matcher bug take down the
             # asyncio loop's exception logging for the whole session.

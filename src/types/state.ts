@@ -270,6 +270,7 @@ export interface SidecarSystemStatusEvent {
   type: "system_status";
   uptime_seconds: number;
   latency_ms: number;
+  latency_age_ms?: number | null;
   latency_avg_ms: number;
   latency_peak_ms: number;
   status: "idle" | "stable" | "degraded" | "alert";

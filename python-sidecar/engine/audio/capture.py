@@ -93,6 +93,7 @@ class CaptureManager:
         self._processing_task: asyncio.Task | None = None
         self._chunk_counter = 0
         self._dropped_chunks = 0
+        self._forwarded_chunks = 0
         self._last_status_log = 0.0
         # Emit meter updates at 10 Hz; capture callbacks must stay lightweight.
         self._level_every = 5
@@ -133,6 +134,7 @@ class CaptureManager:
         self._loop = asyncio.get_running_loop()
         self._chunk_counter = 0
         self._dropped_chunks = 0
+        self._forwarded_chunks = 0
         self._audio_queue = queue.Queue(maxsize=100)
         self._processing_task = asyncio.create_task(self._process_audio_loop())
 
@@ -251,6 +253,7 @@ class CaptureManager:
         if forward and self.speech_sink is not None:
             try:
                 self.speech_sink(pcm)
+                self._forwarded_chunks += 1
             except Exception as exc:  # pragma: no cover
                 logger.error("speech sink error: %s", exc)
 
@@ -269,6 +272,16 @@ class CaptureManager:
                     rms, peak, emit_level, is_speech, vad_conf, vad_changed,
                     scene, scene_conf, emit_scene,
                 )
+            )
+
+        if self._chunk_counter % 50 == 0:
+            logger.info(
+                "audio pipeline: rms=%.4f vad=%s scene=%s queued=%s forwarded=%s",
+                rms,
+                is_speech,
+                scene,
+                self._audio_queue.qsize(),
+                self._forwarded_chunks,
             )
 
     def _schedule(self, coro) -> None:

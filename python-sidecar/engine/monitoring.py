@@ -44,11 +44,13 @@ class Monitor:
     def __init__(self) -> None:
         self._start = time.time()
         self._e2e: deque[float] = deque(maxlen=100)
+        self._last_e2e_at: float | None = None
         self._stages: dict[str, StageStats] = {s: StageStats() for s in PIPELINE_STAGES}
 
     def reset(self) -> None:
         self._start = time.time()
         self._e2e.clear()
+        self._last_e2e_at = None
         for s in self._stages.values():
             s.latencies.clear()
             s.error_count = 0
@@ -65,6 +67,7 @@ class Monitor:
 
     def record_end_to_end(self, ms: float) -> None:
         self._e2e.append(ms)
+        self._last_e2e_at = time.time()
 
     def flag_error(self, stage: str) -> None:
         if stage in self._stages:
@@ -96,6 +99,7 @@ class Monitor:
         return {
             "uptime_seconds": self.uptime_seconds(),
             "latency_ms": int(last),
+            "latency_age_ms": int((time.time() - self._last_e2e_at) * 1000) if self._last_e2e_at else None,
             "latency_avg_ms": int(avg),
             "latency_peak_ms": int(peak),
             "status": health,
@@ -123,9 +127,12 @@ async def status_emitter(interval: float = 5.0) -> None:
 
     from ws_hub import manager
 
+    last_alerted_latency: int | None = None
     while True:
         await asyncio.sleep(interval)
         payload = {"type": "system_status", **monitor.status()}
-        if payload["latency_ms"] > ALERT_THRESHOLD_MS:
+        current_latency = payload["latency_ms"]
+        if current_latency > ALERT_THRESHOLD_MS and current_latency != last_alerted_latency:
             logger.warning("latency alert: %d ms", payload["latency_ms"])
+            last_alerted_latency = current_latency
         await manager.broadcast_json(payload)

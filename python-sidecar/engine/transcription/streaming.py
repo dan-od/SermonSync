@@ -37,7 +37,7 @@ class StreamingTranscriber:
         self,
         sample_rate: int = 16000,
         min_infer_seconds: float = 1.5,
-        max_buffer_seconds: float = 15.0,
+        max_buffer_seconds: float = 2.0,
         poll_interval: float = 0.25,
         language: str | None = "en",
         matching_enabled: bool = True,
