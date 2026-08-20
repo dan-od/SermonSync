@@ -2,8 +2,7 @@
  * Projector store (SS-004 scaffold).
  *
  * Controls what is shown on the projector output (slide, overlay style, theme,
- * NDI/HDMI). TODO(Dee): push slide changes to the Tauri projector window and
- * NDI sender; wire LIVE OUT toggle.
+ * NDI/HDMI). External projector and NDI output remain outside this change.
  */
 import { create } from "zustand";
 

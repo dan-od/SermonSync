@@ -50,6 +50,15 @@ export interface ScriptureLookupResponse {
   testament: string;
 }
 
+export interface SidecarSessionResponse {
+  id: string;
+  status: string;
+  unit_id?: string | null;
+  unit_name?: string | null;
+  started_at?: string;
+  ended_at?: string | null;
+}
+
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${SIDECAR_HTTP_BASE}${path}`, {
     headers: {
@@ -106,6 +115,19 @@ export function startAudioCapture() {
 
 export function stopAudioCapture() {
   return fetchJson<StopCaptureResponse>("/api/audio/stop-capture", {
+    method: "POST",
+  });
+}
+
+export function startSidecarSession(unitId: string, unitName?: string | null) {
+  return fetchJson<SidecarSessionResponse>("/api/session/start", {
+    method: "POST",
+    body: JSON.stringify({ unit_id: unitId, unit_name: unitName ?? undefined }),
+  });
+}
+
+export function endSidecarSession() {
+  return fetchJson<SidecarSessionResponse>("/api/session/end", {
     method: "POST",
   });
 }

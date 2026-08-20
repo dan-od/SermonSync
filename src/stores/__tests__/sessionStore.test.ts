@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useSessionStore } from "../sessionStore";
 
@@ -21,6 +21,33 @@ describe("sessionStore", () => {
 
     useSessionStore.getState().end();
     expect(useSessionStore.getState().status).toBe("ended");
+  });
+
+  it("calls the sidecar session lifecycle endpoints", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "sidecar-session-1", status: "active" }),
+    } as Response);
+
+    useSessionStore.getState().start("UNIT-001", "Test Unit");
+    useSessionStore.getState().end();
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://127.0.0.1:8000/api/session/start",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ unit_id: "UNIT-001", unit_name: "Test Unit" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://127.0.0.1:8000/api/session/end",
+      expect.objectContaining({ method: "POST" }),
+    );
+
+    fetchMock.mockRestore();
   });
 
   it("applies sidecar system status telemetry", () => {

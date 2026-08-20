@@ -2,9 +2,8 @@
  * Suggestion deck store (SS-004 scaffold).
  *
  * Holds the chronological deck of scripture suggestion cards emitted by the
- * 4-stage matching pipeline. TODO(Dee): subscribe to the /ws/audio
- * "suggestions" event and append/merge cards; wire SEND LIVE / EDIT / DISMISS
- * to the projector store and sidecar.
+ * 4-stage matching pipeline. The WebSocket bridge feeds suggestions here;
+ * projector actions remain owned by the projector store.
  */
 import { create } from "zustand";
 

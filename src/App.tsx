@@ -968,7 +968,10 @@ function App() {
     onUiThemeChange: setTheme,
     sessionStatus,
     sessionElapsedSeconds: sessionElapsed,
-    onSessionStart: () => sessionStart(useConfigStore.getState().unitId),
+    onSessionStart: () => {
+      const config = useConfigStore.getState();
+      sessionStart(config.unitId, config.unitName);
+    },
     onSessionEnd: sessionEnd,
     onOpenSettings: () => setIsSettingsOpen(true),
   } as unknown as Parameters<typeof AppLayout>[0]["header"];
