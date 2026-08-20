@@ -127,6 +127,7 @@ export function dispatchSidecarEvent(event: SidecarWsEvent) {
       if (typeof event.latency_ms === "number") {
         audio.setLatency(event.latency_ms);
       }
+      transcription.ingestTranscription(event);
       break;
     }
     case "sentence": {
