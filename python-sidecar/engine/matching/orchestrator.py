@@ -10,11 +10,43 @@ and sorted by confidence.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 
 from ws_hub import manager
 
 logger = logging.getLogger("sermonsync.matching.orchestrator")
+
+
+# Words that carry no scriptural signal on their own. A sentence made only of
+# these is filler, not something to match.
+_FILLER_WORDS = frozenset(
+    {
+        "a", "ah", "all", "am", "and", "are", "as", "at", "be", "but", "bye",
+        "do", "for", "get", "go", "going", "good", "got", "he", "hello", "her",
+        "hey", "hi", "him", "his", "i", "in", "is", "it", "its", "just", "know",
+        "like", "me", "mhm", "my", "no", "not", "of", "off", "oh", "ok", "okay",
+        "on", "one", "or", "our", "out", "right", "run", "said", "see", "she",
+        "so", "thank", "thanks", "that", "the", "their", "them", "then",
+        "there", "they", "this", "to", "uh", "um", "up", "us", "very", "was",
+        "we", "well", "what", "when", "who", "why", "will", "with", "yeah",
+        "yes", "you", "your",
+    }
+)
+
+# Minimum words before a sentence is worth matching at all.
+MIN_MATCH_WORDS = 3
+
+
+def has_substance(sentence: str) -> bool:
+    """Whether a transcript line carries enough signal to be worth matching."""
+    words = re.findall(r"[a-z0-9']+", (sentence or "").lower())
+    if len(words) < MIN_MATCH_WORDS:
+        return False
+    # A scripture reference ("John 3:16") is always worth matching, however short.
+    if re.search(r"\d+\s*[:.]\s*\d+", sentence or ""):
+        return True
+    return any(w not in _FILLER_WORDS for w in words)
 
 
 @dataclass
@@ -147,6 +179,13 @@ class PipelineOrchestrator:
     async def match_and_emit(self, sentence: str, context: list[str] | None = None) -> dict | None:
         """Run the pipeline off-loop and broadcast suggestions over the WS hub."""
         import asyncio
+
+        if not has_substance(sentence):
+            # Filler ("Thank you.", "Yeah") matches thanksgiving/affirmation
+            # verses perfectly well, which is how the deck fills with cards
+            # nobody asked for. Cheaper and cleaner to never match it.
+            logger.debug("skipping low-substance sentence: %r", sentence)
+            return {"type": "suggestions", "sentence": sentence, "results": []}
 
         try:
             payload = await asyncio.to_thread(self.build_payload, sentence, context)
