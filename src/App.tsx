@@ -7,7 +7,7 @@ import { TranscriptTimelinePanel } from "./components/TranscriptTimelinePanel";
 import type { BiblePassage, DbTable, TranscriptItem } from "./components/desktop/uiTypes";
 import { AppLayout } from "./components/layout/AppLayout";
 import type { LibraryTab, ScriptureSearchMode } from "./components/LocalLibraryPanel";
-import { getAudioDevices, getSidecarStatus, lookupScriptureVerse, selectAudioDevice, setVadSensitivity, startAudioCapture, stopAudioCapture } from "./lib/sidecarClient";
+import { getAudioDevices, getSidecarHttpBase, getSidecarStatus, lookupScriptureVerse, selectAudioDevice, setVadSensitivity, startAudioCapture, stopAudioCapture } from "./lib/sidecarClient";
 import { knownScriptureBooks, matchScriptureReferenceIncremental, resolveScriptureSearch } from "./lib/scriptureSearch";
 import { startSidecarWsBridge } from "./lib/sidecarWs";
 import {
@@ -568,8 +568,51 @@ function App() {
   const defaultModelProvider = useConfigStore((s) => s.defaultModelProvider);
 
   const transcripts = useTranscriptionStore((s) => s.timeline);
+  // Interim hypotheses arrive while the speaker is still talking; the sidecar
+  // bridge clears this on each finalized sentence.
+  const interimText = useTranscriptionStore((s) => s.latestPartial);
   const seedTimeline = useTranscriptionStore((s) => s.seedTimeline);
   const addManualTimelineItem = useTranscriptionStore((s) => s.addManualTimelineItem);
+
+  // SS-065: report the transcription model actually running, never a guess.
+  // Polled because the model loads lazily on the first utterance, so the footer
+  // must flip from configured to loaded when that happens.
+  const [engineVersion, setEngineVersion] = useState("v0.1.0-native");
+  const [engineModel, setEngineModel] = useState("");
+  const [engineModelDegraded, setEngineModelDegraded] = useState(false);
+
+  useEffect(() => {
+    interface EngineStatus {
+      version?: string;
+      transcription?: {
+        configured_model?: string;
+        loaded_model?: string | null;
+        loaded?: boolean;
+        degraded?: boolean | null;
+        device?: string;
+        compute_type?: string;
+      };
+    }
+
+    const read = () =>
+      fetch(`${getSidecarHttpBase()}/api/engine/status`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d: EngineStatus | null) => {
+          if (!d) return;
+          if (d.version) setEngineVersion(`v${d.version}`);
+          const t = d.transcription;
+          if (!t) return;
+          const model = t.loaded_model ?? t.configured_model ?? "unknown";
+          const pending = t.loaded ? "" : " \u22ef";
+          setEngineModel(`${model} \u00b7 ${t.device}/${t.compute_type}${pending}`);
+          setEngineModelDegraded(Boolean(t.degraded));
+        })
+        .catch(() => undefined);
+
+    read();
+    const timer = setInterval(read, 10000);
+    return () => clearInterval(timer);
+  }, []);
 
   const cards = useSuggestionStore((s) => s.cards);
   const setCards = useSuggestionStore((s) => s.setCards);
@@ -1084,7 +1127,9 @@ function App() {
             void setVadSensitivity(nextSensitivity).catch(() => undefined);
           },
           sampleRateLabel: `${inputDevice?.defaultSampleRate ?? 16000} Hz PCM`,
-          engineVersion: "v0.1.0-native",
+          engineVersion,
+          engineModel,
+          engineModelDegraded,
           locationLabel: "Foursquare Nigeria © 2026",
           latencyMs: sessionLatencyMs,
           uptimeSeconds: sessionUptimeSeconds,
@@ -1093,7 +1138,13 @@ function App() {
           isSpeech,
           modelProvider: activeModelProvider,
         }}
-        leftPanel={<TranscriptTimelinePanel items={transcripts} onAddManualTranscript={addManualTranscript} />}
+        leftPanel={
+          <TranscriptTimelinePanel
+            items={transcripts}
+            onAddManualTranscript={addManualTranscript}
+            interimText={interimText}
+          />
+        }
         centerPanel={centerPanel}
         rightPanel={
           <Suspense fallback={<LazyPanelFallback />}>
