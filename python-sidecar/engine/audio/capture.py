@@ -14,6 +14,7 @@ import asyncio
 import contextlib
 import logging
 import math
+from collections import deque
 
 from ws_hub import manager
 
@@ -97,6 +98,12 @@ class CaptureManager:
         # Optional sink for VAD-passed speech chunks (set by transcription, SS-013).
         # Signature: sink(pcm_bytes: bytes) -> None
         self.speech_sink = None
+        # Pre-roll: the most recent chunks, replayed into the sink when speech
+        # opens. Energy VAD only fires once a word is already underway, so
+        # without this every utterance reaches Whisper with its first consonant
+        # sheared off — a reliable source of garbled transcripts.
+        self._preroll: deque[bytes] = deque(maxlen=8)  # ~240 ms
+        self._forwarding = False
 
     @property
     def is_capturing(self) -> bool:
@@ -126,6 +133,8 @@ class CaptureManager:
 
         self._loop = asyncio.get_running_loop()
         self._chunk_counter = 0
+        self._preroll.clear()
+        self._forwarding = False
 
         def _open_stream():
             # Opening the PortAudio stream blocks until the OS resolves the
@@ -202,20 +211,29 @@ class CaptureManager:
         audio_state.last_peak = peak
 
         # VAD gate (SS-010): classify the chunk; only speech reaches transcription.
-        is_speech, vad_conf = vad.get_detector().process_rms(rms)
+        # Pass samples, not just RMS — Silero classifies the waveform itself.
+        is_speech, vad_conf = vad.get_detector().process(samples)
 
         # Worship/scene detection (SS-012): reduce/pause transcription on music.
         flatness = worship_detector.spectral_flatness(samples)
         scene, scene_conf = worship_detector.get_detector().update(rms, flatness)
         audio_state.acoustic_state = scene
 
+        self._preroll.append(pcm)
+
         # Forward to transcription only when it's speech AND not worship/music.
         forward = is_speech and scene != worship_detector.WORSHIP
         if forward and self.speech_sink is not None:
             try:
+                if not self._forwarding:
+                    # Rising edge: replay the pre-roll so the word's onset is
+                    # included (the current chunk is the deque's last entry).
+                    for past in list(self._preroll)[:-1]:
+                        self.speech_sink(past)
                 self.speech_sink(pcm)
             except Exception as exc:  # pragma: no cover
                 logger.error("speech sink error: %s", exc)
+        self._forwarding = forward
 
         self._chunk_counter += 1
         emit_level = self._chunk_counter % self._level_every == 0
@@ -236,6 +254,7 @@ class CaptureManager:
 
     def _schedule(self, coro) -> None:
         if self._loop is None:
+            coro.close()  # no loop to run on; don't leak the coroutine
             return
         with contextlib.suppress(RuntimeError):  # loop closed
             asyncio.run_coroutine_threadsafe(coro, self._loop)
