@@ -102,3 +102,38 @@ def test_real_pipeline_end_to_end():
     assert out[0]["reference"] == "John 3:16"
     assert 1 in out[0]["source_stages"]  # trie detected it
     assert out[0]["confidence"] >= 0.85
+
+
+# --- low-substance filtering (keeps hallucinated filler out of the deck) ---
+def test_has_substance_rejects_filler():
+    from engine.matching.orchestrator import has_substance
+
+    for junk in ["Thank you.", "Yeah", "You", "See ya!", "Come on.", "so we are",
+                 "Okay okay okay", "", "   ", "Oh."]:
+        assert has_substance(junk) is False, junk
+
+
+def test_has_substance_accepts_real_content():
+    from engine.matching.orchestrator import has_substance
+
+    for real in [
+        "For God so loved the world",
+        "turn with me to the book of Habakkuk",
+        "he gave his only begotten son",
+        "John 3:16",          # short, but an explicit reference
+        "let us pray together now",
+    ]:
+        assert has_substance(real) is True, real
+
+
+def test_match_and_emit_skips_filler_without_calling_the_pipeline():
+    import asyncio
+
+    from engine.matching.orchestrator import PipelineOrchestrator
+
+    orch = PipelineOrchestrator()
+    called = []
+    orch.build_payload = lambda *a, **k: called.append(a) or {"results": []}
+    result = asyncio.run(orch.match_and_emit("Thank you."))
+    assert result["results"] == []
+    assert called == []
