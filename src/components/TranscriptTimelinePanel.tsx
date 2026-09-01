@@ -5,11 +5,14 @@ import type { TranscriptItem } from "./desktop/uiTypes";
 interface TranscriptTimelinePanelProps {
   items: TranscriptItem[];
   onAddManualTranscript: (text: string) => void;
+  /** Interim hypothesis for what is being said right now; revised until final. */
+  interimText?: string;
 }
 
 export function TranscriptTimelinePanel({
   items,
   onAddManualTranscript,
+  interimText = "",
 }: TranscriptTimelinePanelProps) {
   const [manualText, setManualText] = useState("");
   const [exitingItems, setExitingItems] = useState<TranscriptItem[]>([]);
@@ -200,6 +203,24 @@ export function TranscriptTimelinePanel({
           paddingBottom: "2px",
         }}
       >
+        {interimText ? (
+          <div
+            style={{
+              background: "var(--bg-elevated)",
+              padding: "5px 8px",
+              borderRadius: 0,
+              opacity: 0.72,
+              borderLeft: "2px solid var(--color-primary)",
+            }}
+          >
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", lineHeight: 1.34, color: "var(--fg-base)" }}>
+              <span style={{ color: "var(--fg-subtle)" }}>········ </span>
+              <strong style={{ color: "var(--color-primary)" }}>[HEARING]</strong>{" "}
+              <span style={{ fontStyle: "italic" }}>{interimText}</span>
+            </div>
+          </div>
+        ) : null}
+
         {displayedItems.map((item) => (
           <div
             key={item.id}

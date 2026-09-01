@@ -13,6 +13,7 @@ import uvicorn
 from api.archive import router as archive_router
 from api.audio import router as audio_router
 from api.bible import router as bible_router
+from api.engine import router as engine_router
 from api.groq import router as groq_router
 from api.pipeline import router as pipeline_router
 from api.presets import router as presets_router
@@ -41,6 +42,12 @@ PIPELINE_STAGES = 4
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # State what the transcription engine will load, before anything else can
+    # obscure it (SS-065). One greppable line; the model itself loads lazily.
+    from engine.transcription.whisper_engine import log_engine_configuration
+
+    log_engine_configuration()
+
     # Route VAD-passed speech chunks into the streaming transcriber.
     capture_manager.speech_sink = streaming_transcriber.feed
     await streaming_transcriber.start()
@@ -68,6 +75,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(bible_router)
+app.include_router(engine_router)
 app.include_router(audio_router)
 app.include_router(transcription_router)
 app.include_router(system_router)

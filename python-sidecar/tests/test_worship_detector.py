@@ -59,3 +59,40 @@ def test_reset():
     det.reset()
     assert det.state == SILENCE
     assert len(det._rms) == 0
+
+
+def test_continuous_speech_is_not_worship():
+    """Regression: real continuous speech reads as SPEECH, not WORSHIP.
+
+    A sermon read aloud is sustained *and* fairly steady, and 30 ms frames of
+    speech measure ~0.25 spectral flatness. Under the old two-of-three rule
+    that scored as music, so a quarter of the sermon was dropped before it
+    reached Whisper.
+    """
+    det = WorshipDetector()
+    rng = np.random.default_rng(1)
+    state = SILENCE
+    for _ in range(200):
+        rms = float(abs(rng.normal(0.03, 0.012)))  # steady-ish, always active
+        state, _ = det.update(rms, flatness=0.25)
+    assert state == SPEECH
+
+
+def test_worship_requires_sustained_evidence():
+    """A brief tonal passage must not flip the gate mid-sentence."""
+    det = WorshipDetector()
+    for _ in range(60):  # establish speech
+        det.update(0.03, flatness=0.25)
+    for _ in range(20):  # ~0.6 s of music-like frames — under switch_frames
+        state, _ = det.update(0.15, flatness=0.05)
+    assert state == SPEECH
+
+
+def test_worship_state_survives_brief_speech_like_frames():
+    det = WorshipDetector(switch_frames=5)
+    for _ in range(70):
+        state, _ = det.update(0.15, flatness=0.05)
+    assert state == WORSHIP
+    for _ in range(3):  # shorter than switch_frames
+        state, _ = det.update(0.15, flatness=0.9)
+    assert state == WORSHIP
