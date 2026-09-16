@@ -229,9 +229,13 @@ def test_legacy_nkjv_identifier_can_rename_installed_nkj(bible_db):
         )
     )
 
-    renamed = rename_version("ENGLISHNKJV", RenameBibleRequest(name="NKJ Study"))
+    renamed = rename_version("ENGLISHNKJV", RenameBibleRequest(name="NKJV"))
     assert renamed["abbreviation"] == "ENGLISHNKJ"
-    assert any(version["name"] == "NKJ Study" for version in list_versions()["versions"])
+    assert any(version["name"] == "NKJV" for version in list_versions()["versions"])
+
+    lookup_res = lookup(book="John", chapter=3, verse=16, version="ENGLISHNKJ")
+    assert lookup_res["version"] == "NKJV"
+    assert lookup_res["text"] == "Imported text."
 
 
 def test_empty_verse_text_raises_400(bible_db):
@@ -272,6 +276,124 @@ def test_unknown_book_raises_400(bible_db):
         )
     assert exc_info.value.status_code == 400
     assert "unknown canonical book" in exc_info.value.detail
+
+
+def test_import_testament_numbered_book_without_names(bible_db):
+    # Some XML schemas (e.g. certain NIV dumps) number books within a
+    # <testament> instead of naming them: <testament name="New"><book number="4">
+    # is the 4th NT book (Matthew, Mark, Luke, John) = canonical position 43.
+    result = import_bible(
+        ImportBibleRequest(
+            filename="EnglishNIVBible.xml",
+            content="""
+                <bible translation="English NIV">
+                  <testament name="New">
+                    <book number="4">
+                      <chapter number="3">
+                        <verse number="16">For God so loved the world.</verse>
+                      </chapter>
+                    </book>
+                  </testament>
+                </bible>
+            """,
+        )
+    )
+
+    assert result["version"]["verse_count"] == 1
+    assert result["books"][0]["name"] == "John"
+    assert lookup("John", 3, 16, "ENGLISHNIVBIBLE")["text"] == "For God so loved the world."
+
+
+def test_import_globally_numbered_new_testament_book(bible_db):
+    conn = sqlite3.connect(str(bible_db))
+    matthew_id = conn.execute(
+        "INSERT INTO books (name, abbreviation, testament, position) VALUES (?, ?, ?, ?)",
+        ("Matthew", "Mat", "NT", 40),
+    ).lastrowid
+    conn.execute("INSERT INTO chapters (book_id, number) VALUES (?, ?)", (matthew_id, 1))
+    conn.commit()
+    conn.close()
+
+    result = import_bible(
+        ImportBibleRequest(
+            filename="global-numbering.xml",
+            content="""
+                <bible translation="Global Numbering">
+                  <testament name="New">
+                    <book number="40">
+                      <chapter number="1">
+                        <verse number="1">The book of the genealogy of Jesus Christ.</verse>
+                      </chapter>
+                    </book>
+                  </testament>
+                </bible>
+            """,
+        )
+    )
+
+    assert result["books"][0]["name"] == "Matthew"
+    version = result["version"]["abbreviation"]
+    assert lookup("Matthew", 1, 1, version)["text"] == "The book of the genealogy of Jesus Christ."
+
+
+def test_import_zefania_bnumber_resolves_without_name(bible_db):
+    conn = sqlite3.connect(str(bible_db))
+    exodus_id = conn.execute(
+        "INSERT INTO books (name, abbreviation, testament, position) VALUES (?, ?, ?, ?)",
+        ("Exodus", "Exo", "OT", 2),
+    ).lastrowid
+    conn.execute("INSERT INTO chapters (book_id, number) VALUES (?, ?)", (exodus_id, 1))
+    conn.commit()
+    conn.close()
+
+    # Zefania's `bnumber` is the book's canonical 1..66 position, independent
+    # of whatever short abbreviation the file uses for `bsname`.
+    result = import_bible(
+        ImportBibleRequest(
+            filename="zefania-bnumber.xml",
+            content="""
+                <XMLBIBLE biblename="ZefaniaBnumber">
+                  <BIBLEBOOK bnumber="2" bsname="Exod">
+                    <CHAPTER cnumber="1">
+                      <VERS vnumber="1">Now these are the names.</VERS>
+                    </CHAPTER>
+                  </BIBLEBOOK>
+                </XMLBIBLE>
+            """,
+        )
+    )
+
+    assert result["books"][0]["name"] == "Exodus"
+    version = result["version"]["abbreviation"]
+    assert lookup("Exodus", 1, 1, version)["text"] == "Now these are the names."
+
+
+def test_book_alias_exod_abbreviation(bible_db):
+    conn = sqlite3.connect(str(bible_db))
+    exodus_id = conn.execute(
+        "INSERT INTO books (name, abbreviation, testament, position) VALUES (?, ?, ?, ?)",
+        ("Exodus", "Exo", "OT", 2),
+    ).lastrowid
+    conn.execute("INSERT INTO chapters (book_id, number) VALUES (?, ?)", (exodus_id, 1))
+    conn.commit()
+    conn.close()
+
+    result = import_bible(
+        ImportBibleRequest(
+            filename="exod-alias.xml",
+            content="""
+                <XMLBIBLE biblename="ExodAlias">
+                  <BIBLEBOOK bsname="Exod">
+                    <CHAPTER cnumber="1">
+                      <VERS vnumber="1">Now these are the names.</VERS>
+                    </CHAPTER>
+                  </BIBLEBOOK>
+                </XMLBIBLE>
+            """,
+        )
+    )
+
+    assert result["books"][0]["name"] == "Exodus"
 
 
 def test_book_alias_song_of_songs(bible_db):

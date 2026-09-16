@@ -14,6 +14,8 @@ from dataclasses import dataclass
 
 from ws_hub import manager
 
+from .version import set_active_version
+
 logger = logging.getLogger("sermonsync.matching.orchestrator")
 
 
@@ -41,6 +43,15 @@ class PipelineOrchestrator:
         self._semantic = semantic
         self._async_match_lock = None
         self._semantic_disabled = False
+
+    def set_version(self, version: str) -> str:
+        """Switch all matcher stages to a new imported Bible version."""
+        active = set_active_version(version)
+        self._trie = None
+        self._keyword = None
+        self._semantic = None
+        self._semantic_disabled = False
+        return active
 
     # Lazy accessors so the (heavy) matchers build only when first used.
     def _trie_m(self):

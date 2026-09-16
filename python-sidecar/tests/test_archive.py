@@ -35,6 +35,16 @@ def test_full_archive_unknown_returns_none(mgr):
     assert mgr.full_archive("nope") is None
 
 
+def test_full_archive_includes_saved_summary(mgr):
+    sid = _populate(mgr)
+    saved = mgr.save_summary(sid, "Faithful Hope", "Operator draft", "Generated guide")
+
+    assert saved["title"] == "Faithful Hope"
+    archive = mgr.full_archive(sid)
+    assert archive["summary"]["draft"] == "Operator draft"
+    assert archive["summary"]["generated"] == "Generated guide"
+
+
 def test_archive_summary_totals(mgr, monkeypatch):
     base = 1_000_000.0
     monkeypatch.setattr(SessionManager, "_now", staticmethod(lambda: base))

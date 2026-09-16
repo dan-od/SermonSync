@@ -1,7 +1,7 @@
 """Stage 4 — Neural Match via ChromaDB semantic search (SS-020).
 
 Final fallback that catches thematic/conceptual references the lexical stages
-miss, by embedding the sentence and querying a ChromaDB vector store of KJV
+miss, by embedding the sentence and querying a ChromaDB vector store of active-version
 verses for nearest neighbours (cosine).
 
 EMBEDDINGS: the real embedder is sentence-transformers `all-MiniLM-L6-v2`
@@ -24,11 +24,12 @@ import os
 from database import get_connection
 
 from .text_utils import content_words
+from .version import get_active_version
 
 logger = logging.getLogger("sermonsync.matching.semantic")
 
 EMBED_DIM = 384  # matches all-MiniLM-L6-v2
-COLLECTION = "kjv_verses"
+COLLECTION = "active_verses"
 DEFAULT_PERSIST_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "chroma")
 
 
@@ -103,8 +104,11 @@ class SemanticMatcher:
     def count(self) -> int:
         return self._get_collection().count()
 
-    def build_index(self, version: str = "KJV", limit: int | None = None, batch: int = 512) -> int:
-        """Embed KJV verses and populate the ChromaDB collection."""
+    def build_index(
+        self, version: str | None = None, limit: int | None = None, batch: int = 512
+    ) -> int:
+        """Embed active-version verses and populate the ChromaDB collection."""
+        version = version or get_active_version()
         conn = get_connection()
         try:
             vid = conn.execute(
@@ -164,7 +168,7 @@ class SemanticMatcher:
                     "book": meta["book"],
                     "chapter": meta["chapter"],
                     "verse": meta["verse"],
-                    "version": "KJV",
+                    "version": get_active_version(),
                     "reference": f"{meta['book']} {meta['chapter']}:{meta['verse']}",
                     "text": meta["text"],
                     "confidence": similarity,
