@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Optional
 
+from engine.config.store import get_store
+from engine.matching.groq_matcher import DEFAULT_GROQ_MODEL, GroqMatcher
 from engine.session.manager import get_manager
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -51,6 +53,62 @@ class ActionRequest(BaseModel):
     action: str  # sent | dismissed | edited
     reference: Optional[str] = None
     detail: Optional[dict] = None
+
+
+class SummaryRequest(BaseModel):
+    title: str = ""
+    draft: str = ""
+    generated: str = ""
+
+
+@router.get("/sessions/{session_id}/summary")
+def get_session_summary(session_id: str) -> dict:
+    manager = get_manager()
+    if manager.get(session_id) is None:
+        raise HTTPException(status_code=404, detail=f"unknown session '{session_id}'")
+    return {"summary": manager.get_summary(session_id)}
+
+
+@router.put("/sessions/{session_id}/summary")
+def save_session_summary(session_id: str, req: SummaryRequest) -> dict:
+    try:
+        summary = get_manager().save_summary(session_id, req.title, req.draft, req.generated)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"summary": summary}
+
+
+class FormatRequest(BaseModel):
+    content: str
+    format: str
+
+
+@router.post("/format")
+def format_archive(req: FormatRequest) -> dict:
+    """Format an operator-edited summary for its selected export format."""
+    if req.format not in {"md", "txt"}:
+        raise HTTPException(status_code=400, detail="format must be md or txt")
+    store = get_store()
+    api_key = store.get_setting("groq_api_key")
+    if not store.get_setting("groq_enabled", False) or not api_key:
+        raise HTTPException(status_code=503, detail="Groq formatting is unavailable")
+    model = store.get_setting("groq_model", DEFAULT_GROQ_MODEL)
+    instruction = (
+        "Format the following church service summary as clean Markdown. "
+        "Preserve its meaning and do not add facts. "
+        "Use headings and readable bullet lists. Return only the document."
+        if req.format == "md"
+        else "Format the following church service summary as clean plain text. "
+        "Preserve its meaning and do not add facts. "
+        "Use simple uppercase section headings and readable bullets. Return only the document."
+    )
+    try:
+        formatted = GroqMatcher(api_key=api_key, model=model, max_tokens=1800)._call(
+            f"{instruction}\n\n{req.content}"
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Groq formatting failed: {exc}") from exc
+    return {"content": formatted.strip(), "format": req.format, "model": model}
 
 
 @router.post("/action")

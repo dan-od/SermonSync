@@ -1,6 +1,6 @@
 """Stage 2 — Keyword Index matcher (SS-018).
 
-Builds an in-memory inverted index (BM25) over KJV verse content words and ranks
+Builds an in-memory inverted index (BM25) over active-version verse content words and ranks
 verses by keyword overlap for paraphrased references. Rare/distinctive words are
 weighted higher (idf); query terms appearing close together in a verse get a
 proximity bonus.
@@ -15,6 +15,7 @@ from collections import defaultdict
 from database import get_connection
 
 from .text_utils import stems
+from .version import get_active_version
 
 logger = logging.getLogger("sermonsync.matching.keyword")
 
@@ -35,7 +36,8 @@ class KeywordMatcher:
         self._n = 0
         self._built = False
 
-    def build_from_db(self, version: str = "KJV") -> None:
+    def build_from_db(self, version: str | None = None) -> None:
+        version = version or get_active_version()
         conn = get_connection()
         try:
             vid = conn.execute(
@@ -141,7 +143,7 @@ class KeywordMatcher:
                     "book": book,
                     "chapter": chapter,
                     "verse": verse,
-                    "version": "KJV",
+                    "version": get_active_version(),
                     "reference": f"{book} {chapter}:{verse}",
                     "text": text,
                     "confidence": confidence,

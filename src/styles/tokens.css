@@ -101,11 +101,11 @@
   --projector-status-idle-border: #c28a9a;
   --projector-status-live: #9b2442;
 
-  --projector-header-bg: #444854;
-  --projector-header-border: #3b3f4a;
-  --projector-header-text: #ffffff;
-  --projector-header-subtext: #ffffff;
-  --projector-header-status-text: #ffffff;
+  --projector-header-bg: var(--bg-elevated);
+  --projector-header-border: var(--border-base);
+  --projector-header-text: var(--fg-base);
+  --projector-header-subtext: var(--fg-muted);
+  --projector-header-status-text: var(--fg-muted);
 }
 
 :root[data-theme="midnight"] {

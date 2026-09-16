@@ -9,7 +9,7 @@ const ROADMAP_PHASES = [
       "Offline scripture detection (Moonshine + algorithmic matching)",
       "EasyWorship-style display takeover with configurable idle screen",
       "Manual verse search + simple text slides",
-      "Bundled Bible versions: KJV, Yoruba, Hausa, Igbo",
+      "Imported Bible version: ENGLISHNKJ",
       "Church ID authentication",
     ],
   },

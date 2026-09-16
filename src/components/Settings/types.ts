@@ -13,6 +13,11 @@
  * v3.0 §5–§10.
  */
 
+import type { TransitionEasing, TransitionEffect, TransitionSetting, TransitionsConfig } from "../../types/state";
+import { DEFAULT_TRANSITIONS } from "../../stores/projectorStore";
+
+export type { TransitionEasing, TransitionEffect, TransitionSetting, TransitionsConfig };
+
 export type SttMode = "moonshine" | "whisper";
 export type IdleScreenMode = "logo" | "background" | "color";
 export type UpdateChannel = "stable" | "beta";
@@ -73,6 +78,9 @@ export interface SettingsPanelState {
 
   // Session profiles (mock preset switcher)
   activeProfile: SessionProfileId;
+
+  // Screen Transitions (unique per category)
+  transitions: TransitionsConfig;
 }
 
 export const DEFAULT_SETTINGS_PANEL_STATE: SettingsPanelState = {
@@ -106,7 +114,7 @@ export const DEFAULT_SETTINGS_PANEL_STATE: SettingsPanelState = {
   ndiEnabled: false,
 
   slideGroups: ["Welcome", "Announcement", "Offering Time", "Altar Call"],
-  manualSearchFallbackVersion: "KJV",
+  manualSearchFallbackVersion: "ENGLISHNKJ",
 
   localArchiveDirectory: "C:/SermonSync/Archives",
   enableLocalArchival: true,
@@ -118,6 +126,8 @@ export const DEFAULT_SETTINGS_PANEL_STATE: SettingsPanelState = {
   lastUpdateCheck: "2026-07-26 09:12",
 
   activeProfile: "default",
+
+  transitions: DEFAULT_TRANSITIONS,
 };
 
 export interface AudioInputOption {
@@ -194,7 +204,7 @@ export const MOCK_SESSION_LOGS: SessionLogEntry[] = [
     timestamp: "2026-07-29 09:00:00",
     type: "success",
     category: "system",
-    message: "Session started. Church ID FSQ-PH-MGBUOGBA-01 authenticated. Bible DB loaded (KJV, 31,102 verses).",
+    message: "Session started. Church ID FSQ-PH-MGBUOGBA-01 authenticated. Bible DB loaded (ENGLISHNKJ, 31,102 verses).",
   },
 ];
 

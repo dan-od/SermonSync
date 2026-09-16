@@ -120,7 +120,7 @@ export interface SuggestionCard {
   confidence: number;
   pipelineStage: PipelineStage;
   status: SuggestionStatus;
-  /** e.g. "KJV" */
+  /** e.g. "ENGLISHNKJ" */
   version: string;
   /** theme/context labels, e.g. ["DIVINE SALVATION", "ETERNAL HOPE"] */
   themes: string[];
@@ -135,6 +135,42 @@ export interface SuggestionCard {
 
 export type OverlayMode = "widescreen" | "lower-third";
 export type VerseTheme = "cup" | "cross" | "crown";
+
+export type TransitionEffect =
+  | "fade"
+  | "dissolve"
+  | "slide-left"
+  | "slide-right"
+  | "slide-up"
+  | "slide-down"
+  | "zoom-in"
+  | "zoom-out"
+  | "wipe-left"
+  | "wipe-right"
+  | "push-left"
+  | "push-right"
+  | "push-up-crossfade"
+  | "cut";
+
+export type TransitionEasing =
+  | "ease"
+  | "linear"
+  | "ease-in"
+  | "ease-out"
+  | "ease-in-out"
+  | "spring";
+
+export interface TransitionSetting {
+  effect: TransitionEffect;
+  durationMs: number;
+  easing: TransitionEasing;
+  crossfade: boolean;
+  motionBlur: boolean;
+}
+
+export type TransitionCategory = "scriptures" | "songs" | "layout" | "logo" | "black" | "clear";
+
+export type TransitionsConfig = Record<TransitionCategory, TransitionSetting>;
 
 export interface ProjectorSlide {
   reference: ScriptureReference;
@@ -153,6 +189,7 @@ export interface ProjectorState {
   /** display id/name for HDMI output selection */
   outputDisplay: string | null;
   ndiEnabled: boolean;
+  transitions: TransitionsConfig;
 }
 
 // ---------------------------------------------------------------------------
@@ -270,6 +307,7 @@ export interface SidecarSystemStatusEvent {
   type: "system_status";
   uptime_seconds: number;
   latency_ms: number;
+  latency_age_ms?: number | null;
   latency_avg_ms: number;
   latency_peak_ms: number;
   status: "idle" | "stable" | "degraded" | "alert";

@@ -14,7 +14,7 @@ interface ProjectorDeskPanelProps {
   liveSlide: ProjectorSlide | null;
   feedOverride: "live" | "logo" | "black" | "clear";
   overlayMode: OverlayMode;
-  onOverlayModeChange: (mode: OverlayMode) => void;
+  onOverlayModeChange?: (mode: OverlayMode) => void;
   theme: VerseTheme;
   onSendLive: () => void;
   onPrevious: () => void;
@@ -26,7 +26,6 @@ export function ProjectorDeskPanel({
   liveSlide,
   feedOverride,
   overlayMode,
-  onOverlayModeChange,
   theme,
   onSendLive,
   onPrevious,
@@ -117,7 +116,21 @@ export function ProjectorDeskPanel({
   const liveColumnWidth = splitWidth > 0 ? `${liveWidth}px` : "calc((100% - 12px) / 2)";
 
   return (
-    <div style={{ height: "100%", minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", gap: "6px" }}>
+    <div
+      style={{
+        height: "100%",
+        minHeight: 0,
+        display: "flex",
+        flexDirection: "column",
+        gap: "var(--space-2)",
+        background: "var(--bg-surface)",
+        border: "none",
+        borderRadius: "var(--radius-lg)",
+        padding: "var(--space-3)",
+        boxShadow: "var(--shadow-sm)",
+        overflow: "hidden",
+      }}
+    >
       <div
         style={{
           padding: "2px 10px 6px",
@@ -133,6 +146,31 @@ export function ProjectorDeskPanel({
       >
         <span style={{ color: "var(--fg-base)", letterSpacing: "0.1em", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>PROJECTION SIMULATION</span>
         <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0, flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={onSendLive}
+            style={{
+              border: "none",
+              borderRadius: "var(--radius-md)",
+              padding: "4px 10px",
+              background: "linear-gradient(90deg, #8f1df0, #b822ff)",
+              color: "white",
+              fontFamily: "var(--font-sans)",
+              fontWeight: 800,
+              fontSize: "10px",
+              lineHeight: 1,
+              letterSpacing: "0.02em",
+              cursor: "pointer",
+              opacity: autoSendEnabled ? 1 : 0.94,
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            ▷ ▶ DISPLAY LIVE
+          </button>
+          <span style={{ color: "var(--fg-subtle)" }}>|</span>
           <span style={{ color: "var(--fg-muted)" }}>AUTO SEND :</span>
           <button
             type="button"
@@ -210,7 +248,7 @@ export function ProjectorDeskPanel({
           overflow: "hidden",
           display: "grid",
           gridTemplateColumns: `${previewColumnWidth} ${SPLIT_DIVIDER_WIDTH}px ${liveColumnWidth}`,
-          gridTemplateRows: "minmax(0, 1fr) auto",
+          gridTemplateRows: "1fr",
           gap: "6px 0",
         }}
       >
@@ -239,7 +277,7 @@ export function ProjectorDeskPanel({
           title="Drag to resize preview/live screens. Double-click to reset."
           style={{
             gridColumn: "2",
-            gridRow: "1 / span 2",
+            gridRow: "1",
             width: `${SPLIT_DIVIDER_WIDTH}px`,
             minHeight: 0,
             cursor: "col-resize",
@@ -264,132 +302,6 @@ export function ProjectorDeskPanel({
         >
           <ProjectorView title="LIVE" slide={liveSlide} feedOverride={feedOverride} overlayMode={overlayMode} theme={theme} isLive={liveSlide !== null} fontSizePx={PROJECTION_FONT_SIZE_PX} />
         </div>
-
-        <div style={{ gridColumn: "1", gridRow: "2", display: "grid", gridTemplateColumns: "1fr", gap: "6px", minWidth: 0, overflow: "hidden" }}>
-          <button
-            type="button"
-            onClick={onSendLive}
-            style={{
-              width: "50%",
-              maxWidth: "260px",
-              justifySelf: "center",
-              border: "none",
-              borderRadius: "var(--radius-lg)",
-              padding: "2px 10px",
-              background: "linear-gradient(90deg, #8f1df0, #b822ff)",
-              color: "white",
-              fontFamily: "var(--font-sans)",
-              fontWeight: 800,
-              fontSize: "12px",
-              lineHeight: 1.1,
-              letterSpacing: "0.02em",
-              cursor: "pointer",
-              opacity: autoSendEnabled ? 1 : 0.94,
-              minWidth: 0,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            ▷ ▶ DISPLAY LIVE
-          </button>
-        </div>
-
-        <div style={{ gridColumn: "3", gridRow: "2", display: "grid", gridTemplateColumns: "1fr", gap: "6px", minWidth: 0, overflow: "hidden" }}>
-            <div
-              style={{
-                border: "none",
-                borderRadius: "4px",
-                background: "var(--bg-surface)",
-                padding: "6px",
-                display: "grid",
-                gap: "6px",
-                minWidth: 0,
-                width: "70%",
-                maxWidth: "300px",
-                justifySelf: "center",
-              }}
-            >
-              <div
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: "8px",
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                  color: "var(--fg-muted)",
-                }}
-              >
-                Screen Layout Mode
-              </div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                  gap: "6px",
-                  background: "var(--bg-elevated)",
-                  border: "none",
-                  borderRadius: "4px",
-                  padding: "3px",
-                  minWidth: 0,
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => onOverlayModeChange("widescreen")}
-                  aria-pressed={overlayMode === "widescreen"}
-                  style={{
-                    border: "none",
-                    borderRadius: "3px",
-                    padding: "5px 8px",
-                    fontFamily: "var(--font-mono)",
-                    fontSize: "11px",
-                    lineHeight: 1.1,
-                    whiteSpace: "nowrap",
-                    minWidth: 0,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    cursor: "pointer",
-                    background: overlayMode === "widescreen" ? "var(--color-primary-muted)" : "transparent",
-                    color: overlayMode === "widescreen" ? "var(--fg-base)" : "var(--fg-muted)",
-                    fontWeight: overlayMode === "widescreen" ? 700 : 500,
-                    boxShadow: "none",
-                    outline: "none",
-                    transform: overlayMode === "widescreen" ? "scale(1.015)" : "scale(1)",
-                    transition: "background-color 160ms ease, color 160ms ease, box-shadow 160ms ease, transform 160ms ease",
-                  }}
-                >
-                  Widescreen Slide
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onOverlayModeChange("lower-third")}
-                  aria-pressed={overlayMode === "lower-third"}
-                  style={{
-                    border: "none",
-                    borderRadius: "3px",
-                    padding: "5px 8px",
-                    fontFamily: "var(--font-mono)",
-                    fontSize: "11px",
-                    lineHeight: 1.1,
-                    whiteSpace: "nowrap",
-                    minWidth: 0,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    cursor: "pointer",
-                    background: overlayMode === "lower-third" ? "var(--color-primary-muted)" : "transparent",
-                    color: overlayMode === "lower-third" ? "var(--fg-base)" : "var(--fg-muted)",
-                    fontWeight: overlayMode === "lower-third" ? 700 : 500,
-                    boxShadow: "none",
-                    outline: "none",
-                    transform: overlayMode === "lower-third" ? "scale(1.015)" : "scale(1)",
-                    transition: "background-color 160ms ease, color 160ms ease, box-shadow 160ms ease, transform 160ms ease",
-                  }}
-                >
-                  Lower Third
-                </button>
-              </div>
-            </div>
-          </div>
       </div>
     </div>
   );

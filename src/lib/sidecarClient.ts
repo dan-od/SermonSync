@@ -40,6 +40,18 @@ export interface SidecarStatusResponse {
   pipeline_stages: number;
 }
 
+export interface SidecarLogEntry {
+  time: string;
+  level: string;
+  logger: string;
+  message: string;
+}
+
+export interface SidecarLogsResponse {
+  logs: SidecarLogEntry[];
+  ready: boolean;
+}
+
 export interface ScriptureLookupResponse {
   reference: string;
   book: string;
@@ -48,6 +60,34 @@ export interface ScriptureLookupResponse {
   version: string;
   text: string;
   testament: string;
+}
+
+export interface SidecarSessionResponse {
+  id: string;
+  status: string;
+  unit_id?: string | null;
+  unit_name?: string | null;
+  started_at?: string;
+  ended_at?: string | null;
+}
+
+export interface SessionSummaryResponse {
+  session_id: string;
+  title: string;
+  draft: string;
+  generated: string;
+  updated_at: number;
+}
+
+export interface SessionHistoryItem {
+  id: string;
+  unit_id?: string | null;
+  unit_name?: string | null;
+  status: string;
+  started_at: number;
+  ended_at?: number | null;
+  elapsed_seconds: number;
+  event_count: number;
 }
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -83,6 +123,10 @@ export function getSidecarStatus() {
   return fetchJson<SidecarStatusResponse>("/api/status");
 }
 
+export function getSidecarLogs() {
+  return fetchJson<SidecarLogsResponse>("/api/logs");
+}
+
 export function getSystemStatus() {
   return fetchJson<Omit<SidecarSystemStatusEvent, "type">>("/api/system/status");
 }
@@ -107,6 +151,41 @@ export function startAudioCapture() {
 export function stopAudioCapture() {
   return fetchJson<StopCaptureResponse>("/api/audio/stop-capture", {
     method: "POST",
+  });
+}
+
+export function startSidecarSession(unitId: string, unitName?: string | null) {
+  return fetchJson<SidecarSessionResponse>("/api/session/start", {
+    method: "POST",
+    body: JSON.stringify({ unit_id: unitId, unit_name: unitName ?? undefined }),
+  });
+}
+
+export function endSidecarSession() {
+  return fetchJson<SidecarSessionResponse>("/api/session/end", {
+    method: "POST",
+  });
+}
+
+export function getSessionSummary(sessionId: string) {
+  return fetchJson<{ summary: SessionSummaryResponse | null }>(`/api/archive/sessions/${encodeURIComponent(sessionId)}/summary`);
+}
+
+export function saveSessionSummary(sessionId: string, summary: Pick<SessionSummaryResponse, "title" | "draft" | "generated">) {
+  return fetchJson<{ summary: SessionSummaryResponse }>(`/api/archive/sessions/${encodeURIComponent(sessionId)}/summary`, {
+    method: "PUT",
+    body: JSON.stringify(summary),
+  });
+}
+
+export function getSessionHistory(limit = 50) {
+  return fetchJson<{ count: number; sessions: SessionHistoryItem[] }>(`/api/archive/sessions?limit=${limit}`);
+}
+
+export function setActiveBibleVersion(version: string) {
+  return fetchJson<{ version: string }>("/api/bible/active-version", {
+    method: "PUT",
+    body: JSON.stringify({ version }),
   });
 }
 

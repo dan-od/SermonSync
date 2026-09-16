@@ -9,163 +9,32 @@ import type {
   TemplateScene,
   TemplateThemeDocument,
 } from "../types/templates";
+import type { OverlayMode } from "../types/state";
+import type { StudioDocument } from "../types/studioDocument";
 
 const DEFAULT_CANVAS_WIDTH = 1920;
 const DEFAULT_CANVAS_HEIGHT = 1080;
+const MAX_MEDIA_SOURCE_LENGTH = 90 * 1024 * 1024;
 
 const LOCAL_STORAGE_KEY = "sermonsync-template-themes-v1";
 
-const FALLBACK_THEMES: TemplateCanvasTheme[] = [
-  {
-    id: "tpl-scripture-grace-dawn",
-    category: "scriptures",
-    name: "Grace Dawn",
-    subtitle: "Soft gold lower-third with calm serif text.",
-    accent: "#9f79f4",
-    backgroundStart: "#55308a",
-    backgroundEnd: "#090a13",
-    label: "SCRIPTURE THEME",
-    lines: ["John 1:16", "Grace upon grace", "Warm morning tone"],
-    textAlign: "left",
-    fontScale: 1,
-    showLabelBadge: true,
-    scene: {
-      aspectRatio: "16:9",
-      canvasWidth: DEFAULT_CANVAS_WIDTH,
-      canvasHeight: DEFAULT_CANVAS_HEIGHT,
-      backgroundStart: "#55308a",
-      backgroundEnd: "#090a13",
-      backgroundOverlayOpacity: 0.35,
-      backgroundMedia: null,
-      layers: [
-        {
-          id: "shape-1",
-          name: "Text Backdrop",
-          type: "shape",
-          shapeKind: "rectangle",
-          visible: true,
-          locked: false,
-          x: 12,
-          y: 56,
-          width: 76,
-          height: 30,
-          rotation: 0,
-          zIndex: 1,
-          opacity: 0.7,
-          fill: "#101319",
-          borderColor: "#9f79f4",
-          borderWidth: 1,
-          radius: 12,
-        },
-        {
-          id: "text-1",
-          name: "Main Text",
-          type: "text",
-          visible: true,
-          locked: false,
-          x: 16,
-          y: 60,
-          width: 68,
-          height: 22,
-          rotation: 0,
-          zIndex: 2,
-          opacity: 1,
-          content: "{scripture_text}",
-          color: "#f4f7ff",
-          outlineColor: "",
-          outlineWidth: 0,
-          fontFamily: "var(--font-sans)",
-          fontStyle: "normal",
-          fontSize: 30,
-          fontWeight: 700,
-          align: "left",
-          lineHeight: 1.2,
-        },
-      ],
-    },
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  },
-  {
-    id: "tpl-song-worship-bloom",
-    category: "songs",
-    name: "Worship Bloom",
-    subtitle: "Gradient chorus card with centered lyrics.",
-    accent: "#ff7e6b",
-    backgroundStart: "#6a2f2b",
-    backgroundEnd: "#090a13",
-    label: "SONG THEME",
-    lines: ["Verse 1", "In Christ alone", "Center stage"],
-    textAlign: "center",
-    fontScale: 1,
-    showLabelBadge: true,
-    scene: {
-      aspectRatio: "16:9",
-      canvasWidth: DEFAULT_CANVAS_WIDTH,
-      canvasHeight: DEFAULT_CANVAS_HEIGHT,
-      backgroundStart: "#6a2f2b",
-      backgroundEnd: "#090a13",
-      backgroundOverlayOpacity: 0.35,
-      backgroundMedia: null,
-      layers: [
-        {
-          id: "shape-1",
-          name: "Lyric Backdrop",
-          type: "shape",
-          shapeKind: "rectangle",
-          visible: true,
-          locked: false,
-          x: 14,
-          y: 58,
-          width: 72,
-          height: 28,
-          rotation: 0,
-          zIndex: 1,
-          opacity: 0.66,
-          fill: "#101319",
-          borderColor: "#ff7e6b",
-          borderWidth: 1,
-          radius: 12,
-        },
-        {
-          id: "text-1",
-          name: "Main Lyrics",
-          type: "text",
-          visible: true,
-          locked: false,
-          x: 18,
-          y: 61,
-          width: 64,
-          height: 22,
-          rotation: 0,
-          zIndex: 2,
-          opacity: 1,
-          content: "{song_lines}",
-          color: "#f4f7ff",
-          outlineColor: "",
-          outlineWidth: 0,
-          fontFamily: "var(--font-sans)",
-          fontStyle: "normal",
-          fontSize: 30,
-          fontWeight: 700,
-          align: "center",
-          lineHeight: 1.2,
-        },
-      ],
-    },
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  },
-];
+const LEGACY_DEFAULT_TEMPLATE_IDS = new Set([
+  "tpl-scripture-grace-dawn",
+  "tpl-song-worship-bloom",
+]);
 
-function makeDefaultDocument(): TemplateThemeDocument {
+function emptyDefaults(): Record<TemplateCategory, Record<OverlayMode, string | null>> {
   return {
-    version: 1,
-    templates: FALLBACK_THEMES,
-    defaults: {
-      scriptures: FALLBACK_THEMES.find((entry) => entry.category === "scriptures")?.id ?? null,
-      songs: FALLBACK_THEMES.find((entry) => entry.category === "songs")?.id ?? null,
-    },
+    scriptures: { widescreen: null, "lower-third": null },
+    songs: { widescreen: null, "lower-third": null },
+  };
+}
+
+function makeEmptyDocument(): TemplateThemeDocument {
+  return {
+    version: 2,
+    templates: [],
+    defaults: emptyDefaults(),
   };
 }
 
@@ -213,7 +82,11 @@ function ensureScene(theme: TemplateCanvasTheme): TemplateScene {
             layer.shapeKind === "circle" ||
             layer.shapeKind === "square" ||
             layer.shapeKind === "triangle" ||
-            layer.shapeKind === "rectangle"
+            layer.shapeKind === "rectangle" ||
+            layer.shapeKind === "line" ||
+            layer.shapeKind === "arrow" ||
+            layer.shapeKind === "polygon" ||
+            layer.shapeKind === "star"
               ? layer.shapeKind
               : "rectangle";
           return {
@@ -232,6 +105,39 @@ function ensureScene(theme: TemplateCanvasTheme): TemplateScene {
                 : theme.accent,
             borderWidth: coerceNumber(layer.borderWidth, 1, 0, 12),
             radius: coerceNumber(layer.radius, 8, 0, 60),
+            fillOpacity: coerceNumber(layer.fillOpacity, 1, 0, 1),
+            fillMode: layer.fillMode === "image" || layer.fillMode === "gradient" ? layer.fillMode : "solid",
+            fillImage: typeof layer.fillImage === "string" && layer.fillImage.length <= MAX_MEDIA_SOURCE_LENGTH ? layer.fillImage : undefined,
+            fillImageType: layer.fillImageType === "video" ? "video" : "image",
+            fillImageFit: layer.fillImageFit === "contain" || layer.fillImageFit === "tile" ? layer.fillImageFit : "cover",
+            fillImageOpacity: coerceNumber(layer.fillImageOpacity, 1, 0, 1),
+            fillImageScale: coerceNumber(layer.fillImageScale, 100, 10, 400),
+            fillImageX: coerceNumber(layer.fillImageX, 0, -200, 200),
+            fillImageY: coerceNumber(layer.fillImageY, 0, -200, 200),
+            borderDash: layer.borderDash === "dashed" || layer.borderDash === "dotted" ? layer.borderDash : "solid",
+            borderLineCap: layer.borderLineCap === "butt" || layer.borderLineCap === "square" ? layer.borderLineCap : "round",
+            borderLineJoin: layer.borderLineJoin === "miter" || layer.borderLineJoin === "bevel" ? layer.borderLineJoin : "round",
+            blendMode: typeof layer.blendMode === "string" && ["source-over", "multiply", "screen", "overlay", "darken", "lighten"].includes(layer.blendMode) ? layer.blendMode : "source-over",
+            flipX: layer.flipX === true,
+            flipY: layer.flipY === true,
+            polygonSides: coerceNumber(layer.polygonSides, 6, 3, 12),
+            starPoints: coerceNumber(layer.starPoints, 5, 3, 10),
+            starInnerRadius: coerceNumber(layer.starInnerRadius, 22, 4, 46),
+            arrowHeadSize: coerceNumber(layer.arrowHeadSize, 28, 8, 48),
+            hueRotate: coerceNumber(layer.hueRotate, 0, -360, 360),
+            invert: coerceNumber(layer.invert, 0, 0, 100),
+            blur: coerceNumber(layer.blur, 0, 0, 100),
+            grayscale: coerceNumber(layer.grayscale, 0, 0, 100),
+            sepia: coerceNumber(layer.sepia, 0, 0, 100),
+            brightness: coerceNumber(layer.brightness, 100, 0, 400),
+            contrast: coerceNumber(layer.contrast, 100, 0, 400),
+            saturate: coerceNumber(layer.saturate, 100, 0, 400),
+            shadow: layer.shadow && typeof layer.shadow === "object" ? {
+              color: isHexColor(layer.shadow.color) ? layer.shadow.color : "#000000",
+              blur: coerceNumber(layer.shadow.blur, 0, 0, 100),
+              offsetX: coerceNumber(layer.shadow.offsetX, 0, -500, 500),
+              offsetY: coerceNumber(layer.shadow.offsetY, 0, -500, 500),
+            } : null,
           };
         }
 
@@ -250,12 +156,40 @@ function ensureScene(theme: TemplateCanvasTheme): TemplateScene {
               ? layer.outlineColor
               : "",
           outlineWidth: coerceNumber(layer.outlineWidth, 0, 0, 12),
+          boxBorderColor: typeof layer.boxBorderColor === "string" && !layer.boxBorderColor
+            ? ""
+            : isHexColor(typeof layer.boxBorderColor === "string" ? layer.boxBorderColor : "")
+              ? layer.boxBorderColor
+              : "",
+          boxBorderWidth: coerceNumber(layer.boxBorderWidth, 0, 0, 60),
+          backgroundColor: typeof layer.backgroundColor === "string" && !layer.backgroundColor
+            ? ""
+            : isHexColor(typeof layer.backgroundColor === "string" ? layer.backgroundColor : "")
+              ? layer.backgroundColor
+              : "",
+          cornerRadius: coerceNumber(layer.cornerRadius, 0, 0, 960),
+          lineBackgroundColor: typeof layer.lineBackgroundColor === "string" && !layer.lineBackgroundColor
+            ? ""
+            : isHexColor(typeof layer.lineBackgroundColor === "string" ? layer.lineBackgroundColor : "")
+              ? layer.lineBackgroundColor
+              : "",
+          charSpacing: coerceNumber(layer.charSpacing, 0, -500, 2000),
+          lineSpacing: coerceNumber(layer.lineSpacing, 0, -200, 500),
+          scrollDuration: coerceNumber(layer.scrollDuration, 0, 0, 3600),
+          scrollGap: coerceNumber(layer.scrollGap, 100, 0, 5000),
+          shadow: layer.shadow && typeof layer.shadow === "object" ? {
+            color: isHexColor(typeof (layer.shadow as unknown as Record<string, unknown>).color === "string" ? (layer.shadow as unknown as Record<string, unknown>).color as string : "") ? (layer.shadow as unknown as Record<string, unknown>).color as string : "#000000",
+            blur: coerceNumber((layer.shadow as unknown as Record<string, unknown>).blur, 0, 0, 100),
+            offsetX: coerceNumber((layer.shadow as unknown as Record<string, unknown>).offsetX, 0, -500, 500),
+            offsetY: coerceNumber((layer.shadow as unknown as Record<string, unknown>).offsetY, 0, -500, 500),
+          } : null,
           fontFamily: typeof layer.fontFamily === "string" && layer.fontFamily.trim() ? layer.fontFamily : "var(--font-sans)",
           fontStyle: layer.fontStyle === "italic" ? "italic" : "normal",
           fontSize: coerceNumber(layer.fontSize, 30, 10, 140),
           fontWeight: coerceNumber(layer.fontWeight, 700, 300, 900),
           align: layer.align === "left" || layer.align === "right" ? layer.align : "center",
           lineHeight: coerceNumber(layer.lineHeight, 1.2, 0.8, 2),
+          autoFit: layer.autoFit === "shrink" || layer.autoFit === "grow" ? layer.autoFit : "none",
         };
       })
     : fallback.layers;
@@ -280,13 +214,14 @@ function sanitizeBackgroundMedia(input: unknown): TemplateBackgroundMedia | null
   if (media.type !== "image" && media.type !== "video") {
     return null;
   }
-  if (typeof media.src !== "string" || !media.src) {
+  if (typeof media.src !== "string" || !media.src || media.src.length > MAX_MEDIA_SOURCE_LENGTH) {
     return null;
   }
   const fit: TemplateMediaFit = media.fit === "contain" || media.fit === "fill" ? media.fit : "cover";
   return {
     type: media.type,
     src: media.src,
+    name: typeof media.name === "string" && media.name.trim() ? media.name.trim().slice(0, 255) : undefined,
     fit,
     loop: media.loop !== false,
     x: coerceNumber(media.x, 0, 0, 95),
@@ -294,6 +229,51 @@ function sanitizeBackgroundMedia(input: unknown): TemplateBackgroundMedia | null
     width: coerceNumber(media.width, 100, 5, 100),
     height: coerceNumber(media.height, 100, 5, 100),
     opacity: coerceNumber(media.opacity, 1, 0.1, 1),
+    blendMode: typeof media.blendMode === "string" && media.blendMode ? media.blendMode : "normal",
+    muted: media.muted !== false,
+    speed: coerceNumber(media.speed, 1, 0.1, 4),
+    flipX: media.flipX === true,
+    flipY: media.flipY === true,
+    cropTop: coerceNumber(media.cropTop, 0, 0, 95),
+    cropRight: coerceNumber(media.cropRight, 0, 0, 95),
+    cropBottom: coerceNumber(media.cropBottom, 0, 0, 95),
+    cropLeft: coerceNumber(media.cropLeft, 0, 0, 95),
+    hueRotate: coerceNumber(media.hueRotate, 0, -360, 360),
+    invert: coerceNumber(media.invert, 0, 0, 100),
+    blur: coerceNumber(media.blur, 0, 0, 100),
+    grayscale: coerceNumber(media.grayscale, 0, 0, 100),
+    sepia: coerceNumber(media.sepia, 0, 0, 100),
+    brightness: coerceNumber(media.brightness, 100, 0, 400),
+    contrast: coerceNumber(media.contrast, 100, 0, 400),
+    saturate: coerceNumber(media.saturate, 100, 0, 400),
+  };
+}
+
+function sanitizeStudioDocument(input: unknown, category: TemplateCategory, name: string): StudioDocument | undefined {
+  if (!input || typeof input !== "object") return undefined;
+  const value = input as Partial<StudioDocument>;
+  if (!Array.isArray(value.objects)) return undefined;
+  const width = coerceNumber(value.width, DEFAULT_CANVAS_WIDTH, 320, 7680);
+  const height = coerceNumber(value.height, DEFAULT_CANVAS_HEIGHT, 180, 4320);
+  return {
+    id: typeof value.id === "string" && value.id ? value.id : `studio-${Date.now()}`,
+    name: typeof value.name === "string" && value.name.trim() ? value.name.trim().slice(0, 80) : name,
+    category,
+    width,
+    height,
+    background: typeof value.background === "string" && value.background ? value.background : "#0f1117",
+    backgroundMode: value.backgroundMode === "gradient" || value.backgroundMode === "media" ? value.backgroundMode : "color",
+    backgroundColor: typeof value.backgroundColor === "string" ? value.backgroundColor : value.background,
+    backgroundGradientStart: typeof value.backgroundGradientStart === "string" ? value.backgroundGradientStart : "#0f1117",
+    backgroundGradientEnd: typeof value.backgroundGradientEnd === "string" ? value.backgroundGradientEnd : "#25204a",
+    backgroundGradientAngle: typeof value.backgroundGradientAngle === "number" && Number.isFinite(value.backgroundGradientAngle) ? value.backgroundGradientAngle : 135,
+    backgroundGradientStyle: value.backgroundGradientStyle === "radial" || value.backgroundGradientStyle === "conic" ? value.backgroundGradientStyle : "linear",
+    backgroundBlur: coerceNumber(value.backgroundBlur, 0, 0, 100),
+    backgroundMedia: sanitizeBackgroundMedia(value.backgroundMedia),
+    fabricVersion: typeof value.fabricVersion === "string" && value.fabricVersion ? value.fabricVersion : "7.0.0",
+    objects: value.objects.filter((object): object is Record<string, unknown> => Boolean(object) && typeof object === "object"),
+    createdAt: typeof value.createdAt === "number" && Number.isFinite(value.createdAt) ? value.createdAt : Date.now(),
+    updatedAt: typeof value.updatedAt === "number" && Number.isFinite(value.updatedAt) ? value.updatedAt : Date.now(),
   };
 }
 
@@ -317,6 +297,7 @@ function createDefaultScene(
 function sanitizeTheme(theme: TemplateCanvasTheme): TemplateCanvasTheme {
   const nextScale = Number.isFinite(theme.fontScale) ? theme.fontScale : 1;
   const category = theme.category === "songs" ? "songs" : "scriptures";
+  const layout: OverlayMode = theme.layout === "lower-third" ? "lower-third" : "widescreen";
   const accent = isHexColor(theme.accent) ? theme.accent : "#8c62ff";
   const backgroundStart = isHexColor(theme.backgroundStart) ? theme.backgroundStart : "#493072";
   const backgroundEnd = isHexColor(theme.backgroundEnd) ? theme.backgroundEnd : "#090a13";
@@ -325,6 +306,7 @@ function sanitizeTheme(theme: TemplateCanvasTheme): TemplateCanvasTheme {
   const draft = {
     ...theme,
     category,
+    layout,
     accent,
     backgroundStart,
     backgroundEnd,
@@ -348,6 +330,7 @@ function sanitizeTheme(theme: TemplateCanvasTheme): TemplateCanvasTheme {
     fontScale: Math.max(0.75, Math.min(1.6, nextScale)),
     showLabelBadge: theme.showLabelBadge !== false,
     scene: ensureScene(draft),
+    studioDocument: sanitizeStudioDocument(theme.studioDocument, category, theme.name),
     createdAt: Number.isFinite(theme.createdAt) ? theme.createdAt : Date.now(),
     updatedAt: Number.isFinite(theme.updatedAt) ? theme.updatedAt : Date.now(),
   };
@@ -359,18 +342,22 @@ function sanitizeDocument(value: TemplateThemeDocument): TemplateThemeDocument {
     templateMap.set(entry.id, sanitizeTheme(entry));
   });
 
-  const templates = Array.from(templateMap.values());
-  const defaults = {
-    scriptures: value.defaults.scriptures && templateMap.has(value.defaults.scriptures)
-      ? value.defaults.scriptures
-      : templates.find((entry) => entry.category === "scriptures")?.id ?? null,
-    songs: value.defaults.songs && templateMap.has(value.defaults.songs)
-      ? value.defaults.songs
-      : templates.find((entry) => entry.category === "songs")?.id ?? null,
-  };
+  const templates = Array.from(templateMap.values()).filter((entry) => !LEGACY_DEFAULT_TEMPLATE_IDS.has(entry.id));
+  const legacyDefaults = value.defaults as unknown as Record<TemplateCategory, string | null>;
+  const defaults = emptyDefaults();
+  (["scriptures", "songs"] as TemplateCategory[]).forEach((category) => {
+    const saved = value.defaults[category];
+    const savedByLayout = saved && typeof saved === "object" ? saved as Record<OverlayMode, string | null> : null;
+    (["widescreen", "lower-third"] as OverlayMode[]).forEach((layout) => {
+      const templateId = savedByLayout?.[layout] ?? (layout === "widescreen" ? legacyDefaults[category] : null);
+      defaults[category][layout] = typeof templateId === "string" && templates.some((entry) => entry.id === templateId && entry.category === category && entry.layout === layout)
+        ? templateId
+        : null;
+    });
+  });
 
   return {
-    version: 1,
+    version: 2,
     templates,
     defaults,
   };
@@ -378,17 +365,17 @@ function sanitizeDocument(value: TemplateThemeDocument): TemplateThemeDocument {
 
 function parseDocument(input: string | null): TemplateThemeDocument {
   if (!input) {
-    return makeDefaultDocument();
+    return makeEmptyDocument();
   }
 
   try {
     const parsed = JSON.parse(input) as TemplateThemeDocument;
     if (!parsed || !Array.isArray(parsed.templates) || !parsed.defaults) {
-      return makeDefaultDocument();
+      return makeEmptyDocument();
     }
     return sanitizeDocument(parsed);
   } catch {
-    return makeDefaultDocument();
+    return makeEmptyDocument();
   }
 }
 
@@ -420,7 +407,13 @@ export async function saveTemplateThemes(document: TemplateThemeDocument): Promi
   }
 
   if (typeof window !== "undefined") {
-    window.localStorage.setItem(LOCAL_STORAGE_KEY, payload);
+    try {
+      window.localStorage.setItem(LOCAL_STORAGE_KEY, payload);
+    } catch (error) {
+      // Tauri storage is authoritative. A large media data URL must not crash the UI
+      // when the browser backup reaches its quota.
+      console.warn("Template backup could not be written to local storage", error);
+    }
   }
 }
 
@@ -431,6 +424,7 @@ export function createEmptyTemplate(category: TemplateCategory, index: number): 
   return {
     id: `tpl-${now}-${Math.random().toString(36).slice(2, 7)}`,
     category,
+    layout: "widescreen",
     name: `${namePrefix} Template ${index}`,
     subtitle: `Custom ${namePrefix.toLowerCase()} style`,
     accent: category === "scriptures" ? "#8c62ff" : "#ff8b54",

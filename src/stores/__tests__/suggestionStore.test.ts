@@ -65,6 +65,41 @@ describe("suggestionStore", () => {
     expect(card.themes).toEqual(["SALVATION"]);
   });
 
+  it("preserves the sidecar ranking order for an incoming batch", () => {
+    useSuggestionStore.getState().ingestSuggestions({
+      type: "suggestions",
+      sentence: "sample",
+      results: [
+        {
+          reference: "John 3:16",
+          book: "John",
+          chapter: 3,
+          verse: 16,
+          text: "first-ranked",
+          version: "KJV",
+          confidence: 0.91,
+          confidence_pct: 91,
+          stage: 2,
+          source_stages: [2],
+        },
+        {
+          reference: "Acts 1:8",
+          book: "Acts",
+          chapter: 1,
+          verse: 8,
+          text: "second-ranked",
+          version: "KJV",
+          confidence: 0.72,
+          confidence_pct: 72,
+          stage: 2,
+          source_stages: [2],
+        },
+      ],
+    });
+
+    expect(useSuggestionStore.getState().cards.map((card) => card.text)).toEqual(["first-ranked", "second-ranked"]);
+  });
+
   it("keeps newest suggestions at top and allows pinning", () => {
     const store = useSuggestionStore.getState();
 
