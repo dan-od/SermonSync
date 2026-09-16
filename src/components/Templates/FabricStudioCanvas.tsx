@@ -554,6 +554,7 @@ export function FabricStudioCanvas({ document, onSelectionChange, onTextSelectio
     canvas.centeredScaling = false;
     canvasRef.current = canvas;
     const textSelectionRanges = textSelectionRef.current;
+    const shapeMediaVideos = shapeMediaVideosRef.current;
 
     const emitTextSelection = (target?: FabricObject) => {
       if (!(target instanceof Textbox) || !target.studioId) {
@@ -782,11 +783,11 @@ export function FabricStudioCanvas({ document, onSelectionChange, onTextSelectio
     canvas.on("selection:cleared", clearGuides);
 
     return () => {
-      shapeMediaVideosRef.current.forEach((video) => {
+      shapeMediaVideos.forEach((video) => {
         video.pause();
         video.src = "";
       });
-      shapeMediaVideosRef.current.clear();
+      shapeMediaVideos.clear();
       canvas.dispose();
       canvasRef.current = null;
       textSelectionRanges.clear();
