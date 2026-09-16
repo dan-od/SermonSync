@@ -14,8 +14,7 @@ import asyncio
 import contextlib
 import logging
 import math
-import queue
-import time
+from collections import deque
 
 from ws_hub import manager
 
@@ -89,12 +88,7 @@ class CaptureManager:
     def __init__(self) -> None:
         self._stream = None
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._audio_queue: queue.Queue = queue.Queue(maxsize=100)
-        self._processing_task: asyncio.Task | None = None
         self._chunk_counter = 0
-        self._dropped_chunks = 0
-        self._forwarded_chunks = 0
-        self._last_status_log = 0.0
         # Emit meter updates at 10 Hz; capture callbacks must stay lightweight.
         self._level_every = 5
         self._last_is_speech = False
@@ -104,6 +98,12 @@ class CaptureManager:
         # Optional sink for VAD-passed speech chunks (set by transcription, SS-013).
         # Signature: sink(pcm_bytes: bytes) -> None
         self.speech_sink = None
+        # Pre-roll: the most recent chunks, replayed into the sink when speech
+        # opens. Energy VAD only fires once a word is already underway, so
+        # without this every utterance reaches Whisper with its first consonant
+        # sheared off — a reliable source of garbled transcripts.
+        self._preroll: deque[bytes] = deque(maxlen=8)  # ~240 ms
+        self._forwarding = False
 
     @property
     def is_capturing(self) -> bool:
@@ -133,10 +133,8 @@ class CaptureManager:
 
         self._loop = asyncio.get_running_loop()
         self._chunk_counter = 0
-        self._dropped_chunks = 0
-        self._forwarded_chunks = 0
-        self._audio_queue = queue.Queue(maxsize=100)
-        self._processing_task = asyncio.create_task(self._process_audio_loop())
+        self._preroll.clear()
+        self._forwarding = False
 
         def _open_stream():
             # Opening the PortAudio stream blocks until the OS resolves the
@@ -177,9 +175,6 @@ class CaptureManager:
             self._stream = await asyncio.to_thread(_open_stream)
         except Exception as exc:  # PortAudioError, permission denied, etc.
             self._stream = None
-            if self._processing_task is not None:
-                self._processing_task.cancel()
-                self._processing_task = None
             logger.error("failed to start capture: %s", exc)
             raise
         audio_state.is_capturing = True
@@ -194,68 +189,51 @@ class CaptureManager:
                 stream.close()
             except Exception as exc:  # pragma: no cover
                 logger.warning("error stopping stream: %s", exc)
-        processing_task, self._processing_task = self._processing_task, None
-        if processing_task is not None:
-            processing_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await processing_task
-        self._audio_queue = queue.Queue(maxsize=100)
         logger.info("capture stopped")
 
     def _on_audio(self, indata, frames, time_info, status) -> None:
         """PortAudio callback (runs in a separate thread)."""
         if status:
             # e.g. input overflow, or device removed mid-capture.
-            now = time.monotonic()
-            if now - self._last_status_log >= 1.0:
-                logger.warning("audio callback status: %s", status)
-                self._last_status_log = now
+            logger.warning("audio callback status: %s", status)
             if getattr(status, "input_error", False) or "error" in str(status).lower():
                 self._schedule(self._handle_device_error(str(status)))
                 return
         try:
-            self._audio_queue.put_nowait(indata.copy())
-        except queue.Full:
-            self._dropped_chunks += 1
-            now = time.monotonic()
-            if now - self._last_status_log >= 1.0:
-                logger.warning("audio processing queue full; dropped %s chunks", self._dropped_chunks)
-                self._last_status_log = now
-
-    async def _process_audio_loop(self) -> None:
-        while True:
-            try:
-                samples = await asyncio.to_thread(self._audio_queue.get, True, 0.1)
-            except queue.Empty:
-                continue
-            try:
-                await asyncio.to_thread(self._process_audio, samples)
-            except Exception as exc:  # pragma: no cover
-                logger.error("audio processing error: %s", exc)
-
-    def _process_audio(self, samples) -> None:
-        rms, peak = compute_levels(samples)
-        pcm = float_to_pcm16(resample_to_transcription_rate(samples, audio_state.sample_rate))
+            samples = indata.copy()
+            rms, peak = compute_levels(samples)
+            pcm = float_to_pcm16(resample_to_transcription_rate(samples, audio_state.sample_rate))
+        except Exception as exc:  # pragma: no cover
+            logger.error("audio processing error: %s", exc)
+            return
 
         audio_state.last_rms = rms
         audio_state.last_peak = peak
 
         # VAD gate (SS-010): classify the chunk; only speech reaches transcription.
-        is_speech, vad_conf = vad.get_detector().process_rms(rms)
+        # Pass samples, not just RMS — Silero classifies the waveform itself.
+        is_speech, vad_conf = vad.get_detector().process(samples)
 
         # Worship/scene detection (SS-012): reduce/pause transcription on music.
         flatness = worship_detector.spectral_flatness(samples)
         scene, scene_conf = worship_detector.get_detector().update(rms, flatness)
         audio_state.acoustic_state = scene
 
+        self._preroll.append(pcm)
+
         # Forward to transcription only when it's speech AND not worship/music.
         forward = is_speech and scene != worship_detector.WORSHIP
         if forward and self.speech_sink is not None:
             try:
+                if not self._forwarding:
+                    # Rising edge: replay the pre-roll so the word's onset is
+                    # included (the current chunk is the deque's last entry).
+                    for past in list(self._preroll)[:-1]:
+                        self.speech_sink(past)
                 self.speech_sink(pcm)
-                self._forwarded_chunks += 1
             except Exception as exc:  # pragma: no cover
                 logger.error("speech sink error: %s", exc)
+        self._forwarding = forward
 
         self._chunk_counter += 1
         emit_level = self._chunk_counter % self._level_every == 0
@@ -274,18 +252,9 @@ class CaptureManager:
                 )
             )
 
-        if self._chunk_counter % 50 == 0:
-            logger.info(
-                "audio pipeline: rms=%.4f vad=%s scene=%s queued=%s forwarded=%s",
-                rms,
-                is_speech,
-                scene,
-                self._audio_queue.qsize(),
-                self._forwarded_chunks,
-            )
-
     def _schedule(self, coro) -> None:
         if self._loop is None:
+            coro.close()  # no loop to run on; don't leak the coroutine
             return
         with contextlib.suppress(RuntimeError):  # loop closed
             asyncio.run_coroutine_threadsafe(coro, self._loop)

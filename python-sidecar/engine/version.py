@@ -24,9 +24,14 @@ def _module_available(name: str) -> bool:
 def pipeline_config() -> dict:
     """Introspect the configured pipeline without loading models."""
     from engine.matching.orchestrator import PipelineThresholds
-    from engine.transcription.whisper_engine import DEFAULT_MODEL, _pick_device
+    from engine.transcription.whisper_engine import (
+        DEFAULT_MODEL,
+        _pick_device,
+        engine_status,
+    )
 
     device, compute_type = _pick_device()
+    whisper = engine_status()
     llm_model_path = os.environ.get("LLM_MODEL_PATH")
     thresholds = PipelineThresholds()
 
@@ -35,9 +40,16 @@ def pipeline_config() -> dict:
         "version": ENGINE_VERSION,
         "transcription": {
             "backend": "faster-whisper",
+            # `model` is the configured name (unchanged for existing callers);
+            # loaded_model is what is actually running, and differs whenever
+            # the fallback chain fired.
             "model": DEFAULT_MODEL,
-            "device": device,
-            "compute_type": compute_type,
+            "device": whisper["device"],
+            "compute_type": whisper["compute_type"],
+            "model_source": whisper["model_source"],
+            "loaded": whisper["loaded"],
+            "loaded_model": whisper["loaded_model"],
+            "degraded": whisper["degraded"],
         },
         "matching": {
             "stage_count": 4,

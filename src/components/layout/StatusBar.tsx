@@ -1,7 +1,7 @@
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 
-import { computeAudioAmplitude } from "../../lib/audioLevel";
 import { useMicMuteDetection } from "../../lib/micMuteDetection";
+import { METER_BARS, useAudioStore } from "../../stores/audioStore";
 
 export interface StatusBarProps {
   inputName: string;
@@ -18,6 +18,10 @@ export interface StatusBarProps {
   onVadPercentChange?: (vadPercent: number) => void;
   sampleRateLabel: string;
   engineVersion: string;
+  /** Transcription model actually running, e.g. "base · cpu/int8" (SS-065). */
+  engineModel?: string;
+  /** True when the loader fell back to a smaller model than configured. */
+  engineModelDegraded?: boolean;
   locationLabel: string;
   latencyMs?: number;
   uptimeSeconds?: number;
@@ -36,9 +40,6 @@ const MODEL_PROVIDER_COLORS: Record<string, string> = {
   gemini: "#4285f4",
 };
 
-const WAVEFORM_BAR_WEIGHTS = [0.3, 0.55, 0.8, 1, 0.85, 0.6, 0.4, 0.25];
-const WAVEFORM_MAX_HEIGHT = 22;
-const WAVEFORM_MIN_HEIGHT = 3;
 
 function formatUptime(totalSeconds: number) {
   const seconds = Math.max(0, Math.floor(totalSeconds));
@@ -68,6 +69,8 @@ export function StatusBar({
   onVadPercentChange,
   sampleRateLabel,
   engineVersion,
+  engineModel = "",
+  engineModelDegraded = false,
   locationLabel,
   latencyMs = 0,
   uptimeSeconds = 0,
@@ -81,18 +84,26 @@ export function StatusBar({
   const [isInputMenuOpen, setIsInputMenuOpen] = useState(false);
   const [isChannelMenuOpen, setIsChannelMenuOpen] = useState(false);
   const clampedVad = Math.min(100, Math.max(0, vadPercent));
+  // Real input meter: a rolling history of measured levels, oldest → newest.
+  // isSpeech arrives as a prop; only the meter history is read from the store.
+  const levels = useAudioStore((state) => state.levels);
+  const decayMeter = useAudioStore((state) => state.decayMeter);
   const activeInput = Boolean(inputName);
+  const hasSignal = levels.some((value) => value > 0);
   const liveVisualsActive = isSessionLive && activeInput;
   const speechActive = activeInput && isSpeech;
   const permissionBlocked = audioError
     ? /(permission|access denied|not authorized|microphone)/i.test(audioError)
     : false;
-  const amplitude = activeInput ? computeAudioAmplitude(levelRms, levelPeak) : 0;
-  const meterBars = WAVEFORM_BAR_WEIGHTS.map((weight) =>
-    Math.max(WAVEFORM_MIN_HEIGHT, Math.round(WAVEFORM_MIN_HEIGHT + weight * amplitude * (WAVEFORM_MAX_HEIGHT - WAVEFORM_MIN_HEIGHT))),
-  );
   const isMicMuted = useMicMuteDetection(audioStatus === "capturing", levelRms, levelPeak);
 
+
+  // Levels stop arriving when capture stops; tick the meter down so a frozen
+  // reading is never mistaken for live input.
+  useEffect(() => {
+    const timer = setInterval(decayMeter, 120);
+    return () => clearInterval(timer);
+  }, [decayMeter]);
 
   useEffect(() => {
     if (!isInputMenuOpen && !isChannelMenuOpen) {
@@ -132,12 +143,6 @@ export function StatusBar({
       }}
     >
       <style>{`
-        @keyframes ssAudioPulse {
-          0%, 100% { transform: scaleY(0.45); opacity: 0.45; }
-          35% { transform: scaleY(1); opacity: 1; }
-          65% { transform: scaleY(0.72); opacity: 0.76; }
-        }
-
         @keyframes ssLivePing {
           0% { box-shadow: 0 0 0 0 rgba(18, 214, 146, 0.5); }
           70% { box-shadow: 0 0 0 6px rgba(18, 214, 146, 0); }
@@ -440,8 +445,11 @@ export function StatusBar({
         </span>
         <div
           aria-label={
-            !activeInput ? "No active input audio level" : speechActive ? "Speech detected in input audio" : "Input audio silent"
+            hasSignal
+              ? `Input level ${Math.round((levels[levels.length - 1] ?? 0) * 100)}%${speechActive ? ", speech detected" : ""}`
+              : "No input signal"
           }
+          title={speechActive ? "Speech detected" : hasSignal ? "Input signal (no speech)" : "No input signal"}
           style={{
             display: "flex",
             alignItems: "center",
@@ -450,22 +458,28 @@ export function StatusBar({
             padding: "0 2px",
           }}
         >
-          {meterBars.map((height, index) => (
-            <span
-              key={index}
-              style={{
-                width: "3px",
-                height: `${height}px`,
-                borderRadius: "999px",
-                background: speechActive
-                  ? "linear-gradient(180deg, #4ade80, var(--color-success))"
-                  : "var(--border-base)",
-                transformOrigin: "bottom",
-                transition: "height 90ms ease-out, background 150ms ease-out",
-                animation: speechActive ? `ssAudioPulse 780ms ease-in-out ${index * 70}ms infinite` : "none",
-              }}
-            />
-          ))}
+          {Array.from({ length: METER_BARS }, (_, index) => {
+            const level = levels[index] ?? 0;
+            // 2px floor so the meter reads as present-but-silent, not absent.
+            const height = 2 + level * 20;
+            return (
+              <span
+                key={index}
+                style={{
+                  width: "3px",
+                  height: `${height}px`,
+                  borderRadius: "999px",
+                  background: !activeInput
+                    ? "var(--border-base)"
+                    : isSpeech
+                      ? "linear-gradient(180deg, #d6c2ff, #7b2ff7)"
+                      : "linear-gradient(180deg, #6f5a9c, #4a3572)",
+                  transformOrigin: "bottom",
+                  transition: "height 90ms linear, background 150ms linear",
+                }}
+              />
+            );
+          })}
         </div>
         <span style={{ color: "var(--fg-subtle)" }}>|</span>
         <span style={{ color: "var(--fg-subtle)", letterSpacing: "0.05em" }}>VAD</span>
@@ -536,6 +550,27 @@ export function StatusBar({
         >
           {engineVersion}
         </span>
+        {engineModel ? (
+          <span
+            title={
+              engineModelDegraded
+                ? "Transcription model DEGRADED — the configured model failed to load"
+                : "Transcription model actually loaded (model · device/compute type)"
+            }
+            style={{
+              padding: "2px 6px",
+              borderRadius: "4px",
+              background: "var(--bg-elevated)",
+              border: engineModelDegraded ? "1px solid #e0563f" : "none",
+              color: engineModelDegraded ? "#e0563f" : "var(--fg-muted)",
+              lineHeight: 1,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {engineModelDegraded ? "⚠ " : ""}
+            {engineModel}
+          </span>
+        ) : null}
         <span
           style={{
             maxWidth: "240px",

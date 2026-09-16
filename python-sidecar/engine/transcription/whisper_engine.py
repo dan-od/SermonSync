@@ -4,10 +4,12 @@ Wraps faster-whisper (CTranslate2). Auto-detects CUDA (falls back to CPU int8),
 and loads the configured model with a fallback chain so a too-large download
 degrades gracefully instead of failing.
 
-Model selection: env WHISPER_MODEL (default "tiny" for this session — set to
-"large-v3" for production). If faster-whisper is unavailable or no model loads,
-a MockWhisperEngine returns deterministic dummy text so the rest of the
-pipeline keeps working.
+Model selection: env WHISPER_MODEL (default "base" — set to "large-v3" for
+production). Measured on CPU int8 with 3 s chunks: tiny 0.25x realtime but
+badly garbled, base 0.20x and near-verbatim, small 0.89x (too little headroom
+for live use). If faster-whisper is unavailable or no model loads, a
+MockWhisperEngine returns deterministic dummy text so the rest of the pipeline
+keeps working.
 """
 
 from __future__ import annotations
@@ -24,7 +26,7 @@ except ImportError:  # pragma: no cover
     np = None
 
 # Preferred → fallbacks. Production should set WHISPER_MODEL=large-v3.
-DEFAULT_MODEL = os.environ.get("WHISPER_MODEL", "tiny")
+DEFAULT_MODEL = os.environ.get("WHISPER_MODEL", "base")
 FALLBACK_CHAIN = [DEFAULT_MODEL, "base", "tiny"]
 
 
@@ -50,6 +52,7 @@ class MockWhisperEngine:
     is_mock = True
     model_size = "mock"
     device = "cpu"
+    compute_type = "n/a"
 
     def transcribe(self, audio, language: str | None = None) -> list[dict]:
         n = len(audio) if audio is not None else 0
@@ -74,12 +77,17 @@ class WhisperEngine:
         self.device = device
         self.compute_type = compute_type
         self._model = model
+        # Set by load(); the requested model differs from model_size whenever
+        # the fallback chain kicked in.
+        self.requested_model = model_size
+        self.degraded = False
 
     @classmethod
     def load(cls, candidates: list[str] | None = None) -> WhisperEngine:
         from faster_whisper import WhisperModel
 
         device, compute_type = _pick_device()
+        requested = (candidates or FALLBACK_CHAIN)[0]
         tried = []
         for size in candidates or FALLBACK_CHAIN:
             if size in tried:
@@ -88,8 +96,21 @@ class WhisperEngine:
             try:
                 logger.info("loading Whisper model '%s' on %s/%s", size, device, compute_type)
                 model = WhisperModel(size, device=device, compute_type=compute_type)
-                logger.info("Whisper model '%s' ready", size)
-                return cls(size, device, compute_type, model)
+                degraded = size != requested
+                # WARNING so the operator can grep one line for the truth. A
+                # silent fallback to a smaller model is the failure mode this
+                # exists to expose.
+                logger.warning(
+                    "WHISPER ENGINE LOADED: model=%s device=%s compute_type=%s%s",
+                    size,
+                    device,
+                    compute_type,
+                    f" (DEGRADED - requested '{requested}' failed)" if degraded else "",
+                )
+                engine = cls(size, device, compute_type, model)
+                engine.requested_model = requested
+                engine.degraded = degraded
+                return engine
             except Exception as exc:
                 logger.warning("failed to load Whisper '%s': %s", size, exc)
         raise RuntimeError(f"no Whisper model could be loaded (tried {tried})")
@@ -137,3 +158,54 @@ def set_engine(engine) -> None:
     """Override the engine (used by tests)."""
     global _engine
     _engine = engine
+
+
+def model_source() -> str:
+    """Where the configured model name came from."""
+    return "env:WHISPER_MODEL" if os.environ.get("WHISPER_MODEL") else "code-default"
+
+
+def engine_status() -> dict:
+    """Report configured vs actually-loaded engine.
+
+    Deliberately does NOT load the model: a status call must never trigger a
+    multi-gigabyte download. `loaded` is False until the first transcription.
+    """
+    device, compute_type = _pick_device()
+    status = {
+        "configured_model": DEFAULT_MODEL,
+        "model_source": model_source(),
+        "fallback_chain": list(dict.fromkeys(FALLBACK_CHAIN)),
+        "device": device,
+        "compute_type": compute_type,
+        "loaded": _engine is not None,
+        "loaded_model": None,
+        "is_mock": None,
+        "degraded": None,
+    }
+    if _engine is not None:
+        status["loaded_model"] = getattr(_engine, "model_size", "unknown")
+        status["device"] = getattr(_engine, "device", device)
+        status["compute_type"] = getattr(_engine, "compute_type", compute_type)
+        status["is_mock"] = getattr(_engine, "is_mock", True)
+        status["degraded"] = getattr(_engine, "degraded", False)
+    return status
+
+
+def log_engine_configuration() -> None:
+    """One greppable WARNING line at boot stating what will load.
+
+    The model itself loads lazily on the first transcription, so at boot this
+    is the configured intent; the matching 'WHISPER ENGINE LOADED' line reports
+    what actually loaded.
+    """
+    device, compute_type = _pick_device()
+    logger.warning(
+        "WHISPER ENGINE CONFIGURED: model=%s source=%s device=%s compute_type=%s "
+        "fallback=%s (loads lazily on first transcription)",
+        DEFAULT_MODEL,
+        model_source(),
+        device,
+        compute_type,
+        "->".join(dict.fromkeys(FALLBACK_CHAIN)),
+    )

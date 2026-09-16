@@ -49,20 +49,32 @@ class WorshipDetector:
         silence_rms: float = 0.005,
         active_ratio_min: float = 0.6,
         cv_music_max: float = 0.4,
-        flatness_music_max: float = 0.35,
+        # Measured: continuous speech on a built-in mic sits at ~0.25 flatness
+        # (30 ms frames). Sung/played music is far more tonal, so the tonal
+        # threshold has to stay well under that or speech reads as worship.
+        flatness_music_max: float = 0.12,
+        # Consecutive frames of music evidence required before switching in or
+        # out of WORSHIP. Without this the state flapped every second or two,
+        # punching holes through the middle of a sermon.
+        switch_frames: int = 33,  # ~1 s
     ) -> None:
         self.window_frames = window_frames
         self.silence_rms = silence_rms
         self.active_ratio_min = active_ratio_min
         self.cv_music_max = cv_music_max
         self.flatness_music_max = flatness_music_max
+        self.switch_frames = switch_frames
         self._rms: deque[float] = deque(maxlen=window_frames)
         self._flatness: deque[float] = deque(maxlen=window_frames)
+        self._music_run = 0
+        self._nonmusic_run = 0
         self.state = SILENCE
 
     def reset(self) -> None:
         self._rms.clear()
         self._flatness.clear()
+        self._music_run = 0
+        self._nonmusic_run = 0
         self.state = SILENCE
 
     def update(self, rms: float, flatness: float | None = None) -> tuple[str, float]:
@@ -75,6 +87,8 @@ class WorshipDetector:
         active_ratio = len(active) / len(self._rms) if self._rms else 0.0
 
         if active_ratio < 0.15:
+            self._music_run = 0
+            self._nonmusic_run = 0
             self.state = SILENCE
             return SILENCE, round(1.0 - active_ratio, 4)
 
@@ -90,14 +104,31 @@ class WorshipDetector:
         )
 
         # Music: sustained (high active ratio), steady energy (low CV), tonal
-        # (low spectral flatness).
+        # (low spectral flatness). All three are required — preaching is both
+        # sustained and (read aloud) fairly steady, so any two-of-three rule
+        # classifies continuous speech as worship and drops it.
         sustained = active_ratio >= self.active_ratio_min
         steady = cv <= self.cv_music_max
         tonal = avg_flat <= self.flatness_music_max
 
         music_signals = sum([sustained, steady, tonal])
-        if music_signals >= 2:
+        is_music = sustained and steady and tonal
+
+        # Hysteresis: only switch after sustained agreement in one direction.
+        if is_music:
+            self._music_run += 1
+            self._nonmusic_run = 0
+        else:
+            self._nonmusic_run += 1
+            self._music_run = 0
+
+        if self.state == WORSHIP:
+            if self._nonmusic_run >= self.switch_frames:
+                self.state = SPEECH
+        elif self._music_run >= self.switch_frames:
             self.state = WORSHIP
+
+        if self.state == WORSHIP:
             confidence = 0.5 + 0.5 * (music_signals / 3.0)
             return WORSHIP, round(min(confidence, 0.99), 4)
 

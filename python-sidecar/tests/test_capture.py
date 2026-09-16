@@ -125,3 +125,58 @@ def test_start_retries_without_unsupported_never_drop_input(monkeypatch):
         await capture.capture_manager.stop()
 
     asyncio.run(run())
+
+
+def test_preroll_replayed_on_speech_onset(monkeypatch):
+    """Regression: the onset of a word must reach the sink, not be sheared off.
+
+    Energy VAD only opens once a word is already underway, so the capture
+    manager replays the buffered pre-roll on the rising edge.
+    """
+    mgr = capture.CaptureManager()
+    fed: list[bytes] = []
+    mgr.speech_sink = fed.append
+
+    speech = [False, False, False, True, True]
+    monkeypatch.setattr(
+        capture.vad, "get_detector", lambda: type(
+            "V", (), {"process": lambda self, samples: (speech.pop(0), 0.9)}
+        )()
+    )
+    monkeypatch.setattr(
+        capture.worship_detector, "get_detector", lambda: type(
+            "W", (), {"update": lambda self, rms, flat: (capture.worship_detector.SPEECH, 0.9)}
+        )()
+    )
+    monkeypatch.setattr(capture.worship_detector, "spectral_flatness", lambda s: 0.25)
+
+    for i in range(5):
+        block = np.full((480, 1), 0.01 * (i + 1), dtype="float32")
+        mgr._on_audio(block, 480, None, None)
+
+    # 3 silent chunks of pre-roll + the 2 speech chunks.
+    assert len(fed) == 5
+    first = np.frombuffer(fed[0], dtype="<i2")[0]
+    assert first == pytest.approx(int(0.01 * 32767), abs=2)
+
+
+def test_no_preroll_replay_while_already_forwarding(monkeypatch):
+    mgr = capture.CaptureManager()
+    fed: list[bytes] = []
+    mgr.speech_sink = fed.append
+    monkeypatch.setattr(
+        capture.vad, "get_detector", lambda: type(
+            "V", (), {"process": lambda self, samples: (True, 0.9)}
+        )()
+    )
+    monkeypatch.setattr(
+        capture.worship_detector, "get_detector", lambda: type(
+            "W", (), {"update": lambda self, rms, flat: (capture.worship_detector.SPEECH, 0.9)}
+        )()
+    )
+    monkeypatch.setattr(capture.worship_detector, "spectral_flatness", lambda s: 0.25)
+
+    for _ in range(4):
+        mgr._on_audio(np.full((480, 1), 0.05, dtype="float32"), 480, None, None)
+    # First chunk is speech immediately (empty pre-roll), then one each.
+    assert len(fed) == 4

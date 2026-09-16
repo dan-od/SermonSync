@@ -7,15 +7,13 @@ detection, Whisper streaming transcription, and the Bible database API.
 
 import asyncio
 import logging
-import signal
-from collections import deque
 from contextlib import asynccontextmanager
-from datetime import datetime
 
 import uvicorn
 from api.archive import router as archive_router
 from api.audio import router as audio_router
 from api.bible import router as bible_router
+from api.engine import router as engine_router
 from api.groq import router as groq_router
 from api.pipeline import router as pipeline_router
 from api.presets import router as presets_router
@@ -37,39 +35,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("sermonsync.sidecar")
 
-
-class LaunchLogHandler(logging.Handler):
-    """Keep the recent real sidecar logs available to the launch screen."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.entries: deque[dict[str, str]] = deque(maxlen=80)
-
-    def emit(self, record: logging.LogRecord) -> None:
-        try:
-            self.entries.append(
-                {
-                    "time": datetime.fromtimestamp(record.created).strftime("%H:%M:%S.%f")[:-3],
-                    "level": record.levelname,
-                    "logger": record.name,
-                    "message": record.getMessage(),
-                }
-            )
-        except Exception:
-            # Logging must never be able to abort sidecar startup.
-            self.handleError(record)
-
-
-launch_log_handler = LaunchLogHandler()
-launch_log_handler.setFormatter(logging.Formatter("%(asctime)s"))
-logging.getLogger().addHandler(launch_log_handler)
-
-# Set once in lifespan startup. Deliberately not derived from the bounded
-# log buffer above — on a long-running session the "pipeline ready" line
-# scrolls out of that deque, which would flip /api/logs back to ready=false
-# forever and hang the launch screen even though the sidecar is fine.
-_pipeline_ready = False
-
 ENGINE = "sermonsync-ai"
 VERSION = "0.1.0"
 PIPELINE_STAGES = 4
@@ -77,7 +42,12 @@ PIPELINE_STAGES = 4
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _pipeline_ready
+    # State what the transcription engine will load, before anything else can
+    # obscure it (SS-065). One greppable line; the model itself loads lazily.
+    from engine.transcription.whisper_engine import log_engine_configuration
+
+    log_engine_configuration()
+
     # Route VAD-passed speech chunks into the streaming transcriber.
     capture_manager.speech_sink = streaming_transcriber.feed
     await streaming_transcriber.start()
@@ -87,9 +57,7 @@ async def lifespan(app: FastAPI):
     apply_persisted_groq()
     status_task = asyncio.create_task(status_emitter())
     logger.info("sidecar pipeline ready")
-    _pipeline_ready = True
     yield
-    _pipeline_ready = False
     status_task.cancel()
     await streaming_transcriber.stop()
     await capture_manager.stop()
@@ -107,6 +75,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(bible_router)
+app.include_router(engine_router)
 app.include_router(audio_router)
 app.include_router(transcription_router)
 app.include_router(system_router)
@@ -135,13 +104,6 @@ async def status() -> dict:
     }
 
 
-@app.get("/api/logs")
-async def logs() -> dict:
-    """Return the current real sidecar log buffer for the launch screen."""
-    entries = list(launch_log_handler.entries)
-    return {"logs": entries, "ready": _pipeline_ready}
-
-
 @app.websocket("/ws/audio")
 async def ws_audio(websocket: WebSocket) -> None:
     """Audio ingest channel.
@@ -161,18 +123,4 @@ async def ws_audio(websocket: WebSocket) -> None:
 
 
 if __name__ == "__main__":
-    config = uvicorn.Config(app, host="127.0.0.1", port=8000, log_level="info")
-    server = uvicorn.Server(config)
-
-    # When the Tauri parent shuts down it SIGTERMs/SIGKILLs this process.
-    # Handle both explicitly so uvicorn runs its lifespan cleanup (stops the
-    # audio capture and streaming transcriber) instead of dying mid-stream and
-    # lingering as an orphan on port 8000.
-    def _graceful_shutdown(signum, _frame):  # noqa: ANN001, ANN202
-        logger.info("received signal %s — shutting down sidecar", signum)
-        server.should_exit = True
-
-    signal.signal(signal.SIGTERM, _graceful_shutdown)
-    signal.signal(signal.SIGINT, _graceful_shutdown)
-
-    server.run()
+    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")
