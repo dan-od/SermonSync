@@ -46,3 +46,7 @@ python-sidecar/models/
 # Generated Tauri / PyInstaller artifacts
 src-tauri/build/
 src-tauri/*.spec
+
+# Claude Code local agent state (machine-local settings; worktrees are full
+# repo copies and must never be committed)
+.claude/
