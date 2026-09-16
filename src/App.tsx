@@ -1,12 +1,14 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AuthGate } from "./components/Auth/AuthGate";
 import type { BranchAccount } from "./components/Auth/types";
+import { LaunchScreen } from "./components/Launch/LaunchScreen";
 import { SettingsPanel } from "./components/Settings/SettingsPanel";
+import { CueProjectionModal } from "./components/Songs/CueProjectionModal";
 import { TranscriptTimelinePanel } from "./components/TranscriptTimelinePanel";
-import type { BiblePassage, DbTable, TranscriptItem } from "./components/desktop/uiTypes";
+import type { BiblePassage, DbTable } from "./components/desktop/uiTypes";
 import { AppLayout } from "./components/layout/AppLayout";
-import type { LibraryTab, ScriptureSearchMode } from "./components/LocalLibraryPanel";
+import type { LibraryNavigationHandler, LibraryTab, ScriptureSearchMode } from "./components/LocalLibraryPanel";
 import { getAudioDevices, getSidecarStatus, lookupScriptureVerse, selectAudioDevice, setVadSensitivity, startAudioCapture, stopAudioCapture } from "./lib/sidecarClient";
 import { knownScriptureBooks, matchScriptureReferenceIncremental, resolveScriptureSearch } from "./lib/scriptureSearch";
 import { startSidecarWsBridge } from "./lib/sidecarWs";
@@ -16,8 +18,10 @@ import {
   useProjectorStore,
   useSessionStore,
   useSuggestionStore,
+  useTemplateStore,
   useTranscriptionStore,
 } from "./stores";
+import { SHORTCUT_DEFINITIONS, isShortcutEvent, useShortcutStore } from "./stores/shortcutStore";
 import type { ProjectorSlide, SuggestionCard } from "./types/state";
 
 const AiPanel = lazy(() => import("./components/AiPanel").then((module) => ({ default: module.AiPanel })));
@@ -28,11 +32,15 @@ const ProjectorDeskPanel = lazy(() => import("./components/ProjectorDeskPanel").
 const SuggestionDeckPanel = lazy(() =>
   import("./components/SuggestionDeckPanel").then((module) => ({ default: module.SuggestionDeckPanel })),
 );
+const SessionSummaryPanel = lazy(() =>
+  import("./components/SessionSummaryPanel").then((module) => ({ default: module.SessionSummaryPanel })),
+);
 
 const shellReset = `
   html, body, #root {
     height: 100%;
     margin: 0;
+    background: var(--bg-base);
   }
 
   body {
@@ -63,46 +71,54 @@ const passageLibrary: BiblePassage[] = [
   {
     reference: { book: "John", chapter: 3, verse: 16 },
     text: "For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.",
-    version: "KJV",
+    version: "ENGLISHNKJ",
     searchText: "love salvation eternal life gospel invitation",
     themes: ["SALVATION", "GOSPEL"],
   },
   {
     reference: { book: "Acts", chapter: 1, verse: 8 },
     text: "But ye shall receive power, after that the Holy Ghost is come upon you: and ye shall be witnesses unto me.",
-    version: "KJV",
+    version: "ENGLISHNKJ",
     searchText: "power witness holy spirit mission fire",
     themes: ["HOLY SPIRIT", "MISSION"],
   },
   {
     reference: { book: "Isaiah", chapter: 53, verse: 5 },
     text: "But he was wounded for our transgressions, he was bruised for our iniquities: with his stripes we are healed.",
-    version: "KJV",
+    version: "ENGLISHNKJ",
     searchText: "healing stripes restoration covenant",
     themes: ["HEALING", "COVENANT"],
   },
   {
     reference: { book: "Romans", chapter: 10, verse: 9 },
     text: "That if thou shalt confess with thy mouth the Lord Jesus, and shalt believe in thine heart that God hath raised him from the dead, thou shalt be saved.",
-    version: "KJV",
+    version: "ENGLISHNKJ",
     searchText: "confession salvation faith response altar call",
     themes: ["RESPONSE", "SALVATION"],
   },
   {
     reference: { book: "Psalm", chapter: 121, verse: 1 },
     text: "I will lift up mine eyes unto the hills, from whence cometh my help.",
-    version: "KJV",
+    version: "ENGLISHNKJ",
     searchText: "help confidence assurance worship",
     themes: ["HELP", "ASSURANCE"],
   },
   {
     reference: { book: "Philippians", chapter: 4, verse: 6 },
     text: "Be careful for nothing; but in every thing by prayer and supplication with thanksgiving let your requests be made known unto God.",
-    version: "KJV",
+    version: "ENGLISHNKJ",
     searchText: "prayer thanksgiving anxiety peace petition",
     themes: ["PRAYER", "PEACE"],
   },
 ];
+
+type LibraryScheduleItem = {
+  id: string;
+  kind: "scriptures" | "songs";
+  value: string;
+  /** present when this record represents a whole cued song sequence rather than a single slide */
+  cueSlides?: { label: string; text: string }[];
+};
 
 function LocalLibrarySearch({
   activeTab,
@@ -115,22 +131,25 @@ function LocalLibrarySearch({
   onRemoveFromSchedule,
   onSchedulePreview,
   onScheduleLive,
+  onOpenCue,
 }: {
   activeTab: LibraryTab;
   searchQuery: string;
   onSearchQueryChange: (value: string) => void;
   searchMode: ScriptureSearchMode;
   onSearchModeChange: (mode: ScriptureSearchMode) => void;
-  scheduledItems: { id: string; kind: "scriptures" | "songs"; value: string }[];
+  scheduledItems: LibraryScheduleItem[];
   onAddToSchedule: () => void;
   onRemoveFromSchedule: (id: string) => void;
-  onSchedulePreview: (item: { id: string; kind: "scriptures" | "songs"; value: string }) => void;
-  onScheduleLive: (item: { id: string; kind: "scriptures" | "songs"; value: string }) => void;
+  onSchedulePreview: (item: LibraryScheduleItem) => void;
+  onScheduleLive: (item: LibraryScheduleItem) => void;
+  onOpenCue: (item: LibraryScheduleItem) => void;
 }) {
   const canSearch = activeTab === "scriptures" || activeTab === "songs";
   const label = activeTab === "songs" ? "Search songs" : "Search scriptures";
   const canAdd = canSearch && searchQuery.trim().length > 0;
   const clickTimeoutRef = useRef<number | null>(null);
+  const [hoveredScheduleId, setHoveredScheduleId] = useState<string | null>(null);
 
   useEffect(() => {
     return () => {
@@ -140,7 +159,8 @@ function LocalLibrarySearch({
     };
   }, []);
 
-  const handleItemClick = (item: { id: string; kind: "scriptures" | "songs"; value: string }) => {
+  const handleItemClick = (item: LibraryScheduleItem) => {
+    if (item.cueSlides) return;
     if (clickTimeoutRef.current !== null) {
       window.clearTimeout(clickTimeoutRef.current);
     }
@@ -151,10 +171,15 @@ function LocalLibrarySearch({
     }, 220);
   };
 
-  const handleItemDoubleClick = (item: { id: string; kind: "scriptures" | "songs"; value: string }) => {
+  const handleItemActivate = (item: LibraryScheduleItem) => {
     if (clickTimeoutRef.current !== null) {
       window.clearTimeout(clickTimeoutRef.current);
       clickTimeoutRef.current = null;
+    }
+
+    if (item.cueSlides) {
+      onOpenCue(item);
+      return;
     }
 
     onScheduleLive(item);
@@ -189,12 +214,11 @@ function LocalLibrarySearch({
           <label
             style={{
               display: "grid",
-              gridTemplateColumns: activeTab === "scriptures" ? "minmax(0, 1fr) auto 34px" : "minmax(0, 1fr) 34px",
+              gridTemplateColumns: activeTab === "scriptures" ? "minmax(0, 1fr) auto" : "minmax(0, 1fr)",
               alignItems: "center",
-              background: "linear-gradient(180deg, rgba(74, 74, 74, 0.8), rgba(51, 51, 51, 0.95))",
-              border: "1px solid rgba(255, 255, 255, 0.08)",
+              background: "var(--bg-elevated)",
+              border: "none",
               borderRadius: "4px",
-              boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.04)",
               overflow: "hidden",
             }}
           >
@@ -243,7 +267,7 @@ function LocalLibrarySearch({
                 border: "none",
                 outline: "none",
                 background: "transparent",
-                color: canSearch ? "#e5e5e5" : "var(--fg-subtle)",
+                color: canSearch ? "var(--fg-base)" : "var(--fg-subtle)",
                 fontSize: "var(--text-xs)",
               }}
             />
@@ -262,8 +286,8 @@ function LocalLibrarySearch({
                       style={{
                         height: 24,
                         padding: "0 8px",
-                        background: isActive ? "var(--color-primary)" : "rgba(255, 255, 255, 0.08)",
-                        border: "1px solid rgba(255, 255, 255, 0.04)",
+                        background: isActive ? "var(--color-primary)" : "var(--bg-surface)",
+                        border: "none",
                         borderRadius: "3px",
                         marginLeft: 4,
                         cursor: "pointer",
@@ -271,7 +295,7 @@ function LocalLibrarySearch({
                         fontSize: "10px",
                         fontWeight: 600,
                         letterSpacing: "0.04em",
-                        color: isActive ? "white" : "#dfe0e2",
+                        color: isActive ? "var(--fg-on-accent)" : "var(--fg-muted)",
                       }}
                     >
                       {mode === "words" ? "WORDS" : "REF"}
@@ -280,29 +304,10 @@ function LocalLibrarySearch({
                 })}
               </div>
             )}
-            <span
-              aria-hidden="true"
-              style={{
-                width: 24,
-                height: 24,
-                marginRight: 5,
-                display: "grid",
-                placeItems: "center",
-                justifySelf: "end",
-                borderRadius: "3px",
-                background: "rgba(255, 255, 255, 0.08)",
-                color: canSearch ? "#dfe0e2" : "var(--fg-subtle)",
-                fontFamily: "var(--font-mono)",
-                fontSize: "12px",
-                border: "1px solid rgba(255, 255, 255, 0.04)",
-              }}
-            >
-              ⌕
-            </span>
           </label>
           <button
             type="button"
-            onClick={onAddToSchedule}
+            onClick={() => onAddToSchedule()}
             disabled={!canAdd}
             style={{
               width: 34,
@@ -310,12 +315,12 @@ function LocalLibrarySearch({
               display: "grid",
               placeItems: "center",
               borderRadius: "4px",
-              background: "linear-gradient(180deg, rgba(74, 74, 74, 0.8), rgba(51, 51, 51, 0.95))",
-              color: canAdd ? "#e5e5e5" : "var(--fg-subtle)",
+              background: "var(--bg-elevated)",
+              color: canAdd ? "var(--fg-base)" : "var(--fg-subtle)",
               fontFamily: "var(--font-mono)",
               fontSize: "18px",
               lineHeight: 1,
-              border: "1px solid rgba(255, 255, 255, 0.08)",
+              border: "none",
               cursor: canAdd ? "pointer" : "not-allowed",
             }}
           >
@@ -360,8 +365,18 @@ function LocalLibrarySearch({
             scheduledItems.map((item) => (
               <div
                 key={item.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => handleItemClick(item)}
-                onDoubleClick={() => handleItemDoubleClick(item)}
+                onDoubleClick={() => handleItemActivate(item)}
+                onMouseEnter={() => setHoveredScheduleId(item.id)}
+                onMouseLeave={() => setHoveredScheduleId((current) => (current === item.id ? null : current))}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    handleItemActivate(item);
+                  }
+                }}
                 style={{
                   display: "grid",
                   gridTemplateColumns: "auto minmax(0, 1fr) auto",
@@ -369,6 +384,8 @@ function LocalLibrarySearch({
                   gap: "8px",
                   padding: "8px 10px",
                   cursor: "pointer",
+                  background: hoveredScheduleId === item.id ? "var(--color-primary-muted)" : "transparent",
+                  transition: "background 120ms ease",
                 }}
               >
                 <span
@@ -380,7 +397,7 @@ function LocalLibrarySearch({
                     color: "var(--fg-subtle)",
                   }}
                 >
-                  {item.kind === "scriptures" ? "Scripture" : "Song"}
+                  {item.kind === "scriptures" ? "Scripture" : item.cueSlides ? "Cued" : "Song"}
                 </span>
                 <span
                   style={{
@@ -426,138 +443,43 @@ function LocalLibrarySearch({
   );
 }
 
-const initialTranscripts: TranscriptItem[] = [
-  {
-    id: "t-001",
-    timestamp: "09:42:11",
-    speaker: "Resident Minister",
-    text: "Church, if we believe John 3:16 again with conviction, the whole room returns to the heart of salvation.",
-    matches: ["John 3:16"],
-  },
-  {
-    id: "t-002",
-    timestamp: "09:43:03",
-    speaker: "Resident Minister",
-    text: "We are not waiting for power to arrive later; Acts 1:8 says the Spirit has already equipped the witness.",
-    matches: ["Acts 1:8"],
-  },
-  {
-    id: "t-003",
-    timestamp: "09:44:27",
-    speaker: "Resident Minister",
-    text: "Bring every burden to the Lord in prayer and refuse to be governed by anxiety.",
-    matches: ["Philippians 4:6"],
-  },
-  {
-    id: "t-004",
-    timestamp: "09:45:54",
-    speaker: "Resident Minister",
-    text: "Healing is not theory for the believer. Isaiah 53:5 anchors our confession in the finished work of Christ.",
-    matches: ["Isaiah 53:5"],
-  },
-  {
-    id: "t-005",
-    timestamp: "09:47:02",
-    speaker: "Resident Minister",
-    text: "Romans 8:28 reminds us that every season, even the hard ones, is being worked together for our good.",
-    matches: ["Romans 8:28"],
-  },
-  {
-    id: "t-006",
-    timestamp: "09:48:19",
-    speaker: "Resident Minister",
-    text: "We walk by faith and not by sight, standing firmly on the promise of 2 Corinthians 5:7.",
-    matches: ["2 Corinthians 5:7"],
-  },
-  {
-    id: "t-007",
-    timestamp: "09:49:41",
-    speaker: "Resident Minister",
-    text: "Ephesians 2:8 settles it plainly: we are saved by grace through faith, and that not of ourselves.",
-    matches: ["Ephesians 2:8"],
-  },
-  {
-    id: "t-008",
-    timestamp: "09:50:58",
-    speaker: "Resident Minister",
-    text: "Joshua 1:9 charges us to be strong and courageous, for the Lord goes with us wherever we go.",
-    matches: ["Joshua 1:9"],
-  },
-  {
-    id: "t-009",
-    timestamp: "09:52:12",
-    speaker: "Resident Minister",
-    text: "Proverbs 3:5 calls us to trust in the Lord with all our heart rather than lean on our own understanding.",
-    matches: ["Proverbs 3:5"],
-  },
-  {
-    id: "t-010",
-    timestamp: "09:53:30",
-    speaker: "Resident Minister",
-    text: "Matthew 11:28 invites every weary soul to come to Christ and find true rest.",
-    matches: ["Matthew 11:28"],
-  },
-];
-
-const initialCards: SuggestionCard[] = ([
-  {
-    id: "c-001",
-    reference: { book: "John", chapter: 3, verse: 16 },
-    text: passageLibrary[0].text,
-    confidence: 0.97,
-    pipelineStage: 4,
-    status: "pending",
-    version: "KJV",
-    themes: ["SALVATION", "GOSPEL"],
-  },
-  {
-    id: "c-002",
-    reference: { book: "Acts", chapter: 1, verse: 8 },
-    text: passageLibrary[1].text,
-    confidence: 0.91,
-    pipelineStage: 3,
-    status: "pending",
-    version: "KJV",
-    themes: ["HOLY SPIRIT", "MISSION"],
-  },
-  {
-    id: "c-003",
-    reference: { book: "Isaiah", chapter: 53, verse: 5 },
-    text: passageLibrary[2].text,
-    confidence: 0.88,
-    pipelineStage: 2,
-    status: "pending",
-    version: "KJV",
-    themes: ["HEALING", "COVENANT"],
-  },
-] satisfies SuggestionCard[]).slice(0, 3);
-
 function formatReference(slide: { reference: ProjectorSlide["reference"] }) {
   const { reference } = slide;
   return `${reference.book} ${reference.chapter}:${reference.verse}`;
 }
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName);
+}
+
 function toSlide(card: SuggestionCard | BiblePassage): ProjectorSlide {
+  const versions = useConfigStore.getState().bibleVersions;
+  const matched = versions.find(
+    (v) =>
+      v.abbreviation.toLowerCase() === card.version.toLowerCase() ||
+      v.name.toLowerCase() === card.version.toLowerCase(),
+  );
   return {
     reference: card.reference,
     text: card.text,
-    version: card.version,
+    version: matched?.name || card.version,
   };
 }
 
 function App() {
   const [workspaceTab, setWorkspaceTab] = useState<"suggestions" | "bible" | "notes" | "database">("suggestions");
+  const [isSummaryOpen, setIsSummaryOpen] = useState(false);
+  const [isSummaryCloseHovered, setIsSummaryCloseHovered] = useState(false);
   const [libraryTab, setLibraryTab] = useState<LibraryTab>("scriptures");
   const [librarySearchQuery, setLibrarySearchQuery] = useState("");
   const [librarySearchMode, setLibrarySearchMode] = useState<ScriptureSearchMode>("words");
-  const [librarySchedule, setLibrarySchedule] = useState<{ id: string; kind: "scriptures" | "songs"; value: string }[]>([
-    { id: "mock-scripture-1", kind: "scriptures", value: "John 3:16" },
-    { id: "mock-song-1", kind: "songs", value: "How Great Thou Art" },
-    { id: "mock-scripture-2", kind: "scriptures", value: "Romans 8:28" },
-  ]);
+  const [librarySchedule, setLibrarySchedule] = useState<LibraryScheduleItem[]>([]);
+  const [activeCue, setActiveCue] = useState<LibraryScheduleItem | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [showLaunchScreen, setShowLaunchScreen] = useState(true);
   const [authenticatedBranch, setAuthenticatedBranch] = useState<BranchAccount | null>(null);
-  const hasInitializedSessionRef = useRef(false);
+  const libraryNavigationRef = useRef<LibraryNavigationHandler | null>(null);
 
   const theme = useConfigStore((s) => s.theme);
   const setTheme = useConfigStore((s) => s.setTheme);
@@ -568,11 +490,9 @@ function App() {
   const defaultModelProvider = useConfigStore((s) => s.defaultModelProvider);
 
   const transcripts = useTranscriptionStore((s) => s.timeline);
-  const seedTimeline = useTranscriptionStore((s) => s.seedTimeline);
   const addManualTimelineItem = useTranscriptionStore((s) => s.addManualTimelineItem);
 
   const cards = useSuggestionStore((s) => s.cards);
-  const setCards = useSuggestionStore((s) => s.setCards);
   const addCards = useSuggestionStore((s) => s.addCards);
   const updateCardStatus = useSuggestionStore((s) => s.updateStatus);
   const togglePinnedSuggestion = useSuggestionStore((s) => s.togglePin);
@@ -586,11 +506,17 @@ function App() {
   const feedOverride = useProjectorStore((s) => s.feedOverride);
   const setPreviewSlide = useProjectorStore((s) => s.setPreview);
   const sendLiveSlide = useProjectorStore((s) => s.sendLive);
-  const clearScreen = useProjectorStore((s) => s.clearScreen);
   const setOverlayMode = useProjectorStore((s) => s.setOverlayMode);
   const setFeedOverride = useProjectorStore((s) => s.setFeedOverride);
+  const shortcuts = useShortcutStore((s) => s.shortcuts);
+  const initializeTemplates = useTemplateStore((s) => s.initialize);
+
+  useEffect(() => {
+    void initializeTemplates();
+  }, [initializeTemplates]);
 
   const sessionStatus = useSessionStore((s) => s.status);
+  const sessionId = useSessionStore((s) => s.id);
   const sessionElapsed = useSessionStore((s) => s.elapsed);
   const sessionStart = useSessionStore((s) => s.start);
   const sessionEnd = useSessionStore((s) => s.end);
@@ -624,26 +550,6 @@ function App() {
 
   useEffect(() => {
     if (!authenticatedBranch) {
-      hasInitializedSessionRef.current = false;
-      return;
-    }
-
-    if (hasInitializedSessionRef.current) {
-      return;
-    }
-    hasInitializedSessionRef.current = true;
-
-    if (transcripts.length === 0) {
-      seedTimeline(initialTranscripts);
-    }
-    if (cards.length === 0) {
-      setCards(initialCards);
-      setPreviewSlide(toSlide(initialCards[0]));
-    }
-  }, [authenticatedBranch, cards.length, seedTimeline, setCards, setPreviewSlide, transcripts.length]);
-
-  useEffect(() => {
-    if (!authenticatedBranch) {
       return;
     }
 
@@ -673,9 +579,7 @@ function App() {
             const selection = await selectAudioDevice({ index: selected.index, channels: 1 });
             if (cancelled) return;
             setAudioDevice(selection.selected);
-            const capture = await startAudioCapture();
-            if (cancelled) return;
-            useAudioStore.getState().setCapturing(capture.capturing);
+            useAudioStore.getState().setCapturing(false);
           }
           useAudioStore.getState().clearAudioError();
           return;
@@ -705,6 +609,34 @@ function App() {
       stopBridge();
     };
   }, [authenticatedBranch, setAudioDevice, setAudioStatus, setAvailableDevices]);
+
+  useEffect(() => {
+    if (!authenticatedBranch || !inputDevice) {
+      return;
+    }
+
+    if (sessionStatus !== "active") {
+      void stopAudioCapture()
+        .catch(() => undefined)
+        .finally(() => useAudioStore.getState().setCapturing(false));
+      return;
+    }
+
+    let cancelled = false;
+    void startAudioCapture()
+      .then((capture) => {
+        if (!cancelled) useAudioStore.getState().setCapturing(capture.capturing);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          useAudioStore.getState().setAudioError(error instanceof Error ? error.message : "Could not start audio capture.");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticatedBranch, inputDevice, sessionStatus]);
 
   useEffect(() => {
     if (sessionStatus !== "active" || !sessionStartTime) {
@@ -767,8 +699,6 @@ function App() {
     ];
   }, [cards, liveSlide, overlayMode, previewSlide, projectorTheme, transcripts]);
 
-  const activeReferences = useMemo(() => cards.filter((card) => card.status !== "dismissed"), [cards]);
-
   const previewReference = previewSlide ? formatReference(previewSlide) : null;
   const liveReference = liveSlide ? formatReference(liveSlide) : null;
 
@@ -810,25 +740,78 @@ function App() {
     updateCardStatus(card.id, "sent");
   };
 
-  const handleFeedOverrideChange = (mode: typeof feedOverride) => {
-    if (mode === "clear") {
-      clearScreen();
-    }
-    setFeedOverride(mode);
+  const sendEditedCardLive = (card: SuggestionCard, slide: ProjectorSlide) => {
+    sendLiveSlide(slide);
+    updateCardStatus(card.id, "edited");
   };
 
-  const cycleLive = (direction: -1 | 1) => {
-    if (activeReferences.length === 0) {
+  const handleFeedOverrideChange = useCallback((mode: typeof feedOverride) => {
+    setFeedOverride(mode);
+  }, [setFeedOverride]);
+
+  const cycleLive = useCallback((direction: -1 | 1) => {
+    if (!libraryNavigationRef.current) return;
+    setPreviewSlide(null);
+    libraryNavigationRef.current(direction);
+  }, [setPreviewSlide]);
+
+  useEffect(() => {
+    if (isSettingsOpen) return;
+
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat || isEditableTarget(event.target)) return;
+      const definition = SHORTCUT_DEFINITIONS.find((entry) => isShortcutEvent(event, shortcuts[entry.action]));
+      if (!definition) return;
+      if (definition.action === "template-undo" || definition.action === "template-redo") return;
+
+      event.preventDefault();
+      switch (definition.action) {
+        case "feed-live":
+          handleFeedOverrideChange("live");
+          break;
+        case "feed-logo":
+          handleFeedOverrideChange("logo");
+          break;
+        case "feed-black":
+          handleFeedOverrideChange("black");
+          break;
+        case "feed-clear":
+          handleFeedOverrideChange("clear");
+          break;
+        case "layout-widescreen":
+          setOverlayMode("widescreen");
+          break;
+        case "layout-lower-third":
+          setOverlayMode("lower-third");
+          break;
+        case "library-previous":
+          cycleLive(-1);
+          break;
+        case "library-next":
+          cycleLive(1);
+          break;
+        case "send-preview-live":
+          if (previewSlide) sendLiveSlide(previewSlide);
+          break;
+        case "open-settings":
+          setIsSettingsOpen(true);
+          break;
+      }
+    };
+
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, [cycleLive, handleFeedOverrideChange, isSettingsOpen, previewSlide, sendLiveSlide, setOverlayMode, shortcuts]);
+
+  const addLibraryScheduleItem = (slide?: ProjectorSlide) => {
+    if (slide) {
+      const kind = slide.version === "Lyrics" || slide.version === "SONG" ? "songs" : "scriptures";
+      const value = kind === "scriptures" ? `${slide.reference.book} ${slide.reference.chapter}:${slide.reference.verse}` : slide.text;
+      setLibrarySchedule((current) => current.some((item) => item.kind === kind && item.value.toLowerCase() === value.toLowerCase())
+        ? current
+        : [...current, { id: `${kind}-${Date.now()}-${current.length}`, kind, value }]);
       return;
     }
-
-    const currentIndex = activeReferences.findIndex((entry) => formatReference(entry) === liveReference);
-    const nextIndex = currentIndex === -1 ? 0 : (currentIndex + direction + activeReferences.length) % activeReferences.length;
-    const nextCard = activeReferences[nextIndex];
-    sendLiveSlide(toSlide(nextCard));
-  };
-
-  const addLibraryScheduleItem = () => {
     const normalized = librarySearchQuery.trim();
     if (!normalized || (libraryTab !== "scriptures" && libraryTab !== "songs")) {
       return;
@@ -876,7 +859,19 @@ function App() {
     setLibrarySchedule((current) => current.filter((item) => item.id !== id));
   };
 
-  const toScheduledSlide = async (item: { id: string; kind: "scriptures" | "songs"; value: string }): Promise<ProjectorSlide> => {
+  const addCueToSchedule = (cue: { title: string; slides: { label: string; text: string }[] }) => {
+    const title = cue.title.trim() || "Untitled Song";
+    setLibrarySchedule((current) => [
+      ...current,
+      { id: `songs-cue-${Date.now()}-${current.length}`, kind: "songs", value: title, cueSlides: cue.slides },
+    ]);
+  };
+
+  const openCueFromSchedule = (item: LibraryScheduleItem) => {
+    if (item.cueSlides) setActiveCue(item);
+  };
+
+  const toScheduledSlide = async (item: LibraryScheduleItem): Promise<ProjectorSlide> => {
     if (item.kind === "scriptures") {
       const exactPassage = passageLibrary.find((passage) => formatReference(passage).toLowerCase() === item.value.toLowerCase());
       if (exactPassage) {
@@ -888,15 +883,32 @@ function App() {
         const [, book, chapterText, verseText] = referenceMatch;
         const chapter = Number.parseInt(chapterText, 10);
         const verse = Number.parseInt(verseText, 10);
-        const version = useConfigStore.getState().bibleVersion;
-        const looked = await lookupScriptureVerse(book.trim(), chapter, verse, version);
+        const configVersion = useConfigStore.getState().bibleVersion;
+        const versions = useConfigStore.getState().bibleVersions;
+        const matched = versions.find(
+          (v) =>
+            v.abbreviation.toLowerCase() === configVersion.toLowerCase() ||
+            v.name.toLowerCase() === configVersion.toLowerCase(),
+        );
+        const lookupVersion = matched?.abbreviation || configVersion;
+        const defaultDisplayName = matched?.name || matched?.abbreviation || configVersion;
+        const looked = await lookupScriptureVerse(book.trim(), chapter, verse, lookupVersion);
         return {
           reference: { book: book.trim(), chapter, verse },
           text: looked?.text ?? item.value,
-          version: looked?.version ?? "KJV",
+          version: looked?.version ?? defaultDisplayName,
         };
       }
     }
+
+    const configVersion = useConfigStore.getState().bibleVersion;
+    const versions = useConfigStore.getState().bibleVersions;
+    const matched = versions.find(
+      (v) =>
+        v.abbreviation.toLowerCase() === configVersion.toLowerCase() ||
+        v.name.toLowerCase() === configVersion.toLowerCase(),
+    );
+    const defaultDisplayName = matched?.name || matched?.abbreviation || configVersion;
 
     return {
       reference: {
@@ -905,15 +917,15 @@ function App() {
         verse: 1,
       },
       text: item.value,
-      version: item.kind === "songs" ? "SONG" : "KJV",
+      version: item.kind === "songs" ? "SONG" : defaultDisplayName,
     };
   };
 
-  const previewScheduledItem = (item: { id: string; kind: "scriptures" | "songs"; value: string }) => {
+  const previewScheduledItem = (item: LibraryScheduleItem) => {
     void toScheduledSlide(item).then(setPreviewSlide);
   };
 
-  const sendScheduledItemLive = (item: { id: string; kind: "scriptures" | "songs"; value: string }) => {
+  const sendScheduledItemLive = (item: LibraryScheduleItem) => {
     void toScheduledSlide(item).then(sendLiveSlide);
   };
 
@@ -925,6 +937,7 @@ function App() {
           previewReference={previewReference}
           onPreview={(card) => setPreviewSlide(toSlide(card))}
           onSendLive={sendLiveCard}
+          onSendEditedLive={sendEditedCardLive}
           onTogglePin={(card) => togglePinnedSuggestion(card.id)}
           onDismiss={dismissSuggestion}
           onClearAll={clearSuggestions}
@@ -962,6 +975,8 @@ function App() {
   const headerProps = {
     activeTab: workspaceTab,
     onTabChange: setWorkspaceTab,
+    overlayMode,
+    onOverlayModeChange: setOverlayMode,
     feedOverride,
     onFeedOverrideChange: handleFeedOverrideChange,
     uiTheme: theme,
@@ -973,6 +988,7 @@ function App() {
       sessionStart(config.unitId, config.unitName);
     },
     onSessionEnd: sessionEnd,
+    onOpenSummary: () => setIsSummaryOpen(true),
     onOpenSettings: () => setIsSettingsOpen(true),
   } as unknown as Parameters<typeof AppLayout>[0]["header"];
 
@@ -1006,8 +1022,10 @@ function App() {
       .then(async ({ selected: device }) => {
         setAudioDevice(device);
         setAudioChannel(1);
-        const capture = await startAudioCapture();
-        useAudioStore.getState().setCapturing(capture.capturing);
+        if (sessionStatus === "active") {
+          const capture = await startAudioCapture();
+          useAudioStore.getState().setCapturing(capture.capturing);
+        }
       })
       .catch((error: unknown) => {
         setAudioDevice(null);
@@ -1024,8 +1042,10 @@ function App() {
       .then(async ({ selected: device }) => {
         setAudioDevice(device);
         setAudioChannel(channel);
-        const capture = await startAudioCapture();
-        useAudioStore.getState().setCapturing(capture.capturing);
+        if (sessionStatus === "active") {
+          const capture = await startAudioCapture();
+          useAudioStore.getState().setCapturing(capture.capturing);
+        }
       })
       .catch((error: unknown) => {
         setAudioDevice(null);
@@ -1049,6 +1069,15 @@ function App() {
     defaultModelProvider && defaultModelProviderKeyed
       ? { id: defaultModelProvider, label: MODEL_PROVIDER_LABELS[defaultModelProvider] }
       : null;
+
+  if (showLaunchScreen) {
+    return (
+      <>
+        <style>{shellReset}</style>
+        <LaunchScreen onProceedToAuth={() => setShowLaunchScreen(false)} />
+      </>
+    );
+  }
 
   if (!authenticatedBranch) {
     return (
@@ -1114,6 +1143,11 @@ function App() {
               onActiveTabChange={setLibraryTab}
               onPreviewSlide={setPreviewSlide}
               onSendLive={sendLiveSlide}
+              onAddToSchedule={addLibraryScheduleItem}
+              onCreateCue={addCueToSchedule}
+              onNavigationHandlerChange={(handler) => {
+                libraryNavigationRef.current = handler;
+              }}
             />
           </Suspense>
         }
@@ -1129,6 +1163,7 @@ function App() {
             onRemoveFromSchedule={removeLibraryScheduleItem}
             onSchedulePreview={previewScheduledItem}
             onScheduleLive={sendScheduledItemLive}
+            onOpenCue={openCueFromSchedule}
           />
         }
       />
@@ -1154,6 +1189,48 @@ function App() {
           });
         }}
       />
+      {isSummaryOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Session summary"
+          style={{ position: "fixed", inset: 0, zIndex: 1200, padding: "48px 6vw 6vh", background: "color-mix(in srgb, var(--bg-base) 72%, transparent)", backdropFilter: "blur(8px)" }}
+        >
+          <div style={{ height: "100%", overflow: "hidden", background: "var(--bg-base)", boxShadow: "var(--shadow-lg)" }}>
+            <div style={{ height: "100%", position: "relative" }}>
+              <button
+                type="button"
+                onClick={() => setIsSummaryOpen(false)}
+                onMouseEnter={() => setIsSummaryCloseHovered(true)}
+                onMouseLeave={() => setIsSummaryCloseHovered(false)}
+                aria-label="Close session summary"
+                title="Close summary"
+                style={{ position: "absolute", top: 14, right: 16, zIndex: 2, border: "none", background: isSummaryCloseHovered ? "var(--color-primary)" : "var(--bg-elevated)", color: isSummaryCloseHovered ? "var(--fg-on-accent)" : "var(--fg-muted)", width: 28, height: 28, cursor: "pointer", fontSize: 18, lineHeight: 1, transition: "background-color 120ms ease, color 120ms ease" }}
+              >
+                ×
+              </button>
+              <Suspense fallback={<LazyPanelFallback />}>
+                <SessionSummaryPanel
+                  key={sessionId ?? sessionStatus}
+                  items={transcripts}
+                  cards={cards}
+                  sessionStatus={sessionStatus}
+                  sessionElapsedSeconds={sessionElapsed}
+                  sessionId={sessionId}
+                />
+              </Suspense>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {activeCue?.cueSlides && (
+        <CueProjectionModal
+          title={activeCue.value}
+          slides={activeCue.cueSlides}
+          onClose={() => setActiveCue(null)}
+          onSendLive={sendLiveSlide}
+        />
+      )}
     </>
   );
 }

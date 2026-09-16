@@ -29,7 +29,7 @@ interface ConfigStore extends SystemConfig {
 const initialState: SystemConfig = {
   unitId: "FSQ-PH-MGBUOGBA-01",
   unitName: "Foursquare Gospel Church, Mgbuogba",
-  bibleVersion: "",
+  bibleVersion: "ENGLISHNKJ",
   bibleVersions: [],
   theme: "dark",
   groqApiKey: null,
@@ -114,7 +114,17 @@ export const useConfigStore = create<ConfigStore>()(
     }),
     {
       name: "sermonsync-config-store",
+      version: 2,
       storage: createJSONStorage(getBrowserStorage),
+      migrate: (persistedState) => {
+        const state = persistedState as Partial<SystemConfig>;
+        const bibleVersions = (state.bibleVersions ?? []).filter((version) => version.abbreviation.toUpperCase() !== "KJV");
+        return {
+          ...state,
+          bibleVersion: state.bibleVersion?.toUpperCase() === "KJV" ? "ENGLISHNKJ" : state.bibleVersion || "ENGLISHNKJ",
+          bibleVersions,
+        };
+      },
       partialize: (state) => ({
         unitId: state.unitId,
         unitName: state.unitName,

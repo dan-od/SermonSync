@@ -7,7 +7,7 @@ interface PresentationTabProps {
   onPanelChange: <K extends keyof SettingsPanelState>(key: K, value: SettingsPanelState[K]) => void;
 }
 
-const FALLBACK_VERSIONS = ["KJV", "ASV", "WEB", "YOR", "HAU", "IGB"];
+const FALLBACK_VERSIONS = ["ENGLISHNKJ"];
 
 export function PresentationTab({ panelState, onPanelChange }: PresentationTabProps) {
   return (
@@ -36,31 +36,6 @@ export function PresentationTab({ panelState, onPanelChange }: PresentationTabPr
         />
       </SettingsCard>
 
-      <SettingsCard icon={<IconLayout />} title="Operator Hotkeys" subtitle="Fixed reference — not yet remappable">
-        <HotkeyRow action="Send verse to live" keys="Enter" />
-        <HotkeyRow action="Dismiss suggestion" keys="Esc" />
-        <HotkeyRow action="Black screen output" keys="B" />
-        <HotkeyRow action="Clear text overlay" keys="C" />
-      </SettingsCard>
-    </div>
-  );
-}
-
-function HotkeyRow({ action, keys }: { action: string; keys: string }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--text-xs)", color: "var(--fg-muted)", fontFamily: "var(--font-mono)" }}>
-      <span>{action}</span>
-      <span
-        style={{
-          background: "var(--bg-elevated)",
-          borderRadius: "var(--radius-sm)",
-          padding: "2px 8px",
-          fontSize: "10px",
-          color: "var(--fg-base)",
-        }}
-      >
-        {keys}
-      </span>
     </div>
   );
 }

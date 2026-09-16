@@ -84,6 +84,15 @@ export function IconLayout(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function IconKeyboard(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Base {...props}>
+      <rect x="3" y="6" width="18" height="12" rx="1.5" />
+      <path d="M7 10h.01M10 10h.01M13 10h.01M16 10h.01M7 14h6M16 14h1" />
+    </Base>
+  );
+}
+
 export function IconPalette(props: SVGProps<SVGSVGElement>) {
   return (
     <Base {...props}>
@@ -177,6 +186,17 @@ export function IconUpload(props: SVGProps<SVGSVGElement>) {
     <Base {...props}>
       <path d="M12 16V4M7 9l5-5 5 5" />
       <path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+    </Base>
+  );
+}
+
+export function IconTransition(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Base {...props}>
+      <path d="M17 3L21 7L17 11" />
+      <path d="M3 7H21" />
+      <path d="M7 21L3 17L7 13" />
+      <path d="M21 17H3" />
     </Base>
   );
 }

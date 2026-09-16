@@ -2,11 +2,14 @@ import { useEffect, useState } from "react";
 
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { MAC_TRAFFIC_LIGHT_INSET, USE_NATIVE_WINDOW_CONTROLS, isMacOS } from "../../lib/platform";
-import type { SessionStatus, UiTheme } from "../../types/state";
+import type { OverlayMode, SessionStatus, UiTheme } from "../../types/state";
+import { Dropdown } from "../Settings/primitives";
 
 export interface HeaderBarProps {
-  activeTab: "suggestions" | "bible" | "notes" | "database";
-  onTabChange: (tab: "suggestions" | "bible" | "notes" | "database") => void;
+  activeTab: "suggestions" | "bible" | "notes" | "database" | "summary";
+  onTabChange: (tab: "suggestions" | "bible" | "notes" | "database" | "summary") => void;
+  overlayMode: OverlayMode;
+  onOverlayModeChange: (mode: OverlayMode) => void;
   feedOverride: "live" | "logo" | "black" | "clear";
   onFeedOverrideChange: (mode: "live" | "logo" | "black" | "clear") => void;
   uiTheme: UiTheme;
@@ -15,6 +18,7 @@ export interface HeaderBarProps {
   sessionElapsedSeconds: number;
   onSessionStart: () => void;
   onSessionEnd: () => void;
+  onOpenSummary: () => void;
   onOpenSettings: () => void;
 }
 
@@ -27,6 +31,8 @@ function formatElapsed(seconds: number) {
 }
 
 export function HeaderBar({
+  overlayMode,
+  onOverlayModeChange,
   feedOverride,
   onFeedOverrideChange,
   uiTheme,
@@ -35,6 +41,7 @@ export function HeaderBar({
   sessionElapsedSeconds,
   onSessionStart,
   onSessionEnd,
+  onOpenSummary,
   onOpenSettings,
 }: HeaderBarProps) {
   const [isTauriWindow] = useState(() => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window);
@@ -171,7 +178,7 @@ export function HeaderBar({
       display: flex;
       align-items: center;
       background: var(--bg-elevated);
-      border: 1px solid var(--border-base);
+      border: none;
       border-radius: 4px;
       overflow: hidden;
       gap: 0;
@@ -302,8 +309,8 @@ export function HeaderBar({
         gap: "12px",
         padding: `0 12px 0 ${macInset ? MAC_TRAFFIC_LIGHT_INSET : 12}px`,
         height: "34px",
-        background: "var(--bg-base)",
-        borderBottom: "1px solid var(--border-base)",
+        background: "var(--bg-surface)",
+        borderBottom: "none",
         fontSize: "var(--text-xs)",
         userSelect: "none",
       }}
@@ -356,7 +363,7 @@ export function HeaderBar({
             padding: "4px 8px",
             borderRadius: "4px",
             background: "var(--bg-elevated)",
-            color: "var(--fg-on-accent)",
+            color: "var(--fg-base)",
             fontFamily: "var(--font-mono)",
             fontSize: "9px",
             fontWeight: 700,
@@ -368,6 +375,15 @@ export function HeaderBar({
         >
           {formatElapsed(sessionElapsedSeconds)}
         </span>
+        <button
+          type="button"
+          data-no-drag="true"
+          className="ss-header-session"
+          onClick={onOpenSummary}
+          title="Open session summary and history"
+        >
+          SUMMARY
+        </button>
       </div>
 
       <div
@@ -376,9 +392,59 @@ export function HeaderBar({
           display: "flex",
           alignItems: "center",
           justifyContent: "flex-end",
-          gap: "6px",
+          gap: "8px",
         }}
       >
+        <div
+          data-no-drag="true"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "0",
+          }}
+        >
+          <span
+            style={{
+              color: "var(--fg-subtle)",
+              fontFamily: "var(--font-mono)",
+              fontSize: "8px",
+              fontWeight: 700,
+              letterSpacing: "0.08em",
+            }}
+          >
+            SCREEN LAYOUT:
+          </span>
+          <Dropdown
+            value={overlayMode}
+            options={[
+              { value: "widescreen", label: "Widescreen Slide" },
+              { value: "lower-third", label: "Lower Third" },
+            ]}
+            onChange={(val) => onOverlayModeChange(val as OverlayMode)}
+            containerStyle={{ width: "auto" }}
+            triggerStyle={{
+              background: "var(--bg-elevated)",
+              border: "none",
+              borderRadius: "4px",
+              color: "var(--fg-base)",
+              fontSize: "9px",
+              fontFamily: "var(--font-mono)",
+              fontWeight: 600,
+              padding: "2px 6px",
+              height: "22px",
+              minWidth: "125px",
+            }}
+            optionStyle={{
+              fontFamily: "var(--font-mono)",
+              fontSize: "10px",
+              padding: "5px 8px",
+            }}
+          />
+        </div>
+
+        <span style={{ width: "1px", height: "14px", background: "var(--border-base)", flexShrink: 0, margin: "0 2px" }} />
+
         <div
           data-no-drag="true"
           style={{
