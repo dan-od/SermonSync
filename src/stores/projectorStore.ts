@@ -10,8 +10,54 @@ import type {
   OverlayMode,
   ProjectorSlide,
   ProjectorState,
+  TransitionsConfig,
   VerseTheme,
 } from "../types/state";
+
+export const DEFAULT_TRANSITIONS: TransitionsConfig = {
+  scriptures: {
+    effect: "fade",
+    durationMs: 350,
+    easing: "ease-in-out",
+    crossfade: true,
+    motionBlur: false,
+  },
+  songs: {
+    effect: "slide-left",
+    durationMs: 400,
+    easing: "ease",
+    crossfade: true,
+    motionBlur: true,
+  },
+  layout: {
+    effect: "dissolve",
+    durationMs: 400,
+    easing: "ease-in-out",
+    crossfade: true,
+    motionBlur: false,
+  },
+  logo: {
+    effect: "zoom-in",
+    durationMs: 500,
+    easing: "ease-out",
+    crossfade: true,
+    motionBlur: true,
+  },
+  black: {
+    effect: "fade",
+    durationMs: 250,
+    easing: "linear",
+    crossfade: false,
+    motionBlur: false,
+  },
+  clear: {
+    effect: "dissolve",
+    durationMs: 300,
+    easing: "ease-out",
+    crossfade: true,
+    motionBlur: false,
+  },
+};
 
 interface ProjectorStore extends ProjectorState {
   setPreview: (slide: ProjectorSlide | null) => void;
@@ -23,6 +69,7 @@ interface ProjectorStore extends ProjectorState {
   setOutputDisplay: (display: string | null) => void;
   toggleLive: (isLive?: boolean) => void;
   setNdiEnabled: (enabled: boolean) => void;
+  setTransitions: (transitions: TransitionsConfig) => void;
   reset: () => void;
 }
 
@@ -36,6 +83,7 @@ const initialState: ProjectorState = {
   feedOverride: "live",
   outputDisplay: null,
   ndiEnabled: false,
+  transitions: DEFAULT_TRANSITIONS,
 };
 
 export const useProjectorStore = create<ProjectorStore>((set) => ({
@@ -63,6 +111,8 @@ export const useProjectorStore = create<ProjectorStore>((set) => ({
 
   // TODO(Dee): start/stop the NDI sender in the Rust backend.
   setNdiEnabled: (ndiEnabled) => set({ ndiEnabled }),
+
+  setTransitions: (transitions) => set({ transitions }),
 
   reset: () => set({ ...initialState }),
 }));

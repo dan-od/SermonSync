@@ -1,16 +1,25 @@
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { matchScriptureReferenceIncremental } from "../lib/scriptureSearch";
+import { setActiveBibleVersion } from "../lib/sidecarClient";
 import { useConfigStore } from "../stores/configStore";
 import { useTemplateStore } from "../stores/templateStore";
+import { useSongStore, type Song, type SongSlide } from "../stores/songStore";
 import type { ProjectorSlide } from "../types/state";
+import { TemplateSceneOverlay } from "./ProjectorView";
+import { projectionScene } from "../lib/projectionScene";
+import { ResilientVideo } from "./ResilientVideo";
 import { TemplateEditorModal } from "./Templates/TemplateEditorModal";
+import { NewSongModal } from "./Songs/NewSongModal";
+import { SongStudioModal } from "./Songs/SongStudioModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type LibraryTab = "scriptures" | "songs" | "media" | "templates";
+export type LibraryNavigationHandler = (direction: -1 | 1) => void;
 /** "words" free-text searches verse content; "reference" only matches an explicit book/chapter/verse lookup, FreeShow-style. */
 export type ScriptureSearchMode = "words" | "reference";
 type TemplateFilter = "scriptures" | "songs";
@@ -20,7 +29,10 @@ interface SearchableLibraryTabProps {
   liveReference: string | null;
   onPreviewSlide: (slide: ProjectorSlide) => void;
   onSendLive: (slide: ProjectorSlide) => void;
+  onAddToSchedule?: (slide: ProjectorSlide) => void;
+  onCreateCue?: (cue: { title: string; slides: SongSlide[] }) => void;
   searchQuery: string;
+  onNavigationHandlerChange?: (handler: LibraryNavigationHandler | null) => void;
 }
 
 interface LocalBibleEntry {
@@ -74,6 +86,9 @@ interface LocalLibraryPanelProps {
   onActiveTabChange: (tab: LibraryTab) => void;
   onPreviewSlide: (slide: ProjectorSlide) => void;
   onSendLive: (slide: ProjectorSlide) => void;
+  onAddToSchedule?: (slide: ProjectorSlide) => void;
+  onCreateCue?: (cue: { title: string; slides: SongSlide[] }) => void;
+  onNavigationHandlerChange?: (handler: LibraryNavigationHandler | null) => void;
 }
 
 const BIBLE_API_BASE = "http://127.0.0.1:8000";
@@ -95,6 +110,7 @@ function tableHeaderCellStyle(isFirst?: boolean): React.CSSProperties {
     userSelect: "none",
   };
 }
+
 
 // ─── Scriptures tab ───────────────────────────────────────────────────────────
 
@@ -132,11 +148,13 @@ function ScripturePane({
   children,
   width,
   showDivider = true,
+  action,
 }: {
   title: string;
   children: React.ReactNode;
   width?: string;
   showDivider?: boolean;
+  action?: React.ReactNode;
 }) {
   return (
     <section
@@ -151,7 +169,10 @@ function ScripturePane({
         background: "var(--bg-base)",
       }}
     >
-      <div style={tableHeaderCellStyle()}>{title}</div>
+      <div style={{ ...tableHeaderCellStyle(), display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span>{title}</span>
+        {action}
+      </div>
       <div className="scripture-scroll-pane" style={{ flex: 1, minHeight: 0 }}>
         {children}
       </div>
@@ -167,8 +188,14 @@ function ScriptureCellButton({
   isDisabled,
   onClick,
   onDoubleClick,
+  onContextMenu,
+  onMouseEnter,
+  onMouseLeave,
   title,
   align = "left",
+  hovered = false,
+  trackHover = true,
+  songId,
 }: {
   children: React.ReactNode;
   isActive?: boolean;
@@ -177,27 +204,47 @@ function ScriptureCellButton({
   isDisabled?: boolean;
   onClick?: () => void;
   onDoubleClick?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
   title?: string;
   align?: "left" | "center";
+  hovered?: boolean;
+  trackHover?: boolean;
+  songId?: string;
 }) {
+  const [isHovered, setIsHovered] = useState(false);
   const activeColor = isLive ? "var(--color-success)" : isPreview ? "var(--color-primary)" : "var(--color-primary)";
+  const isHighlighted = isActive || isPreview || isLive;
+  const isRowHovered = hovered || (trackHover && isHovered);
 
   return (
     <button
       type="button"
+      data-song-id={songId}
       disabled={isDisabled}
       title={title}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
+      onContextMenu={onContextMenu}
+      onMouseEnter={() => {
+        setIsHovered(true);
+        onMouseEnter?.();
+      }}
+      onMouseLeave={() => {
+        setIsHovered(false);
+        onMouseLeave?.();
+      }}
       style={{
         display: "block",
         width: "100%",
+        boxSizing: "border-box",
         minHeight: 30,
         padding: "6px 12px",
-        background: isActive || isPreview || isLive ? "var(--color-primary-muted)" : "transparent",
+        background: isHighlighted || isRowHovered ? "var(--color-primary-muted)" : "transparent",
         border: "none",
         borderLeft: isActive || isPreview || isLive ? `2px solid ${activeColor}` : "2px solid transparent",
-        color: isDisabled ? "var(--fg-subtle)" : isActive || isPreview || isLive ? activeColor : "var(--fg-base)",
+        color: isDisabled ? "var(--fg-subtle)" : isHighlighted ? activeColor : "var(--fg-base)",
         cursor: isDisabled ? "not-allowed" : "pointer",
         fontSize: "var(--text-xs)",
         fontWeight: isActive || isPreview || isLive ? 600 : 400,
@@ -244,6 +291,7 @@ function ScripturesTab({
   onSendLive,
   searchQuery,
   searchMode,
+  onNavigationHandlerChange,
 }: SearchableLibraryTabProps & { searchMode: ScriptureSearchMode }) {
   const [localOpen, setLocalOpen] = useState(true);
   const [apiOpen, setApiOpen] = useState(false);
@@ -258,6 +306,8 @@ function ScripturesTab({
   const [selectedBook, setSelectedBook] = useState<string | null>(null);
   const [selectedChapter, setSelectedChapter] = useState<number | null>(null);
   const [selectedVerse, setSelectedVerse] = useState<number | null>(null);
+  const [selectedReference, setSelectedReference] = useState<string | null>(null);
+  const [scriptureClickAction, setScriptureClickAction] = useState<"preview" | "live">("live");
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -270,9 +320,10 @@ function ScripturesTab({
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
-      if (configuredVersions.length > 0) {
-        setVersions(configuredVersions);
-      }
+      // Always mirror the store, including when it goes empty (e.g. the last
+      // version was just deleted) — otherwise a deleted version lingers here
+      // until the panel remounts.
+      setVersions(configuredVersions);
     }, 0);
     return () => window.clearTimeout(timeoutId);
   }, [configuredVersions]);
@@ -295,6 +346,7 @@ function ScripturesTab({
     [localBibles, selectedBibleId],
   );
   const selectedVersion = selectedBible?.abbreviation ?? defaultBibleVersion;
+  const selectedDisplayName = selectedBible?.name || selectedBible?.abbreviation || defaultBibleVersion;
   const activeBookPayload = selectedBook && selectedBible?.available ? bookPayload : null;
   const selectedChapterData = activeBookPayload?.chapters.find((chapter) => chapter.number === selectedChapter) ?? null;
   const selectedVerseData = selectedChapterData?.verses.find((verse) => verse.verse === selectedVerse) ?? null;
@@ -457,14 +509,15 @@ function ScripturesTab({
 
       try {
         const versionData = await fetchBibleJson<{ versions: BibleVersionEntry[] }>("/api/bible/versions");
-        setVersions(versionData.versions);
-        setBibleVersions(versionData.versions);
+        const availableVersionData = versionData.versions.filter((version) => version.abbreviation.toUpperCase() !== "KJV");
+        setVersions(availableVersionData);
+        setBibleVersions(availableVersionData);
 
         const requestedVersion = preferredVersion?.trim().toLowerCase();
         const availableDefault =
-          versionData.versions.find((version) => version.abbreviation.toLowerCase() === requestedVersion && version.available) ??
-          versionData.versions.find((version) => version.abbreviation.toLowerCase() === defaultBibleVersion.toLowerCase() && version.available) ??
-          versionData.versions.find((version) => version.available);
+          availableVersionData.find((version) => version.abbreviation.toLowerCase() === requestedVersion && version.available) ??
+          availableVersionData.find((version) => version.abbreviation.toLowerCase() === defaultBibleVersion.toLowerCase() && version.available) ??
+          availableVersionData.find((version) => version.available);
 
         const nextVersion = availableDefault?.abbreviation ?? null;
         if (!nextVersion) {
@@ -549,6 +602,13 @@ function ScripturesTab({
     }, 0);
     return () => window.clearTimeout(timeoutId);
   }, [bookPayload, resolvedSearchReference, searchMode, selectedBook, selectedChapter, selectedVerse]);
+
+  useEffect(() => {
+    if (!selectedBible?.available || !selectedVersion) {
+      return;
+    }
+    void setActiveBibleVersion(selectedVersion).catch(() => undefined);
+  }, [selectedBible?.available, selectedVersion]);
 
   useEffect(() => {
     if (!selectedBook || !selectedBible?.available) {
@@ -661,12 +721,60 @@ function ScripturesTab({
   );
 
   const handleTextClick = (book: string, chapter: number, verse: BibleVerse) => {
-    onPreviewSlide(toProjectorSlide(book, chapter, verse, selectedVersion));
+    const slide = toProjectorSlide(book, chapter, verse, selectedDisplayName);
+    setSelectedReference(referenceLabel(slide));
+    if (scriptureClickAction === "preview") {
+      onPreviewSlide(slide);
+    } else {
+      onSendLive(slide);
+    }
   };
 
   const handleTextDoubleClick = (book: string, chapter: number, verse: BibleVerse) => {
-    onSendLive(toProjectorSlide(book, chapter, verse, selectedVersion));
+    if (scriptureClickAction === "live") {
+      return;
+    }
+    const slide = toProjectorSlide(book, chapter, verse, selectedDisplayName);
+    setSelectedReference(referenceLabel(slide));
+    onSendLive(slide);
   };
+
+  const handleTextKeyDown = (event: React.KeyboardEvent, book: string, chapter: number, verse: BibleVerse) => {
+    if (event.key !== "Enter") {
+      return;
+    }
+
+    event.preventDefault();
+    const slide = toProjectorSlide(book, chapter, verse, selectedDisplayName);
+    setSelectedReference(referenceLabel(slide));
+    if (scriptureClickAction === "preview") {
+      onPreviewSlide(slide);
+    } else {
+      onSendLive(slide);
+    }
+  };
+
+  const navigateVerses = useCallback(
+    (direction: -1 | 1) => {
+      const verses = selectedChapterData?.verses ?? [];
+      if (!activeBookPayload || !selectedChapter || verses.length === 0) return;
+
+      const currentIndex = verses.findIndex(
+        (verse) => referenceLabel(toProjectorSlide(activeBookPayload.book.name, selectedChapter, verse, selectedDisplayName)) === liveReference,
+      );
+      const nextIndex = (currentIndex + direction + verses.length) % verses.length;
+      const nextVerse = verses[nextIndex];
+      const nextSlide = toProjectorSlide(activeBookPayload.book.name, selectedChapter, nextVerse, selectedDisplayName);
+      onPreviewSlide(nextSlide);
+      onSendLive(nextSlide);
+    },
+    [activeBookPayload, liveReference, onPreviewSlide, onSendLive, selectedChapter, selectedChapterData?.verses, selectedDisplayName],
+  );
+
+  useEffect(() => {
+    onNavigationHandlerChange?.(navigateVerses);
+    return () => onNavigationHandlerChange?.(null);
+  }, [navigateVerses, onNavigationHandlerChange]);
 
   return (
     <div
@@ -834,14 +942,36 @@ function ScripturesTab({
           )}
         </ScripturePane>
 
-        <ScripturePane title={textSearchQuery ? "Search Results" : "Verse"}>
+        <ScripturePane
+          title={textSearchQuery ? "Search Results" : "Verse"}
+          action={
+            <div role="group" aria-label="Scripture click action" style={{ display: "flex", overflow: "hidden", borderRadius: "var(--radius-sm)" }}>
+              <button
+                type="button"
+                aria-pressed={scriptureClickAction === "preview"}
+                onClick={() => setScriptureClickAction("preview")}
+                style={slideActionButtonStyle(scriptureClickAction === "preview")}
+              >
+                Preview First
+              </button>
+              <button
+                type="button"
+                aria-pressed={scriptureClickAction === "live"}
+                onClick={() => setScriptureClickAction("live")}
+                style={slideActionButtonStyle(scriptureClickAction === "live")}
+              >
+                Live
+              </button>
+            </div>
+          }
+        >
           {displayedVerseRows.map(({ book, chapter, verse }) => {
-            const slide = toProjectorSlide(book, chapter, verse, selectedVersion);
+            const slide = toProjectorSlide(book, chapter, verse, selectedDisplayName);
             const label = referenceLabel(slide);
 
             return (
+              <div key={`${book}-${chapter}-${verse.verse}`} style={{ position: "relative" }}>
               <button
-                key={`${book}-${chapter}-${verse.verse}`}
                 type="button"
                 ref={(el) => {
                   if (el) {
@@ -852,18 +982,24 @@ function ScripturesTab({
                 }}
                 onClick={() => handleTextClick(book, chapter, verse)}
                 onDoubleClick={() => handleTextDoubleClick(book, chapter, verse)}
+                onFocus={() => setSelectedReference(label)}
+                onKeyDown={(event) => handleTextKeyDown(event, book, chapter, verse)}
                 style={{
                   width: "100%",
                   display: "grid",
                   gridTemplateColumns: textSearchQuery ? "96px minmax(0, 1fr)" : "56px minmax(0, 1fr)",
                   gap: "var(--space-2)",
                   padding: "8px 12px",
-                  background: liveReference === label || previewReference === label ? "var(--color-primary-muted)" : "transparent",
+                  background: selectedReference === label || (selectedReference === null && (liveReference === label || previewReference === label))
+                    ? "var(--color-primary-muted)"
+                    : "transparent",
                   border: "none",
                   borderLeft:
-                    liveReference === label
+                    selectedReference === label
+                      ? "2px solid var(--color-primary)"
+                      : selectedReference === null && liveReference === label
                       ? "2px solid var(--color-success)"
-                      : previewReference === label
+                      : selectedReference === null && previewReference === label
                         ? "2px solid var(--color-primary)"
                         : "2px solid transparent",
                   color: "var(--fg-base)",
@@ -878,7 +1014,11 @@ function ScripturesTab({
                     flexDirection: "column",
                     gap: "2px",
                     minWidth: 0,
-                    color: liveReference === label ? "var(--color-success)" : "var(--color-primary)",
+                    color: selectedReference === label
+                      ? "var(--color-primary)"
+                      : selectedReference === null && liveReference === label
+                        ? "var(--color-success)"
+                        : "var(--color-primary)",
                     fontFamily: "var(--font-mono)",
                     fontSize: "var(--text-xs)",
                     fontWeight: 700,
@@ -897,6 +1037,7 @@ function ScripturesTab({
                   {verse.text}
                 </span>
               </button>
+              </div>
             );
           })}
           {textSearchQuery && isSearchingWholeBible && <PaneEmpty>Searching the whole Bible...</PaneEmpty>}
@@ -1010,7 +1151,7 @@ function BibleItem({
   const isDisabled = !bible.available;
 
   return (
-    <div style={{ position: "relative" }}>
+    <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
       <button
         type="button"
         disabled={isDisabled}
@@ -1042,8 +1183,9 @@ function BibleItem({
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
           }}
+          title={bible.name || bible.abbreviation}
         >
-          {bible.name}
+          {bible.name || bible.abbreviation}
         </span>
         {!bible.available && (
           <span
@@ -1245,95 +1387,33 @@ function ModalChoiceButton({
 
 // ─── Songs tab ────────────────────────────────────────────────────────────────
 
-interface SongSlide {
-  label: string;
-  text: string;
-}
-
-interface Song {
-  id: string;
-  title: string;
-  artist: string;
-  slides: SongSlide[];
-}
-
-const MOCK_SONGS: Song[] = [
-  {
-    id: "song-1",
-    title: "Amazing Grace",
-    artist: "John Newton",
-    slides: [
-      { label: "Verse 1", text: "Amazing grace! How sweet the sound, That saved a wretch like me! I once was lost, but now am found, Was blind, but now I see." },
-      { label: "Verse 2", text: "'Twas grace that taught my heart to fear, And grace my fears relieved; How precious did that grace appear The hour I first believed!" },
-      { label: "Verse 3", text: "Through many dangers, toils and snares, I have already come; 'Tis grace hath brought me safe thus far, And grace will lead me home." },
-      { label: "Verse 4", text: "When we've been there ten thousand years, Bright shining as the sun, We've no less days to sing God's praise Than when we'd first begun." },
-    ],
-  },
-  {
-    id: "song-2",
-    title: "How Great Is Our God",
-    artist: "Chris Tomlin",
-    slides: [
-      { label: "Verse 1", text: "The splendor of the King, clothed in majesty; Let all the earth rejoice, all the earth rejoice. He wraps Himself in light, and darkness tries to hide, And trembles at His voice, and trembles at His voice." },
-      { label: "Chorus", text: "How great is our God! Sing with me: How great is our God! And all will see how great, how great is our God!" },
-      { label: "Verse 2", text: "And age to age He stands, and time is in His hands; Beginning and the End, Beginning and the End. The Godhead, three in one, Father, Spirit, Son, The Lion and the Lamb, the Lion and the Lamb." },
-      { label: "Bridge", text: "Name above all names, worthy of all praise. My heart will sing: How great is our God!" },
-    ],
-  },
-  {
-    id: "song-3",
-    title: "10,000 Reasons",
-    artist: "Matt Redman",
-    slides: [
-      { label: "Chorus", text: "Bless the Lord, O my soul, O my soul, Worship His holy name. Sing like never before, O my soul, I'll worship Your holy name." },
-      { label: "Verse 1", text: "The sun comes up, it's a new day dawning, It's time to sing Your song again. Whatever may pass, and whatever lies before me, Let me be singing when the evening comes." },
-      { label: "Verse 2", text: "You're rich in love, and You're slow to anger. Your name is great, and Your heart is kind. For all Your goodness, I will keep on singing, Ten thousand reasons for my heart to find." },
-      { label: "Verse 3", text: "And on that day when my strength is failing, The end draws near, and my time has come; Still my soul will sing Your praise unending, Ten thousand years and then forevermore." },
-    ],
-  },
-  {
-    id: "song-4",
-    title: "What A Beautiful Name",
-    artist: "Hillsong Worship",
-    slides: [
-      { label: "Verse 1", text: "You were at the Word at the beginning, One with God the Lord Most High. Your hidden glory in creation, Now revealed in You our Christ." },
-      { label: "Chorus 1", text: "What a beautiful Name it is, What a beautiful Name it is, The Name of Jesus Christ my King. What a beautiful Name it is, nothing compares to this. What a beautiful Name it is, the Name of Jesus." },
-      { label: "Verse 2", text: "You didn't want heaven without us, So Jesus, You brought heaven down. My sin was great, Your love was greater; What could separate us now?" },
-      { label: "Chorus 2", text: "What a wonderful Name it is, What a wonderful Name it is, The Name of Jesus Christ my King. What a wonderful Name it is, nothing compares to this. What a wonderful Name it is, the Name of Jesus." },
-    ],
-  },
-  {
-    id: "song-5",
-    title: "In Christ Alone",
-    artist: "Keith Getty",
-    slides: [
-      { label: "Verse 1", text: "In Christ alone my hope is found, He is my light, my strength, my song; This Cornerstone, this solid Ground, Firm through the fiercest drought and storm." },
-      { label: "Verse 2", text: "What heights of love, what depths of peace, When fears are stilled, when strivings cease! My Comforter, my All in All, Here in the love of Christ I stand." },
-      { label: "Verse 3", text: "In Christ alone! Who took on flesh, Fullness of God in helpless babe. This gift of love and righteousness, Scorned by the ones He came to save." },
-      { label: "Verse 4", text: "Till on that cross as Jesus died, The wrath of God was satisfied; For every sin on Him was laid; Here in the death of Christ I live." },
-    ],
-  },
-];
-
 function SlideThumbnail({
   slide,
   label,
   isPreview,
   isLive,
+  isSelected,
   onClick,
   onDoubleClick,
+  onFocus,
+  onKeyDown,
 }: {
   slide: ProjectorSlide;
   label: string;
   isPreview: boolean;
   isLive: boolean;
+  isSelected: boolean;
   onClick: () => void;
   onDoubleClick: () => void;
+  onFocus: () => void;
+  onKeyDown: (event: React.KeyboardEvent) => void;
 }) {
-  const activeColor = isLive
-    ? "var(--color-success)"
-    : isPreview
+  const activeColor = isSelected
     ? "var(--color-primary)"
+    : isLive
+      ? "var(--color-success)"
+      : isPreview
+        ? "var(--color-primary)"
     : "transparent";
 
   return (
@@ -1341,6 +1421,8 @@ function SlideThumbnail({
       type="button"
       onClick={onClick}
       onDoubleClick={onDoubleClick}
+      onFocus={onFocus}
+      onKeyDown={onKeyDown}
       style={{
         display: "flex",
         flexDirection: "column",
@@ -1350,7 +1432,7 @@ function SlideThumbnail({
         aspectRatio: "16 / 9",
         padding: "var(--space-2)",
         background: "linear-gradient(180deg, rgba(16, 20, 44, 0.95), rgba(8, 9, 18, 1))",
-        border: isLive || isPreview
+        border: isSelected
           ? `2px solid ${activeColor}`
           : "1px solid var(--border-base)",
         borderRadius: "var(--radius-md)",
@@ -1362,13 +1444,13 @@ function SlideThumbnail({
         transition: "border-color 120ms ease, transform 120ms ease",
       }}
       onMouseEnter={(e) => {
-        if (!isPreview && !isLive) {
+        if (!isSelected) {
           e.currentTarget.style.borderColor = "var(--fg-subtle)";
         }
         e.currentTarget.style.transform = "scale(1.02)";
       }}
       onMouseLeave={(e) => {
-        if (!isPreview && !isLive) {
+        if (!isSelected) {
           e.currentTarget.style.borderColor = "var(--border-base)";
         }
         e.currentTarget.style.transform = "scale(1)";
@@ -1380,7 +1462,7 @@ function SlideThumbnail({
           fontFamily: "var(--font-mono)",
           fontSize: "9px",
           fontWeight: 700,
-          color: isLive ? "var(--color-success)" : isPreview ? "var(--color-primary)" : "var(--fg-muted)",
+          color: isSelected ? "var(--color-primary)" : isLive ? "var(--color-success)" : isPreview ? "var(--color-primary)" : "#aeb8d0",
           letterSpacing: "0.05em",
           textTransform: "uppercase",
         }}
@@ -1391,7 +1473,7 @@ function SlideThumbnail({
       {/* Slide text preview */}
       <span
         style={{
-          color: "var(--fg-base)",
+          color: "#f4f7ff",
           fontSize: "10px",
           lineHeight: "1.3",
           fontFamily: "Georgia, serif",
@@ -1408,7 +1490,7 @@ function SlideThumbnail({
       </span>
 
       {/* Small indicator at the bottom right */}
-      {isLive && (
+      {isLive && isSelected && (
         <span
           style={{
             position: "absolute",
@@ -1425,25 +1507,60 @@ function SlideThumbnail({
   );
 }
 
-function SongsTab({ previewReference, liveReference, onPreviewSlide, onSendLive, searchQuery }: SearchableLibraryTabProps) {
+interface SongContextMenuState {
+  song: Song;
+  x: number;
+  y: number;
+}
+
+function SongsTab({ previewReference, liveReference, onPreviewSlide, onSendLive, onCreateCue, searchQuery, onNavigationHandlerChange }: SearchableLibraryTabProps) {
+  const songs = useSongStore((s) => s.songs);
+  const initializeSongs = useSongStore((s) => s.initialize);
+  const deleteSong = useSongStore((s) => s.deleteSong);
+  const renameSong = useSongStore((s) => s.renameSong);
+
   const [selectedSongId, setSelectedSongId] = useState<string | null>(null);
-  const [selectedArtist, setSelectedArtist] = useState<string | null>(null);
-  const [slidesWidth, setSlidesWidth] = useState<number>(450);
+  const [hoveredSongId, setHoveredSongId] = useState<string | null>(null);
+  const [selectedSlideReference, setSelectedSlideReference] = useState<string | null>(null);
+  const [slidesWidth, setSlidesWidth] = useState<number>(738);
+  const [slideClickAction, setSlideClickAction] = useState<"preview" | "live">("live");
+
+  const [isNewSongModalOpen, setIsNewSongModalOpen] = useState(false);
+  const [studioSong, setStudioSong] = useState<Song | null>(null);
+  const [isStudioOpen, setIsStudioOpen] = useState(false);
+  const [contextMenu, setContextMenu] = useState<SongContextMenuState | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Song | null>(null);
+  const [renameTarget, setRenameTarget] = useState<Song | null>(null);
+  const [renameTitle, setRenameTitle] = useState("");
+  const [renameArtist, setRenameArtist] = useState("");
 
   const gridRef = useRef<HTMLDivElement>(null);
   const isDraggingRef = useRef(false);
   const dragStartRef = useRef({ mouseX: 0, slidesWidth: 0 });
 
+  useEffect(() => {
+    initializeSongs();
+  }, [initializeSongs]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handlePointerDown = () => setContextMenu(null);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setContextMenu(null);
+    };
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [contextMenu]);
+
   const normalizedSearchQuery = normalizeSearch(searchQuery);
 
-  // Filter songs based on selected artist and the shared library search.
+  // Keep the library in a predictable title order while applying the shared search.
   const filteredSongs = useMemo(() => {
-    return MOCK_SONGS.filter((song) => {
-      const matchesArtist = selectedArtist ? song.artist === selectedArtist : true;
-      if (!matchesArtist) {
-        return false;
-      }
-
+    return songs.filter((song) => {
       if (!normalizedSearchQuery) {
         return true;
       }
@@ -1451,31 +1568,17 @@ function SongsTab({ previewReference, liveReference, onPreviewSlide, onSendLive,
       return `${song.title} ${song.artist} ${song.slides.map((slide) => `${slide.label} ${slide.text}`).join(" ")}`
         .toLowerCase()
         .includes(normalizedSearchQuery);
-    });
-  }, [normalizedSearchQuery, selectedArtist]);
+    }).sort((first, second) => first.title.localeCompare(second.title, undefined, { sensitivity: "base" }));
+  }, [normalizedSearchQuery, songs]);
 
   // Find currently selected song
   const selectedSong = useMemo(() => {
-    return MOCK_SONGS.find((song) => song.id === selectedSongId) ?? null;
-  }, [selectedSongId]);
-
-  // Unique list of artists for Column 2
-  const artists = useMemo(() => {
-    const source = normalizedSearchQuery ? filteredSongs : MOCK_SONGS;
-    const unique = new Set(source.map((song) => song.artist));
-    return Array.from(unique);
-  }, [filteredSongs, normalizedSearchQuery]);
+    return songs.find((song) => song.id === selectedSongId) ?? null;
+  }, [selectedSongId, songs]);
 
   const handleSongSelect = (songId: string) => {
     setSelectedSongId(songId);
-  };
-
-  const handleArtistSelect = (artist: string) => {
-    if (selectedArtist === artist) {
-      setSelectedArtist(null);
-    } else {
-      setSelectedArtist(artist);
-    }
+    setSelectedSlideReference(null);
   };
 
   const handleDividerMouseDown = (e: React.MouseEvent) => {
@@ -1523,12 +1626,54 @@ function SongsTab({ previewReference, liveReference, onPreviewSlide, onSendLive,
         verse: index + 1,
       },
       text: slide.text,
-      version: "Lyrics",
+      version: "SONG",
     };
+  };
+
+  const navigateSongSlides = useCallback(
+    (direction: -1 | 1) => {
+      const song = selectedSong ?? filteredSongs[0];
+      if (!song || song.slides.length === 0) return;
+
+      if (!selectedSong) setSelectedSongId(song.id);
+      const currentReference = selectedSlideReference ?? liveReference;
+      const currentIndex = song.slides.findIndex((_, index) => `${song.title} 1:${index + 1}` === currentReference);
+      const nextIndex = (currentIndex + direction + song.slides.length) % song.slides.length;
+      const nextSlide = toSongProjectorSlide(song, song.slides[nextIndex], nextIndex);
+      setSelectedSlideReference(`${song.title} 1:${nextIndex + 1}`);
+      onPreviewSlide(nextSlide);
+      onSendLive(nextSlide);
+    },
+    [filteredSongs, liveReference, onPreviewSlide, onSendLive, selectedSlideReference, selectedSong],
+  );
+
+  useEffect(() => {
+    onNavigationHandlerChange?.(navigateSongSlides);
+    return () => onNavigationHandlerChange?.(null);
+  }, [navigateSongSlides, onNavigationHandlerChange]);
+
+  const handleSongKeyDownCapture = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.defaultPrevented || event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+      return;
+    }
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    navigateSongSlides(event.key === "ArrowLeft" ? -1 : 1);
+  };
+
+  const confirmRename = () => {
+    if (!renameTarget || !renameTitle.trim()) return;
+    renameSong(renameTarget.id, renameTitle.trim(), renameArtist.trim());
+    setRenameTarget(null);
   };
 
   return (
     <div
+      onKeyDownCapture={handleSongKeyDownCapture}
       style={{
         display: "flex",
         height: "100%",
@@ -1543,61 +1688,150 @@ function SongsTab({ previewReference, liveReference, onPreviewSlide, onSendLive,
           minWidth: 0,
           height: "100%",
           display: "grid",
-          gridTemplateColumns: `minmax(0, 1.2fr) max-content auto ${slidesWidth}px`,
+          gridTemplateColumns: `minmax(0, 1.2fr) auto ${slidesWidth}px`,
           gridTemplateRows: "100%",
           overflow: "hidden",
           borderRight: "1px solid var(--border-base)",
         }}
       >
-        {/* Column 1: Song Title */}
-        <ScripturePane title="Song Title" showDivider={false}>
+        {/* Column 1: Song (title + artiste in a single row, single highlight) */}
+        <div style={{ position: "relative", minWidth: 0, minHeight: 0, overflow: "hidden", background: "var(--bg-base)" }}>
+          <ScripturePane
+            title="Song Title"
+            showDivider={false}
+            action={
+              <span style={{ flex: "0 0 140px", textAlign: "right", color: "var(--fg-muted)" }}>Artiste</span>
+            }
+          >
           {filteredSongs.map((song) => {
             const isSongActive = selectedSongId === song.id;
+            const isSongHighlighted = isSongActive || hoveredSongId === song.id;
             return (
-              <ScriptureCellButton
+              <button
                 key={song.id}
-                isActive={isSongActive}
-                onClick={() => handleSongSelect(song.id)}
+                type="button"
+                onMouseEnter={() => setHoveredSongId(song.id)}
+                onMouseLeave={() => setHoveredSongId((current) => (current === song.id ? null : current))}
+                onClick={() => {
+                  handleSongSelect(song.id);
+                  const firstSlide = song.slides[0];
+                  if (firstSlide) onPreviewSlide(toSongProjectorSlide(song, firstSlide, 0));
+                }}
+                onDoubleClick={() => {
+                  const firstSlide = song.slides[0];
+                  if (!firstSlide) return;
+                  handleSongSelect(song.id);
+                  onSendLive(toSongProjectorSlide(song, firstSlide, 0));
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setContextMenu({ song, x: e.clientX, y: e.clientY });
+                }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px",
+                  width: "100%",
+                  boxSizing: "border-box",
+                  minHeight: 30,
+                  padding: "6px 12px",
+                  background: isSongHighlighted ? "var(--color-primary-muted)" : "transparent",
+                  border: "none",
+                  borderLeft: isSongActive ? "2px solid var(--color-primary)" : "2px solid transparent",
+                  cursor: "pointer",
+                  textAlign: "left",
+                  outline: "none",
+                }}
               >
-                {song.title}
-              </ScriptureCellButton>
+                <span
+                  style={{
+                    flex: "1 1 auto",
+                    minWidth: 0,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    fontSize: "var(--text-xs)",
+                    fontWeight: isSongActive ? 600 : 400,
+                    color: isSongHighlighted ? "var(--color-primary)" : "var(--fg-base)",
+                  }}
+                >
+                  {song.title}
+                </span>
+                <span
+                  title={song.artist}
+                  style={{
+                    flex: "0 0 140px",
+                    minWidth: 0,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    textAlign: "right",
+                    fontSize: "var(--text-xs)",
+                    fontWeight: isSongActive ? 600 : 400,
+                    color: isSongHighlighted ? "var(--color-primary)" : "var(--fg-muted)",
+                  }}
+                >
+                  {song.artist}
+                </span>
+              </button>
             );
           })}
-          {filteredSongs.length === 0 && <PaneEmpty>{normalizedSearchQuery ? "No matching songs" : "No songs available"}</PaneEmpty>}
-        </ScripturePane>
-
-        {/* Column 2: Artiste */}
-        <ScripturePane title="Artiste" showDivider={false}>
-          {selectedArtist && (
-            <ScriptureCellButton
-              isActive={false}
-              onClick={() => setSelectedArtist(null)}
+          {filteredSongs.length === 0 && (
+            <div
+              style={{
+                padding: "24px 16px",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "12px",
+                textAlign: "center",
+              }}
             >
-              <span style={{ fontStyle: "italic", opacity: 0.8 }}>Clear Filter (All Artistes)</span>
-            </ScriptureCellButton>
+              <span style={{ fontSize: "12px", color: "var(--fg-subtle)", fontStyle: "italic" }}>
+                {normalizedSearchQuery ? "No matching songs" : "No songs in library"}
+              </span>
+              {!normalizedSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setIsNewSongModalOpen(true)}
+                  aria-label="Add song"
+                  title="Add song"
+                  style={addSongButtonStyle}
+                >
+                  +
+                </button>
+              )}
+            </div>
           )}
-          {artists.map((artist) => {
-            const isArtistActive = selectedArtist === artist || (!selectedArtist && selectedSong?.artist === artist);
-            return (
-              <ScriptureCellButton
-                key={artist}
-                isActive={isArtistActive}
-                onClick={() => handleArtistSelect(artist)}
-              >
-                {artist}
-              </ScriptureCellButton>
-            );
-          })}
-        </ScripturePane>
+          </ScripturePane>
 
-        {/* Column 3: Draggable Demarcation Line */}
+          {/* Add Song button, pinned to bottom-right of the song column */}
+          <button
+            type="button"
+            onClick={() => setIsNewSongModalOpen(true)}
+            aria-label="Add song"
+            title="Add song"
+            style={{
+              position: "absolute",
+              right: "16px",
+              bottom: "16px",
+              zIndex: 5,
+              ...addSongButtonStyle,
+            }}
+          >
+            +
+          </button>
+        </div>
+
+        {/* Column 2: Draggable Demarcation Line */}
         <div
           onMouseDown={handleDividerMouseDown}
           role="separator"
           aria-orientation="vertical"
           aria-label="Resize column"
           style={{
-            gridColumn: "3",
+            gridColumn: "2",
             width: "7px",
             height: "100%",
             cursor: "col-resize",
@@ -1620,8 +1854,30 @@ function SongsTab({ previewReference, liveReference, onPreviewSlide, onSendLive,
           />
         </div>
 
-        {/* Column 4: Slides (2x2 Grid) */}
-        <ScripturePane title="Slides (2x2 Grid)">
+        {/* Column 3: Slides (4 per row) */}
+        <ScripturePane
+          title="Slides"
+          action={
+            <div role="group" aria-label="Slide click action" style={{ display: "flex", overflow: "hidden", borderRadius: "var(--radius-sm)" }}>
+              <button
+                type="button"
+                aria-pressed={slideClickAction === "preview"}
+                onClick={() => setSlideClickAction("preview")}
+                style={slideActionButtonStyle(slideClickAction === "preview")}
+              >
+                Preview First
+              </button>
+              <button
+                type="button"
+                aria-pressed={slideClickAction === "live"}
+                onClick={() => setSlideClickAction("live")}
+                style={slideActionButtonStyle(slideClickAction === "live")}
+              >
+                Live
+              </button>
+            </div>
+          }
+        >
           {selectedSong ? (
             <div style={{ padding: "var(--space-3)" }}>
               <div
@@ -1636,11 +1892,11 @@ function SongsTab({ previewReference, liveReference, onPreviewSlide, onSendLive,
                   boxShadow: "var(--shadow-md)",
                 }}
               >
-                {/* 2x2 Grid */}
+                {/* 4-up Grid */}
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
                     gap: "var(--space-3)",
                   }}
                 >
@@ -1649,17 +1905,41 @@ function SongsTab({ previewReference, liveReference, onPreviewSlide, onSendLive,
                     const label = `${projSlide.reference.book} ${projSlide.reference.chapter}:${projSlide.reference.verse}`;
                     const isPreview = previewReference === label;
                     const isLive = liveReference === label;
+                    const isSelected = selectedSlideReference === label || (selectedSlideReference === null && (isPreview || isLive));
+                    const selectSlide = () => setSelectedSlideReference(label);
+                    const sendSlideLive = () => {
+                      selectSlide();
+                      onSendLive(projSlide);
+                    };
+                    const previewSlide = () => {
+                      selectSlide();
+                      onPreviewSlide(projSlide);
+                    };
 
                     return (
+                      <div key={index} style={{ position: "relative" }}>
                       <SlideThumbnail
                         key={index}
                         slide={projSlide}
                         label={slide.label}
                         isPreview={isPreview}
                         isLive={isLive}
-                        onClick={() => onPreviewSlide(projSlide)}
-                        onDoubleClick={() => onSendLive(projSlide)}
+                        isSelected={isSelected}
+                        onClick={slideClickAction === "preview" ? previewSlide : sendSlideLive}
+                        onDoubleClick={slideClickAction === "preview" ? sendSlideLive : () => {}}
+                        onFocus={selectSlide}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            if (slideClickAction === "preview") {
+                              previewSlide();
+                            } else {
+                              sendSlideLive();
+                            }
+                          }
+                        }}
                       />
+                      </div>
                     );
                   })}
                 </div>
@@ -1670,14 +1950,626 @@ function SongsTab({ previewReference, liveReference, onPreviewSlide, onSendLive,
           )}
         </ScripturePane>
       </div>
+
+      {/* Right-click Context Menu */}
+      {contextMenu ? (
+        <div
+          role="menu"
+          onPointerDown={(event) => event.stopPropagation()}
+          style={{
+            position: "fixed",
+            left: Math.min(contextMenu.x, window.innerWidth - 180),
+            top: Math.min(contextMenu.y, window.innerHeight - 140),
+            width: "160px",
+            background: "var(--bg-surface)",
+            border: "none",
+            borderRadius: "8px",
+            boxShadow: "var(--shadow-lg)",
+            padding: "4px",
+            zIndex: 1000,
+          }}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              const s = contextMenu.song;
+              setContextMenu(null);
+              setStudioSong(s);
+              setIsStudioOpen(true);
+            }}
+            onMouseEnter={(event) => {
+              event.currentTarget.style.background = "var(--color-primary-muted)";
+            }}
+            onMouseLeave={(event) => {
+              event.currentTarget.style.background = "transparent";
+            }}
+            style={songContextMenuItemStyle}
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              const s = contextMenu.song;
+              setContextMenu(null);
+              setRenameTarget(s);
+              setRenameTitle(s.title);
+              setRenameArtist(s.artist);
+            }}
+            onMouseEnter={(event) => {
+              event.currentTarget.style.background = "var(--color-primary-muted)";
+            }}
+            onMouseLeave={(event) => {
+              event.currentTarget.style.background = "transparent";
+            }}
+            style={songContextMenuItemStyle}
+          >
+            Rename
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              const s = contextMenu.song;
+              setContextMenu(null);
+              setDeleteTarget(s);
+            }}
+            onMouseEnter={(event) => {
+              event.currentTarget.style.background = "var(--color-error-muted)";
+            }}
+            onMouseLeave={(event) => {
+              event.currentTarget.style.background = "transparent";
+            }}
+            style={{ ...songContextMenuItemStyle, color: "var(--color-error)" }}
+          >
+            Delete
+          </button>
+        </div>
+      ) : null}
+
+      {deleteTarget ? createPortal(
+        <div
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setDeleteTarget(null);
+          }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1200,
+            display: "grid",
+            placeItems: "center",
+            padding: 20,
+            background: "var(--overlay-backdrop)",
+          }}
+        >
+          <section
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-song-title"
+            aria-describedby="delete-song-description"
+            style={{
+              width: "min(400px, 94vw)",
+              padding: 20,
+              border: "1px solid var(--border-base)",
+              borderRadius: "var(--radius-lg)",
+              background: "var(--bg-surface)",
+              boxShadow: "var(--shadow-lg)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 14,
+            }}
+          >
+            <h2 id="delete-song-title" style={{ margin: 0, color: "var(--fg-base)", fontSize: 16, fontWeight: 700 }}>
+              Delete song?
+            </h2>
+            <p id="delete-song-description" style={{ margin: 0, color: "var(--fg-muted)", fontSize: 12, lineHeight: 1.5 }}>
+              Delete &quot;{deleteTarget.title}&quot;? This cannot be undone.
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button
+                type="button"
+                autoFocus
+                onClick={() => setDeleteTarget(null)}
+                style={renameSecondaryButton}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  deleteSong(deleteTarget.id);
+                  if (selectedSongId === deleteTarget.id) setSelectedSongId(null);
+                  setDeleteTarget(null);
+                }}
+                style={deleteSongButton}
+              >
+                Delete
+              </button>
+            </div>
+          </section>
+        </div>,
+        document.body,
+      ) : null}
+
+      {/* Rename Dialog */}
+      {renameTarget ? createPortal(
+        <div
+          role="presentation"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setRenameTarget(null);
+          }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1200,
+            display: "grid",
+            placeItems: "center",
+            padding: 20,
+            background: "rgba(8, 9, 14, 0.6)",
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rename-song-title"
+            style={{
+              width: "min(400px, 94vw)",
+              padding: 20,
+              border: "1px solid var(--border-base)",
+              borderRadius: 10,
+              background: "var(--bg-surface)",
+              boxShadow: "var(--shadow-lg)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 14,
+            }}
+          >
+            <h2 id="rename-song-title" style={{ margin: 0, color: "var(--fg-base)", fontSize: 16, fontWeight: 700 }}>
+              Rename song
+            </h2>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, color: "var(--fg-muted)", fontSize: 12 }}>
+                Title
+                <input
+                  autoFocus
+                  value={renameTitle}
+                  onChange={(e) => setRenameTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") confirmRename();
+                    if (e.key === "Escape") setRenameTarget(null);
+                  }}
+                  style={{
+                    padding: "8px 10px",
+                    border: "1px solid var(--border-base)",
+                    borderRadius: 6,
+                    background: "var(--bg-base)",
+                    color: "var(--fg-base)",
+                    fontSize: 13,
+                    outline: "none",
+                  }}
+                />
+              </label>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, color: "var(--fg-muted)", fontSize: 12 }}>
+                Artist
+                <input
+                  value={renameArtist}
+                  onChange={(e) => setRenameArtist(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") confirmRename();
+                    if (e.key === "Escape") setRenameTarget(null);
+                  }}
+                  style={{
+                    padding: "8px 10px",
+                    border: "1px solid var(--border-base)",
+                    borderRadius: 6,
+                    background: "var(--bg-base)",
+                    color: "var(--fg-base)",
+                    fontSize: 13,
+                    outline: "none",
+                  }}
+                />
+              </label>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => setRenameTarget(null)}
+                style={{
+                  padding: "8px 14px",
+                  border: "none",
+                  borderRadius: 6,
+                  background: "var(--bg-elevated)",
+                  color: "var(--fg-base)",
+                  cursor: "pointer",
+                  fontSize: 12,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmRename}
+                disabled={!renameTitle.trim()}
+                style={{
+                  padding: "8px 14px",
+                  border: "none",
+                  borderRadius: 6,
+                  background: "var(--color-primary)",
+                  color: "var(--fg-on-accent)",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  opacity: renameTitle.trim() ? 1 : 0.5,
+                }}
+              >
+                Save
+              </button>
+            </div>
+          </section>
+        </div>,
+        document.body
+      ) : null}
+
+      {/* New Song Modal */}
+      <NewSongModal
+        open={isNewSongModalOpen}
+        onClose={() => setIsNewSongModalOpen(false)}
+        onSongCreated={(newSong) => {
+          setIsNewSongModalOpen(false);
+          setStudioSong(newSong);
+          setIsStudioOpen(true);
+        }}
+      />
+
+      {/* Song Studio Modal */}
+      <SongStudioModal
+        open={isStudioOpen}
+        song={studioSong}
+        onCreateCue={onCreateCue}
+        onClose={() => {
+          setIsStudioOpen(false);
+          setStudioSong(null);
+        }}
+      />
     </div>
   );
 }
 
+const addSongButtonStyle: React.CSSProperties = {
+  width: 28,
+  height: 28,
+  display: "grid",
+  placeItems: "center",
+  padding: 0,
+  border: "1px solid var(--border-base)",
+  borderRadius: "var(--radius-sm)",
+  background: "var(--bg-elevated)",
+  color: "var(--fg-base)",
+  fontFamily: "var(--font-mono)",
+  fontSize: 18,
+  lineHeight: 1,
+  cursor: "pointer",
+  boxShadow: "var(--shadow-sm)",
+  transition: "background 120ms ease, border-color 120ms ease, color 120ms ease",
+};
+
+function slideActionButtonStyle(isActive: boolean): React.CSSProperties {
+  return {
+    border: "none",
+    outline: "none",
+    padding: "3px 7px",
+    background: isActive ? "var(--color-primary)" : "var(--bg-elevated)",
+    color: isActive ? "var(--fg-on-accent)" : "var(--fg-muted)",
+    cursor: "pointer",
+    fontFamily: "var(--font-mono)",
+    fontSize: 9,
+    fontWeight: 700,
+    whiteSpace: "nowrap",
+  };
+}
+
+const songContextMenuItemStyle: React.CSSProperties = {
+  width: "100%",
+  border: "none",
+  background: "transparent",
+  borderRadius: "6px",
+  padding: "8px 10px",
+  textAlign: "left",
+  color: "var(--fg-base)",
+  fontFamily: "var(--font-sans)",
+  fontSize: "12px",
+  cursor: "pointer",
+};
+
+const deleteSongButton: React.CSSProperties = {
+  padding: "8px 13px",
+  border: "none",
+  borderRadius: 6,
+  background: "var(--color-error)",
+  color: "var(--fg-on-accent)",
+  cursor: "pointer",
+  fontSize: 12,
+};
+
 // ─── Media tab ────────────────────────────────────────────────────────────────
 
+type MediaCategory = "audio" | "images" | "videos";
+
+interface MediaItem {
+  id: string;
+  name: string;
+  path: string;
+  category: MediaCategory;
+}
+
+const MEDIA_STORAGE_KEY = "sermonsync-media-library-v1";
+
+const MEDIA_CATEGORIES: { id: MediaCategory; label: string; extensions: string[] }[] = [
+  { id: "audio", label: "Audio", extensions: ["mp3", "wav", "ogg", "flac", "m4a", "aac"] },
+  { id: "images", label: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"] },
+  { id: "videos", label: "Videos", extensions: ["mp4", "mov", "webm", "mkv", "avi"] },
+];
+
+function fileNameFromPath(path: string): string {
+  return path.split(/[\\/]/).pop() ?? path;
+}
+
+function loadMediaItems(): MediaItem[] {
+  try {
+    const raw = window.localStorage.getItem(MEDIA_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as MediaItem[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveMediaItems(items: MediaItem[]): void {
+  try {
+    window.localStorage.setItem(MEDIA_STORAGE_KEY, JSON.stringify(items));
+  } catch {
+    // Storage unavailable (e.g. private browsing) — gallery just won't persist.
+  }
+}
+
 function MediaTab() {
-  return <LibraryEmptyState title="No media available" />;
+  const [items, setItems] = useState<MediaItem[]>(() => loadMediaItems());
+  const [selectedCategory, setSelectedCategory] = useState<MediaCategory>("images");
+  const [importError, setImportError] = useState<string | null>(null);
+
+  useEffect(() => {
+    saveMediaItems(items);
+  }, [items]);
+
+  const countsByCategory = useMemo(() => {
+    const counts: Record<MediaCategory, number> = { audio: 0, images: 0, videos: 0 };
+    for (const item of items) {
+      counts[item.category] += 1;
+    }
+    return counts;
+  }, [items]);
+
+  const visibleItems = useMemo(
+    () => items.filter((item) => item.category === selectedCategory),
+    [items, selectedCategory],
+  );
+
+  const handleImport = useCallback(async (category: MediaCategory) => {
+    setImportError(null);
+    try {
+      if (!isTauriRuntime()) {
+        throw new Error("Open SermonSync in Tauri to import local media files.");
+      }
+
+      const definition = MEDIA_CATEGORIES.find((entry) => entry.id === category);
+      const selected = await open({
+        multiple: true,
+        filters: definition ? [{ name: definition.label, extensions: definition.extensions }] : undefined,
+      });
+
+      if (!selected) return;
+      const paths = Array.isArray(selected) ? selected : [selected];
+
+      setItems((current) => {
+        const existingPaths = new Set(current.map((item) => item.path));
+        const additions: MediaItem[] = paths
+          .filter((path) => !existingPaths.has(path))
+          .map((path) => ({
+            id: `${category}-${path}`,
+            name: fileNameFromPath(path),
+            path,
+            category,
+          }));
+        return [...current, ...additions];
+      });
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : "Failed to import media.");
+    }
+  }, []);
+
+  const handleRemove = useCallback((id: string) => {
+    setItems((current) => current.filter((item) => item.id !== id));
+  }, []);
+
+  const activeCategoryLabel = MEDIA_CATEGORIES.find((entry) => entry.id === selectedCategory)?.label ?? "";
+
+  return (
+    <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
+      {/* Column 1: media types */}
+      <ScripturePane title="Media Type" width="220px">
+        {MEDIA_CATEGORIES.map((category) => {
+          const isActive = selectedCategory === category.id;
+          return (
+            <div
+              key={category.id}
+              style={{ display: "flex", alignItems: "stretch" }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <ScriptureCellButton isActive={isActive} onClick={() => setSelectedCategory(category.id)}>
+                  {category.label}
+                  <span style={{ marginLeft: 6, color: "var(--fg-subtle)", fontWeight: 400 }}>
+                    ({countsByCategory[category.id]})
+                  </span>
+                </ScriptureCellButton>
+              </div>
+              <button
+                type="button"
+                title={`Import ${category.label.toLowerCase()}`}
+                onClick={() => void handleImport(category.id)}
+                style={{
+                  flexShrink: 0,
+                  width: 30,
+                  border: "none",
+                  borderLeft: "1px solid var(--border-base)",
+                  background: "transparent",
+                  color: "var(--fg-muted)",
+                  cursor: "pointer",
+                  fontSize: "var(--text-xs)",
+                  fontWeight: 700,
+                }}
+              >
+                +
+              </button>
+            </div>
+          );
+        })}
+        {importError && (
+          <div style={{ padding: "10px 12px", color: "var(--color-error)", fontSize: "var(--text-xs)" }}>
+            {importError}
+          </div>
+        )}
+      </ScripturePane>
+
+      {/* Column 2: gallery of thumbnails for the selected category */}
+      <section
+        style={{
+          flex: 1,
+          minWidth: 0,
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+          background: "var(--bg-base)",
+        }}
+      >
+        <div style={tableHeaderCellStyle()}>{activeCategoryLabel} Gallery</div>
+        <div className="scripture-scroll-pane" style={{ flex: 1, minHeight: 0, padding: "var(--space-3)" }}>
+          {visibleItems.length === 0 ? (
+            <PaneEmpty>No {activeCategoryLabel.toLowerCase()} imported yet — use the + button to add some.</PaneEmpty>
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+                gap: "var(--space-3)",
+              }}
+            >
+              {visibleItems.map((item) => (
+                <MediaThumbnail key={item.id} item={item} onRemove={() => handleRemove(item.id)} />
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function MediaThumbnail({ item, onRemove }: { item: MediaItem; onRemove: () => void }) {
+  const [isHovered, setIsHovered] = useState(false);
+  const src = useMemo(() => {
+    try {
+      return convertFileSrc(item.path);
+    } catch {
+      return "";
+    }
+  }, [item.path]);
+
+  return (
+    <div
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      style={{
+        position: "relative",
+        display: "flex",
+        flexDirection: "column",
+        gap: 4,
+      }}
+    >
+      <div
+        style={{
+          position: "relative",
+          width: "100%",
+          aspectRatio: "1 / 1",
+          borderRadius: "var(--radius-md)",
+          border: "1px solid var(--border-base)",
+          background: "var(--bg-elevated)",
+          overflow: "hidden",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        {item.category === "images" && (
+          <img src={src} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        )}
+        {item.category === "videos" && (
+          <ResilientVideo
+            media={{ type: "video", src, fit: "cover", loop: false, x: 0, y: 0, width: 100, height: 100, opacity: 1, muted: true, speed: 1 }}
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            autoPlay={false}
+            playing={false}
+            loop={false}
+            preload="metadata"
+          />
+        )}
+        {item.category === "audio" && (
+          <span style={{ fontSize: 28, color: "var(--fg-muted)" }} aria-hidden>
+            ♪
+          </span>
+        )}
+        {isHovered && (
+          <button
+            type="button"
+            title="Remove"
+            onClick={onRemove}
+            style={{
+              position: "absolute",
+              top: 4,
+              right: 4,
+              width: 20,
+              height: 20,
+              borderRadius: "50%",
+              border: "none",
+              background: "rgba(0, 0, 0, 0.6)",
+              color: "#fff",
+              cursor: "pointer",
+              fontSize: 12,
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        )}
+      </div>
+      <span
+        title={item.name}
+        style={{
+          fontSize: "var(--text-xs)",
+          color: "var(--fg-muted)",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {item.name}
+      </span>
+    </div>
+  );
 }
 
 // ─── Templates tab ────────────────────────────────────────────────────────────
@@ -1710,9 +2602,68 @@ function updatedLabel(timestamp: number) {
   return `Updated ${Math.floor(hrs / 24)}d ago`;
 }
 
+const TemplateCard = memo(function TemplateCard({
+  template,
+  isDefault,
+  onOpenEdit,
+  onContextMenu,
+}: {
+  template: ReturnType<typeof useTemplateStore.getState>["templates"][number];
+  isDefault: boolean;
+  onOpenEdit: (templateId: string) => void;
+  onContextMenu: (event: React.MouseEvent, templateId: string) => void;
+}) {
+  const scene = useMemo(() => projectionScene(template), [template]);
+  const previewSlide: ProjectorSlide = {
+    reference: { book: "John", chapter: 3, verse: 16 },
+    text: template.category === "songs"
+      ? "Amazing grace, how sweet the sound"
+      : "For God so loved the world, that he gave his one and only Son.",
+    version: template.category === "songs" ? "SONG" : "NIV",
+  };
+
+  return (
+    <article
+      onDoubleClick={() => onOpenEdit(template.id)}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        onContextMenu(event, template.id);
+      }}
+      style={{
+        border: isDefault ? "1px solid var(--color-primary)" : "1px solid var(--border-base)",
+        borderRadius: "10px",
+        background: "var(--bg-elevated)",
+        overflow: "hidden",
+        boxShadow: "var(--shadow-sm)",
+        cursor: "pointer",
+      }}
+    >
+      <div style={{ aspectRatio: "16 / 9", position: "relative", overflow: "hidden", cursor: "pointer" }}>
+        <TemplateSceneOverlay scene={scene} slide={previewSlide} category={template.category} fitToContainer isThumbnail />
+      </div>
+
+      <div style={{ padding: "10px", display: "grid", gap: "4px" }}>
+        <span title={template.name} style={{ color: "var(--fg-base)", fontSize: "13px", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{template.name}</span>
+        <div style={{ display: "flex", minHeight: "16px", alignItems: "center" }}>
+          <span style={{ color: "var(--fg-base)", fontSize: "10px", fontFamily: "var(--font-mono)", fontWeight: 700, letterSpacing: "0.05em", whiteSpace: "nowrap" }}>
+            {isDefault ? "DEFAULT · " : ""}{template.layout === "lower-third" ? "LOWER THIRD" : "WIDESCREEN"}
+          </span>
+        </div>
+        <span style={{ color: "var(--fg-muted)", fontSize: "11px", lineHeight: 1.35 }}>{template.subtitle}</span>
+        <span style={{ color: "var(--fg-subtle)", fontSize: "10px", fontFamily: "var(--font-mono)", letterSpacing: "0.05em" }}>
+          {updatedLabel(template.updatedAt)}
+        </span>
+      </div>
+    </article>
+  );
+});
+
 function TemplatesTab() {
   const [activeFilter, setActiveFilter] = useState<TemplateFilter>("scriptures");
   const [menuState, setMenuState] = useState<TemplateMenuState | null>(null);
+  const [renameTemplateId, setRenameTemplateId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [deleteTemplateId, setDeleteTemplateId] = useState<string | null>(null);
   const [editorMode, setEditorMode] = useState<"create" | "edit">("create");
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorTemplateId, setEditorTemplateId] = useState<string | null>(null);
@@ -1773,12 +2724,16 @@ function TemplatesTab() {
     setMenuState(null);
   };
 
-  const openEditModal = (templateId: string) => {
+  const openEditModal = useCallback((templateId: string) => {
     setEditorMode("edit");
     setEditorTemplateId(templateId);
     setEditorOpen(true);
     setMenuState(null);
-  };
+  }, []);
+
+  const handleTemplateContextMenu = useCallback((event: React.MouseEvent, templateId: string) => {
+    setMenuState({ templateId, x: event.clientX, y: event.clientY });
+  }, []);
 
   const executeMenuAction = async (action: TemplateMenuAction) => {
     if (!menuTemplate) {
@@ -1792,22 +2747,20 @@ function TemplatesTab() {
     }
 
     if (action === "makeDefault") {
-      await makeDefault(menuTemplate.category, menuTemplate.id);
+      await makeDefault(menuTemplate.category, menuTemplate.layout, menuTemplate.id);
       setMenuState(null);
       return;
     }
 
     if (action === "rename") {
-      const renamed = window.prompt(`Rename ${menuTemplate.name}`, menuTemplate.name);
-      if (renamed !== null && renamed.trim().length > 0) {
-        await renameTemplate(menuTemplate.id, renamed.trim());
-      }
+      setRenameTemplateId(menuTemplate.id);
+      setRenameValue(menuTemplate.name);
       setMenuState(null);
       return;
     }
 
     if (action === "delete") {
-      await deleteTemplate(menuTemplate.id);
+      setDeleteTemplateId(menuTemplate.id);
       setMenuState(null);
       return;
     }
@@ -1820,6 +2773,28 @@ function TemplatesTab() {
 
   const menuLeft = menuState ? Math.min(menuState.x, window.innerWidth - 236) : 0;
   const menuTop = menuState ? Math.min(menuState.y, window.innerHeight - 250) : 0;
+  const renameTargetTemplate = renameTemplateId ? templates.find((template) => template.id === renameTemplateId) : null;
+  const deleteTargetTemplate = deleteTemplateId ? templates.find((template) => template.id === deleteTemplateId) : null;
+
+  const closeRename = () => {
+    setRenameTemplateId(null);
+    setRenameValue("");
+  };
+
+  const confirmRename = async () => {
+    const name = renameValue.trim();
+    if (!renameTemplateId || !name) return;
+    await renameTemplate(renameTemplateId, name);
+    closeRename();
+  };
+
+  const closeDeleteConfirmation = () => setDeleteTemplateId(null);
+
+  const confirmDelete = async () => {
+    if (!deleteTemplateId) return;
+    await deleteTemplate(deleteTemplateId);
+    closeDeleteConfirmation();
+  };
 
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden", position: "relative" }}>
@@ -1887,88 +2862,15 @@ function TemplatesTab() {
               gap: "12px",
             }}
           >
-            {visibleTemplates.map((template) => {
-              const isDefault = defaults[template.category] === template.id;
-              const previewLines = template.lines;
-
-              return (
-                <article
-                  key={template.id}
-                  onDoubleClick={() => openEditModal(template.id)}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    setMenuState({ templateId: template.id, x: event.clientX, y: event.clientY });
-                  }}
-                  style={{
-                    border: isDefault ? "1px solid var(--color-primary)" : "1px solid var(--border-base)",
-                    borderRadius: "10px",
-                    background: "var(--bg-elevated)",
-                    overflow: "hidden",
-                    boxShadow: "var(--shadow-sm)",
-                  }}
-                >
-                  <div
-                    style={{
-                      aspectRatio: "16 / 9",
-                      background: `linear-gradient(155deg, ${template.backgroundStart}, ${template.backgroundEnd})`,
-                      padding: "10px",
-                      display: "flex",
-                      flexDirection: "column",
-                      justifyContent: "space-between",
-                      boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${template.accent} 55%, transparent)`,
-                    }}
-                  >
-                    <span style={{ color: "rgba(255,255,255,0.9)", fontFamily: "var(--font-mono)", fontSize: "10px", letterSpacing: "0.06em" }}>
-                      {template.label}
-                    </span>
-                    <div style={{ display: "grid", gap: "4px" }}>
-                      {previewLines.map((line) => (
-                        <span
-                          key={line}
-                          style={{
-                            color: "rgba(255,255,255,0.94)",
-                            fontFamily: "var(--font-sans)",
-                            fontSize: `${Math.round(11 * template.fontScale)}px`,
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            textAlign: template.textAlign,
-                          }}
-                        >
-                          {line}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div style={{ padding: "10px", display: "grid", gap: "4px" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
-                      <span style={{ color: "var(--fg-base)", fontSize: "13px", fontWeight: 700 }}>{template.name}</span>
-                      {isDefault ? (
-                        <span
-                          style={{
-                            padding: "2px 6px",
-                            borderRadius: "999px",
-                            background: "var(--color-primary-muted)",
-                            color: "var(--color-primary)",
-                            fontSize: "10px",
-                            fontFamily: "var(--font-mono)",
-                            fontWeight: 700,
-                            letterSpacing: "0.05em",
-                          }}
-                        >
-                          DEFAULT
-                        </span>
-                      ) : null}
-                    </div>
-                    <span style={{ color: "var(--fg-muted)", fontSize: "11px", lineHeight: 1.35 }}>{template.subtitle}</span>
-                    <span style={{ color: "var(--fg-subtle)", fontSize: "10px", fontFamily: "var(--font-mono)", letterSpacing: "0.05em" }}>
-                      {updatedLabel(template.updatedAt)}
-                    </span>
-                  </div>
-                </article>
-              );
-            })}
+            {visibleTemplates.map((template) => (
+              <TemplateCard
+                key={template.id}
+                template={template}
+                isDefault={defaults[template.category][template.layout] === template.id}
+                onOpenEdit={openEditModal}
+                onContextMenu={handleTemplateContextMenu}
+              />
+            ))}
           </div>
         )}
       </div>
@@ -1983,7 +2885,7 @@ function TemplatesTab() {
             top: `${menuTop}px`,
             width: "220px",
             background: "var(--bg-surface)",
-            border: "1px solid var(--border-base)",
+            border: "none",
             borderRadius: "8px",
             boxShadow: "var(--shadow-lg)",
             padding: "4px",
@@ -1992,7 +2894,7 @@ function TemplatesTab() {
         >
           {([
             { id: "edit", label: "Edit" },
-            { id: "makeDefault", label: `Make default ${templateCategoryLabel(menuTemplate.category)} theme` },
+            { id: "makeDefault", label: `Make default ${templateCategoryLabel(menuTemplate.category)} ${menuTemplate.layout === "lower-third" ? "Lower Third" : "Widescreen"} theme` },
             { id: "rename", label: "Rename" },
             { id: "delete", label: "Delete" },
             { id: "duplicate", label: "Duplicate" },
@@ -2002,6 +2904,10 @@ function TemplatesTab() {
               type="button"
               role="menuitem"
               onClick={() => executeMenuAction(entry.id)}
+              onMouseEnter={(event) => {
+                event.currentTarget.style.background = entry.id === "delete" ? "rgba(255, 75, 96, 0.14)" : "var(--color-primary-muted)";
+              }}
+              onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}
               style={{
                 width: "100%",
                 border: "none",
@@ -2021,6 +2927,59 @@ function TemplatesTab() {
         </div>
       ) : null}
 
+      {renameTargetTemplate ? createPortal(
+        <div
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeRename();
+          }}
+          style={{ position: "fixed", inset: 0, zIndex: 100, display: "grid", placeItems: "center", padding: 20, background: "rgba(8, 9, 14, 0.58)" }}
+        >
+          <section role="dialog" aria-modal="true" aria-labelledby="rename-template-title" style={{ width: "min(420px, 100%)", boxSizing: "border-box", padding: 18, border: "1px solid var(--border-base)", borderRadius: 10, background: "var(--bg-surface)", boxShadow: "var(--shadow-lg)" }}>
+            <h2 id="rename-template-title" style={{ margin: 0, color: "var(--fg-base)", fontSize: 16 }}>Rename template</h2>
+            <p style={{ margin: "6px 0 14px", color: "var(--fg-muted)", fontSize: 12 }}>{renameTargetTemplate.name}</p>
+            <input
+              autoFocus
+              value={renameValue}
+              onChange={(event) => setRenameValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void confirmRename();
+                if (event.key === "Escape") closeRename();
+              }}
+              aria-label="Template name"
+              style={{ width: "100%", boxSizing: "border-box", padding: "10px 11px", border: "none", borderRadius: 6, outline: "2px solid var(--color-primary)", background: "var(--bg-base)", color: "var(--fg-base)", fontSize: 13 }}
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+              <button type="button" onClick={closeRename} style={renameSecondaryButton}>Cancel</button>
+              <button type="button" onClick={() => void confirmRename()} disabled={!renameValue.trim()} style={{ ...renamePrimaryButton, opacity: renameValue.trim() ? 1 : 0.5 }}>Rename</button>
+            </div>
+          </section>
+        </div>,
+        globalThis.document.body,
+      ) : null}
+
+      {deleteTargetTemplate ? createPortal(
+        <div
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeDeleteConfirmation();
+          }}
+          style={{ position: "fixed", inset: 0, zIndex: 100, display: "grid", placeItems: "center", padding: 20, background: "rgba(8, 9, 14, 0.58)" }}
+        >
+          <section role="dialog" aria-modal="true" aria-labelledby="delete-template-title" aria-describedby="delete-template-description" style={{ width: "min(420px, 100%)", boxSizing: "border-box", padding: 18, border: "1px solid var(--border-base)", borderRadius: 10, background: "var(--bg-surface)", boxShadow: "var(--shadow-lg)" }}>
+            <h2 id="delete-template-title" style={{ margin: 0, color: "var(--fg-base)", fontSize: 16 }}>Delete template?</h2>
+            <p id="delete-template-description" style={{ margin: "6px 0 14px", color: "var(--fg-muted)", fontSize: 12, lineHeight: 1.5 }}>
+              Delete &ldquo;{deleteTargetTemplate.name}&rdquo;? This cannot be undone.
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button type="button" autoFocus onClick={closeDeleteConfirmation} style={renameSecondaryButton}>Cancel</button>
+              <button type="button" onClick={() => void confirmDelete()} style={deleteTemplateButton}>Delete</button>
+            </div>
+          </section>
+        </div>,
+        globalThis.document.body,
+      ) : null}
+
       <TemplateEditorModal
         open={editorOpen}
         mode={editorMode}
@@ -2031,6 +2990,10 @@ function TemplatesTab() {
     </div>
   );
 }
+
+const renameSecondaryButton = { padding: "8px 13px", border: "none", borderRadius: 6, background: "var(--bg-elevated)", color: "var(--fg-base)", cursor: "pointer", fontSize: 12 };
+const renamePrimaryButton = { padding: "8px 13px", border: "none", borderRadius: 6, background: "var(--color-primary)", color: "var(--fg-on-accent)", cursor: "pointer", fontSize: 12 };
+const deleteTemplateButton = { padding: "8px 13px", border: "none", borderRadius: 6, background: "var(--color-error)", color: "white", cursor: "pointer", fontSize: 12 };
 
 function LibraryEmptyState({ title }: { title: string }) {
   return (
@@ -2064,23 +3027,26 @@ function FilterRow({
   isActive: boolean;
   onClick: () => void;
 }) {
+  const [hovered, setHovered] = useState(false);
   return (
     <button
       type="button"
       onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         display: "flex",
         alignItems: "center",
         width: "100%",
         padding: "8px 12px",
-        background: isActive ? "var(--color-primary-muted)" : "transparent",
+        background: isActive ? "var(--color-primary-muted)" : hovered ? "var(--bg-elevated)" : "transparent",
         border: "none",
         borderLeft: isActive ? "2px solid var(--color-primary)" : "2px solid transparent",
         borderBottom: "1px solid var(--border-base)",
         cursor: "pointer",
         fontSize: "var(--text-xs)",
         fontFamily: "var(--font-sans)",
-        color: isActive ? "var(--color-primary)" : "var(--fg-muted)",
+        color: isActive ? "var(--color-primary)" : hovered ? "var(--fg-base)" : "var(--fg-muted)",
         fontWeight: isActive ? 600 : 400,
         textAlign: "left",
         transition: "background 120ms ease, color 120ms ease",
@@ -2111,8 +3077,21 @@ export function LocalLibraryPanel({
   liveReference,
   onPreviewSlide,
   onSendLive,
+  onAddToSchedule,
+  onCreateCue,
+  onNavigationHandlerChange,
 }: LocalLibraryPanelProps) {
-  const searchableProps = { previewReference, liveReference, onPreviewSlide, onSendLive, searchQuery };
+  const searchableProps = { previewReference, liveReference, onPreviewSlide, onSendLive, onAddToSchedule, onCreateCue, searchQuery, onNavigationHandlerChange };
+  const previousTabRef = useRef(activeTab);
+  const [tabDirection, setTabDirection] = useState<"forward" | "backward">("forward");
+  const [templatesMounted, setTemplatesMounted] = useState(activeTab === "templates");
+
+  useLayoutEffect(() => {
+    const previousIndex = TABS.findIndex((tab) => tab.id === previousTabRef.current);
+    const activeIndex = TABS.findIndex((tab) => tab.id === activeTab);
+    setTabDirection(activeIndex >= previousIndex ? "forward" : "backward");
+    previousTabRef.current = activeTab;
+  }, [activeTab]);
 
   return (
     <div
@@ -2141,7 +3120,12 @@ export function LocalLibraryPanel({
             <button
               key={tab.id}
               type="button"
-              onClick={() => onActiveTabChange(tab.id)}
+              onClick={() => {
+                if (tab.id === "templates") {
+                  setTemplatesMounted(true);
+                }
+                onActiveTabChange(tab.id);
+              }}
               style={{
                 padding: "7px 14px",
                 background: "transparent",
@@ -2197,10 +3181,18 @@ export function LocalLibraryPanel({
 
       {/* Tab content */}
       <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
-        {activeTab === "scriptures" && <ScripturesTab {...searchableProps} searchMode={searchMode} />}
-        {activeTab === "songs" && <SongsTab {...searchableProps} />}
-        {activeTab === "media" && <MediaTab />}
-        {activeTab === "templates" && <TemplatesTab />}
+        {templatesMounted || activeTab === "templates" ? (
+          <div style={{ display: activeTab === "templates" ? "block" : "none", height: "100%" }}>
+            <TemplatesTab />
+          </div>
+        ) : null}
+        {activeTab !== "templates" ? (
+          <div key={activeTab} className={`library-tab-slide library-tab-slide--${tabDirection}`}>
+            {activeTab === "scriptures" && <ScripturesTab {...searchableProps} searchMode={searchMode} />}
+            {activeTab === "songs" && <SongsTab {...searchableProps} />}
+            {activeTab === "media" && <MediaTab />}
+          </div>
+        ) : null}
       </div>
     </div>
   );

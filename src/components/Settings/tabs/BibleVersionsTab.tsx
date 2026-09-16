@@ -137,9 +137,9 @@ export function BibleVersionsTab() {
       <SectionIntro title="Bible Version Management" description="Rename, delete, import, and choose the default Bible version used by the local library." />
       {error ? <InfoBanner tone="warning">{error}</InfoBanner> : null}
       <SettingsCard icon={<IconBook />} title="Default Display Version">
-        <SelectRow label="Default Bible Version" value={bibleVersion} options={availableVersions.map((version) => ({ value: version.abbreviation, label: `${version.abbreviation} — ${version.name}` }))} onChange={setBibleVersion} hint="The selected version is used by the local scripture library." />
+        <SelectRow label="Default Bible Version" value={bibleVersion} options={availableVersions.map((version) => ({ value: version.abbreviation, label: `${version.name || version.abbreviation} (${version.abbreviation})` }))} onChange={setBibleVersion} hint="The selected version is used by the local scripture library and live matching." />
       </SettingsCard>
-      <SettingsCard icon={<IconBook />} title="Downloaded and Imported Versions" subtitle="Manage the Bible text currently stored in the app">
+      <SettingsCard icon={<IconBook />} title="Downloaded and Imported Versions" subtitle="Manage scripture versions and rename the label projected on screens ({scripture_version})">
         <VersionList versions={availableVersions} busyVersion={busyVersion} onRename={openRename} onDelete={setDeleteTarget} />
       </SettingsCard>
       <SettingsCard icon={<IconBook />} title="Download Additional Versions" subtitle="Via getBible.net API — 100+ versions, 50+ languages">
@@ -185,18 +185,26 @@ function VersionList({ versions, onDownload, downloadingId, busyVersion, onRenam
       {versions.map((version) => {
         const busy = busyVersion === version.abbreviation;
         return (
-          <div key={version.abbreviation} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", padding: "8px 12px", background: "var(--bg-base)", borderRadius: "var(--radius-md)" }}>
-            <div style={{ minWidth: 0 }}>
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--fg-base)" }}>{version.abbreviation}</span>
-              <span style={{ fontSize: "10px", color: "var(--fg-subtle)", marginLeft: "8px" }}>{version.name}</span>
-              <span style={{ display: "block", fontSize: "10px", color: "var(--fg-subtle)", marginTop: "3px" }}>{version.verse_count.toLocaleString()} verses</span>
+          <div key={version.abbreviation} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", padding: "10px 12px", background: "var(--bg-base)", borderRadius: "var(--radius-md)" }}>
+            <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: "2px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ fontSize: "var(--text-sm)", fontWeight: 700, color: "var(--fg-base)" }}>
+                  {version.name || version.abbreviation}
+                </span>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--fg-subtle)", background: "var(--bg-elevated)", padding: "2px 6px", borderRadius: "var(--radius-sm)" }}>
+                  {version.abbreviation}
+                </span>
+              </div>
+              <span style={{ fontSize: "11px", color: "var(--fg-subtle)" }}>
+                {version.verse_count.toLocaleString()} verses • Projected as <code>{version.name || version.abbreviation}</code>
+              </span>
             </div>
             {onDownload ? (
               <button type="button" disabled={downloadingId === version.abbreviation} onClick={() => onDownload(version.abbreviation)} style={actionButtonStyle}>{downloadingId === version.abbreviation ? "Downloading..." : "Download"}</button>
             ) : (
-              <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
+              <div style={{ display: "flex", gap: "6px", flexShrink: 0, alignItems: "center" }}>
                 <StatusPill tone="success" label="Installed" />
-                <button type="button" disabled={busy} onClick={() => onRename?.(version)} style={actionButtonStyle}>Rename</button>
+                <button type="button" disabled={busy} onClick={() => onRename?.(version)} style={actionButtonStyle} title="Rename Scripture Version Name">Rename</button>
                 <button type="button" disabled={busy} onClick={() => onDelete?.(version)} style={{ ...actionButtonStyle, color: "var(--color-error)" }}>Delete</button>
               </div>
             )}
@@ -216,7 +224,7 @@ function VersionNameModal({ abbreviation, value, busy, onChange, onCancel, onCon
   onConfirm: () => void;
 }) {
   return (
-    <ModalShell title={`Rename ${abbreviation}`} onClose={onCancel}>
+    <ModalShell title={`Rename Scripture Version (${abbreviation})`} onClose={onCancel}>
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -224,13 +232,17 @@ function VersionNameModal({ abbreviation, value, busy, onChange, onCancel, onCon
         }}
         style={{ display: "grid", gap: "16px" }}
       >
+        <p style={{ margin: 0, fontSize: "12px", color: "var(--fg-muted)", lineHeight: 1.4 }}>
+          Set the scripture version name referenced as <code>&#123;scripture_version&#125;</code> and displayed on live slides.
+        </p>
         <label style={{ display: "grid", gap: "7px", color: "var(--fg-muted)", fontSize: "11px" }}>
-          Version name
+          Scripture version name (e.g. NKJV, NIV, ESV)
           <input
             autoFocus
             value={value}
             onChange={(event) => onChange(event.target.value)}
-            aria-label="Bible version name"
+            aria-label="Scripture version name"
+            placeholder="e.g. NKJV"
             style={{
               width: "100%",
               boxSizing: "border-box",
@@ -245,7 +257,7 @@ function VersionNameModal({ abbreviation, value, busy, onChange, onCancel, onCon
             }}
           />
         </label>
-        <ModalActions busy={busy} confirmLabel="Save name" onCancel={onCancel} />
+        <ModalActions busy={busy} confirmLabel="Save Name" onCancel={onCancel} />
       </form>
     </ModalShell>
   );

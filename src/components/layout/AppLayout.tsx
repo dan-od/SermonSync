@@ -24,7 +24,6 @@ const DEFAULT_CENTER_WIDTH = 340;
 const MIN_LIBRARY_WIDTH = 1130;
 const MIN_LIBRARY_SEARCH_WIDTH = 320;
 const DIVIDER_WIDTH = 6;
-const PANEL_BOTTOM_INSET = 24;
 const LIBRARY_RESIZE_HANDLE_WIDTH = 10;
 
 function PanelFrame({
@@ -43,8 +42,8 @@ function PanelFrame({
         minWidth: 0,
         minHeight: 0,
         height: "100%",
-        padding: "var(--space-2)",
-        background: "var(--bg-base)",
+        padding: 0,
+        background: "transparent",
         overflow: "hidden",
         ...style,
       }}
@@ -255,22 +254,27 @@ export function AppLayout({ header, status, leftPanel, centerPanel, rightPanel, 
   }, []);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100dvh" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100dvh", background: "var(--bg-base)" }}>
       <HeaderBar {...header} />
       <div
         ref={containerRef}
-        style={{ flex: "1.35 1 0", minHeight: 0, padding: "var(--space-2)", boxSizing: "border-box", overflow: "hidden" }}
+        style={{
+          flex: "1.35 1 0",
+          minHeight: 0,
+          padding: "var(--space-2)",
+          boxSizing: "border-box",
+          overflow: "hidden",
+          background: "var(--bg-base)",
+        }}
       >
-        <div style={{ display: "flex", height: "100%" }}>
+        <div style={{ display: "flex", height: "100%", gap: "var(--space-2)" }}>
           <PanelFrame
-            contentStyle={{ height: `calc(100% - ${PANEL_BOTTOM_INSET}px)` }}
             style={{ width: `${widths.left}px`, flexShrink: 0 }}
           >
             {leftPanel}
           </PanelFrame>
           <Divider onDrag={handleLeftDrag} onReset={resetLeft} />
           <PanelFrame
-            contentStyle={{ height: `calc(100% - ${PANEL_BOTTOM_INSET}px)` }}
             style={{ width: `${widths.center}px`, flexShrink: 0 }}
           >
             {centerPanel}
@@ -279,7 +283,7 @@ export function AppLayout({ header, status, leftPanel, centerPanel, rightPanel, 
           <PanelFrame style={{ flex: 1, minWidth: 0 }}>{rightPanel}</PanelFrame>
         </div>
       </div>
-      <div ref={libraryRowRef} style={{ flex: "1 1 0", minHeight: 0, display: "flex" }}>
+      <div ref={libraryRowRef} style={{ flex: "1 1 0", minHeight: 0, display: "flex", background: "var(--bg-base)" }}>
         <div
           style={{
             width: `${libraryWidth ?? MIN_LIBRARY_WIDTH}px`,

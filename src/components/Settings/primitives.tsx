@@ -270,27 +270,36 @@ export function Dropdown({
   value,
   options,
   onChange,
+  triggerStyle,
+  menuStyle,
+  optionStyle,
+  containerStyle,
+  minMenuWidth,
 }: {
   value: string;
   options: { value: string; label: string }[];
   onChange: (value: string) => void;
+  triggerStyle?: CSSProperties;
+  menuStyle?: CSSProperties;
+  optionStyle?: CSSProperties;
+  containerStyle?: CSSProperties;
+  minMenuWidth?: number;
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const [isOpen, setIsOpen] = useState(false);
+  const [highlightedOption, setHighlightedOption] = useState<string | null>(null);
   const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
   const selected = options.find((opt) => opt.value === value);
 
-  const updatePosition = () => {
+  useLayoutEffect(() => {
+    if (!isOpen) return;
     const trigger = triggerRef.current;
     if (!trigger) return;
     const bounds = trigger.getBoundingClientRect();
-    setRect({ top: bounds.bottom + 6, left: bounds.left, width: bounds.width });
-  };
-
-  useLayoutEffect(() => {
-    if (isOpen) updatePosition();
-  }, [isOpen]);
+    const width = minMenuWidth ? Math.max(bounds.width, minMenuWidth) : bounds.width;
+    setRect({ top: bounds.bottom + 4, left: bounds.left, width });
+  }, [isOpen, minMenuWidth]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -301,7 +310,13 @@ export function Dropdown({
         setIsOpen(false);
       }
     };
-    const handleReposition = () => updatePosition();
+    const handleReposition = () => {
+      const trigger = triggerRef.current;
+      if (!trigger) return;
+      const bounds = trigger.getBoundingClientRect();
+      const width = minMenuWidth ? Math.max(bounds.width, minMenuWidth) : bounds.width;
+      setRect({ top: bounds.bottom + 4, left: bounds.left, width });
+    };
 
     document.addEventListener("pointerdown", handlePointerDown);
     window.addEventListener("scroll", handleReposition, true);
@@ -311,13 +326,14 @@ export function Dropdown({
       window.removeEventListener("scroll", handleReposition, true);
       window.removeEventListener("resize", handleReposition);
     };
-  }, [isOpen]);
+  }, [isOpen, minMenuWidth]);
 
   return (
-    <div style={{ position: "relative", width: "100%" }}>
+    <div style={{ position: "relative", width: "100%", ...containerStyle }}>
       <button
         ref={triggerRef}
         type="button"
+        data-no-drag="true"
         onClick={() => setIsOpen((current) => !current)}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
@@ -329,6 +345,7 @@ export function Dropdown({
           gap: "8px",
           cursor: "pointer",
           textAlign: "left",
+          ...triggerStyle,
         }}
       >
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selected?.label ?? value}</span>
@@ -339,6 +356,7 @@ export function Dropdown({
             <div
               ref={listRef}
               role="listbox"
+              data-no-drag="true"
               style={{
                 position: "fixed",
                 top: `${rect.top}px`,
@@ -351,6 +369,8 @@ export function Dropdown({
                 background: "var(--bg-elevated)",
                 boxShadow: "var(--shadow-md)",
                 padding: "4px",
+                border: "1px solid var(--border-base)",
+                ...menuStyle,
               }}
             >
               {options.map((opt) => {
@@ -370,14 +390,19 @@ export function Dropdown({
                       border: "none",
                       outline: "none",
                       borderRadius: "6px",
-                      background: isSelected ? "var(--color-primary-muted)" : "transparent",
-                      color: isSelected ? "var(--fg-base)" : "var(--fg-muted)",
+                    background: isSelected || highlightedOption === opt.value ? "var(--color-primary-muted)" : "transparent",
+                    color: isSelected || highlightedOption === opt.value ? "var(--fg-base)" : "var(--fg-muted)",
                       fontFamily: "var(--font-sans)",
                       fontSize: "var(--text-xs)",
                       padding: "8px 9px",
-                      cursor: "pointer",
-                      textAlign: "left",
+                     cursor: "pointer",
+                     textAlign: "left",
+                     ...optionStyle,
                     }}
+                    onMouseEnter={() => setHighlightedOption(opt.value)}
+                    onMouseLeave={() => setHighlightedOption(null)}
+                    onFocus={() => setHighlightedOption(opt.value)}
+                    onBlur={() => setHighlightedOption(null)}
                   >
                     {opt.label}
                   </button>
