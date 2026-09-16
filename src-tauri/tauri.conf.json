@@ -15,12 +15,17 @@
         "title": "SermonSync",
         "width": 1920,
         "height": 1080,
+        "backgroundColor": "#181818",
         "resizable": true,
         "decorations": false
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**"]
+      }
     }
   },
   "bundle": {
