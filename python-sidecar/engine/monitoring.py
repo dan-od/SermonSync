@@ -99,7 +99,9 @@ class Monitor:
         return {
             "uptime_seconds": self.uptime_seconds(),
             "latency_ms": int(last),
-            "latency_age_ms": int((time.time() - self._last_e2e_at) * 1000) if self._last_e2e_at else None,
+            "latency_age_ms": (
+                int((time.time() - self._last_e2e_at) * 1000) if self._last_e2e_at else None
+            ),
             "latency_avg_ms": int(avg),
             "latency_peak_ms": int(peak),
             "status": health,
