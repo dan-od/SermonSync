@@ -853,6 +853,11 @@ function App() {
     updateCardStatus(card.id, "sent");
   };
 
+  const sendEditedCardLive = (card: SuggestionCard, slide: ProjectorSlide) => {
+    sendLiveSlide(slide);
+    updateCardStatus(card.id, "edited");
+  };
+
   const handleFeedOverrideChange = (mode: typeof feedOverride) => {
     if (mode === "clear") {
       clearScreen();
@@ -968,6 +973,7 @@ function App() {
           previewReference={previewReference}
           onPreview={(card) => setPreviewSlide(toSlide(card))}
           onSendLive={sendLiveCard}
+          onSendEditedLive={sendEditedCardLive}
           onTogglePin={(card) => togglePinnedSuggestion(card.id)}
           onDismiss={dismissSuggestion}
           onClearAll={clearSuggestions}
