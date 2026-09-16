@@ -10,17 +10,18 @@ import type {
   TemplateTextLayer,
   TemplateThemeDocument,
 } from "../types/templates";
+import type { OverlayMode } from "../types/state";
 
 interface TemplateStore {
   initialized: boolean;
   loading: boolean;
   error: string | null;
   templates: TemplateCanvasTheme[];
-  defaults: Record<TemplateCategory, string | null>;
+  defaults: Record<TemplateCategory, Record<OverlayMode, string | null>>;
   initialize: () => Promise<void>;
   upsertTemplate: (template: TemplateCanvasTheme) => Promise<void>;
   createTemplateDraft: (category: TemplateCategory) => TemplateCanvasTheme;
-  makeDefault: (category: TemplateCategory, templateId: string) => Promise<void>;
+  makeDefault: (category: TemplateCategory, layout: OverlayMode, templateId: string) => Promise<void>;
   renameTemplate: (templateId: string, name: string) => Promise<void>;
   deleteTemplate: (templateId: string) => Promise<void>;
   duplicateTemplate: (templateId: string) => Promise<void>;
@@ -44,15 +45,15 @@ interface TemplateStore {
   deleteLayer: (templateId: string, layerId: string) => TemplateCanvasTheme | null;
 }
 
-function toDocument(templates: TemplateCanvasTheme[], defaults: Record<TemplateCategory, string | null>): TemplateThemeDocument {
+function toDocument(templates: TemplateCanvasTheme[], defaults: Record<TemplateCategory, Record<OverlayMode, string | null>>): TemplateThemeDocument {
   return {
-    version: 1,
+    version: 2,
     templates,
     defaults,
   };
 }
 
-function persist(templates: TemplateCanvasTheme[], defaults: Record<TemplateCategory, string | null>) {
+function persist(templates: TemplateCanvasTheme[], defaults: Record<TemplateCategory, Record<OverlayMode, string | null>>) {
   // Fire-and-forget: persistence must never block the UI from reflecting scene edits instantly.
   void saveTemplateThemes(toDocument(templates, defaults)).catch((error) => {
     console.error("Failed to persist template themes", error);
@@ -65,8 +66,8 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
   error: null,
   templates: [],
   defaults: {
-    scriptures: null,
-    songs: null,
+    scriptures: { widescreen: null, "lower-third": null },
+    songs: { widescreen: null, "lower-third": null },
   },
 
   initialize: async () => {
@@ -101,10 +102,17 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       ? existing.map((entry) => (entry.id === template.id ? nextTemplate : entry))
       : [nextTemplate, ...existing];
 
-    const nextDefaults = { ...get().defaults };
-    if (!nextDefaults[nextTemplate.category]) {
-      nextDefaults[nextTemplate.category] = nextTemplate.id;
-    }
+    const nextDefaults = {
+      scriptures: { ...get().defaults.scriptures },
+      songs: { ...get().defaults.songs },
+    };
+    (["scriptures", "songs"] as TemplateCategory[]).forEach((category) => {
+      (["widescreen", "lower-third"] as OverlayMode[]).forEach((layout) => {
+        if (nextDefaults[category][layout] === nextTemplate.id && (category !== nextTemplate.category || layout !== nextTemplate.layout)) {
+          nextDefaults[category][layout] = null;
+        }
+      });
+    });
 
     set({ templates: nextTemplates, defaults: nextDefaults });
     await saveTemplateThemes(toDocument(nextTemplates, nextDefaults));
@@ -115,8 +123,13 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     return createEmptyTemplate(category, count);
   },
 
-  makeDefault: async (category, templateId) => {
-    const nextDefaults = { ...get().defaults, [category]: templateId };
+  makeDefault: async (category, layout, templateId) => {
+    const template = get().templates.find((entry) => entry.id === templateId && entry.category === category && entry.layout === layout);
+    if (!template) {
+      return;
+    }
+
+    const nextDefaults = { ...get().defaults, [category]: { ...get().defaults[category], [layout]: templateId } };
     set({ defaults: nextDefaults });
     await saveTemplateThemes(toDocument(get().templates, nextDefaults));
   },
@@ -144,9 +157,9 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     const nextTemplates = get().templates.filter((entry) => entry.id !== templateId);
     const nextDefaults = { ...get().defaults };
 
-    if (nextDefaults[target.category] === templateId) {
-      nextDefaults[target.category] = nextTemplates.find((entry) => entry.category === target.category)?.id ?? null;
-    }
+    (["widescreen", "lower-third"] as OverlayMode[]).forEach((layout) => {
+      if (nextDefaults[target.category][layout] === templateId) nextDefaults[target.category][layout] = null;
+    });
 
     set({ templates: nextTemplates, defaults: nextDefaults });
     await saveTemplateThemes(toDocument(nextTemplates, nextDefaults));
@@ -232,16 +245,17 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
         rotation: 0,
         zIndex: maxZ + 1,
         opacity: 1,
-        content: "",
+        content: "Type here",
         color: "#f4f7ff",
         outlineColor: "",
         outlineWidth: 0,
-        fontFamily: "var(--font-sans)",
+        fontFamily: "Inter, system-ui, sans-serif",
         fontStyle: "normal",
         fontSize: 28,
         fontWeight: 700,
         align: "center",
         lineHeight: 1.2,
+        autoFit: "none",
       };
 
       return {
