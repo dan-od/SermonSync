@@ -23,7 +23,7 @@ describe("sidecar websocket dispatch", () => {
     expect(state.levelPeak).toBe(0.62);
   });
 
-  it("routes context events without ingesting suggestions", () => {
+  it("routes context and suggestion events to their stores", () => {
     dispatchSidecarEvent({
       type: "context_update",
       themes: ["GRACE"],
@@ -49,8 +49,18 @@ describe("sidecar websocket dispatch", () => {
       ],
     });
 
+    dispatchSidecarEvent({
+      type: "sentence",
+      text: "For God so loved the world.",
+      timestamp: 1700000000000,
+      context: ["salvation"],
+    });
+
     expect(useTranscriptionStore.getState().themes).toEqual(["GRACE"]);
-    expect(useSuggestionStore.getState().cards).toHaveLength(0);
+    expect(useTranscriptionStore.getState().timeline[0]?.text).toBe("For God so loved the world.");
+    expect(useSuggestionStore.getState().cards).toHaveLength(1);
+    expect(useSuggestionStore.getState().cards[0]?.reference).toEqual({ book: "John", chapter: 3, verse: 16 });
+    expect(useSuggestionStore.getState().cards[0]?.themes).toEqual(["GRACE"]);
   });
 
   it("routes system status to session and audio latency", () => {

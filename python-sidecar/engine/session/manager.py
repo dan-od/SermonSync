@@ -40,6 +40,14 @@ CREATE TABLE IF NOT EXISTS session_events (
 
 CREATE INDEX IF NOT EXISTS idx_events_session
     ON session_events(session_id, created_at);
+
+CREATE TABLE IF NOT EXISTS session_summaries (
+    session_id  TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+    title       TEXT NOT NULL DEFAULT '',
+    draft       TEXT NOT NULL DEFAULT '',
+    generated   TEXT NOT NULL DEFAULT '',
+    updated_at  REAL NOT NULL
+);
 """
 
 
@@ -235,6 +243,46 @@ class SessionManager:
             "transcript": grouped.get("sentence", []),
             "suggestions": grouped.get("suggestion", []),
             "actions": grouped.get("action", []),
+            "summary": self.get_summary(session_id),
+        }
+
+    def get_summary(self, session_id: str) -> dict | None:
+        conn = self._conn()
+        try:
+            row = conn.execute(
+                "SELECT session_id, title, draft, generated, updated_at "
+                "FROM session_summaries WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            return dict(row)
+        finally:
+            conn.close()
+
+    def save_summary(self, session_id: str, title: str, draft: str, generated: str) -> dict:
+        if self.get(session_id) is None:
+            raise ValueError(f"unknown session '{session_id}'")
+        updated_at = self._now()
+        conn = self._conn()
+        try:
+            conn.execute(
+                "INSERT INTO session_summaries (session_id, title, draft, generated, updated_at) "
+                "VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(session_id) DO UPDATE SET title = excluded.title, "
+                "draft = excluded.draft, generated = excluded.generated, "
+                "updated_at = excluded.updated_at",
+                (session_id, title, draft, generated, updated_at),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        return self.get_summary(session_id) or {
+            "session_id": session_id,
+            "title": title,
+            "draft": draft,
+            "generated": generated,
+            "updated_at": updated_at,
         }
 
     def search_transcripts(self, query: str, limit: int = 25) -> list[dict]:

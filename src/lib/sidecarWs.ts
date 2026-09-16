@@ -1,4 +1,4 @@
-import { useAudioStore, useSessionStore, useTranscriptionStore } from "../stores";
+import { useAudioStore, useSessionStore, useSuggestionStore, useTranscriptionStore } from "../stores";
 import type { SidecarWsEvent } from "../types/state";
 
 const SIDECAR_WS_BASE = import.meta.env.VITE_SIDECAR_WS_BASE ?? "ws://127.0.0.1:8000/ws/audio";
@@ -131,9 +131,11 @@ export function dispatchSidecarEvent(event: SidecarWsEvent) {
       break;
     }
     case "sentence": {
+      transcription.ingestSentence(event);
       break;
     }
     case "suggestions": {
+      useSuggestionStore.getState().ingestSuggestions(event, transcription.themes);
       break;
     }
     case "context_update": {

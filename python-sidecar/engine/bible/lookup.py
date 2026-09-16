@@ -5,7 +5,7 @@ from __future__ import annotations
 from database import get_connection, normalize_book
 
 
-def fetch_verse(book: str, chapter: int, verse: int, version: str = "KJV") -> dict | None:
+def fetch_verse(book: str, chapter: int, verse: int, version: str = "ENGLISHNKJ") -> dict | None:
     """Return a verse dict for a book/chapter/verse, or None if not found."""
     conn = get_connection()
     try:

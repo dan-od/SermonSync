@@ -133,7 +133,7 @@ export function StatusBar({
         padding: "0 10px",
         height: "30px",
         background: "var(--bg-surface)",
-        borderTop: "1px solid var(--border-base)",
+        borderTop: "none",
         fontFamily: "var(--font-mono)",
         fontSize: "11px",
         color: "var(--fg-muted)",

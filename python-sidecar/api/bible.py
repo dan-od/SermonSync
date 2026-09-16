@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from database import get_connection, get_writable_connection, normalize_book
+from engine.matching.orchestrator import get_orchestrator
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
@@ -29,6 +30,44 @@ _BOOK_ALIASES: dict[str, str] = {
     "therevelation": "Revelation",
     "apocalypse": "Revelation",
     "apocalypseofjohn": "Revelation",
+    # Longer abbreviation conventions (4-6 letters) seen in Zefania/OSIS/USFM
+    # exports whose canonical DB abbreviation is the shorter 3-letter KJV form.
+    "exod": "Exodus",
+    "levi": "Leviticus",
+    "numb": "Numbers",
+    "deut": "Deuteronomy",
+    "josh": "Joshua",
+    "judg": "Judges",
+    "1sam": "1 Samuel",
+    "2sam": "2 Samuel",
+    "1kgs": "1 Kings",
+    "2kgs": "2 Kings",
+    "1chr": "1 Chronicles",
+    "1chron": "1 Chronicles",
+    "2chr": "2 Chronicles",
+    "2chron": "2 Chronicles",
+    "esth": "Esther",
+    "prov": "Proverbs",
+    "eccl": "Ecclesiastes",
+    "eccle": "Ecclesiastes",
+    "ezek": "Ezekiel",
+    "obad": "Obadiah",
+    "zeph": "Zephaniah",
+    "zech": "Zechariah",
+    "matt": "Matthew",
+    "1cor": "1 Corinthians",
+    "2cor": "2 Corinthians",
+    "phil": "Philippians",
+    "1thess": "1 Thessalonians",
+    "2thess": "2 Thessalonians",
+    "1tim": "1 Timothy",
+    "2tim": "2 Timothy",
+    "philem": "Philemon",
+    "1pet": "1 Peter",
+    "2pet": "2 Peter",
+    "1jn": "1 John",
+    "2jn": "2 John",
+    "3jn": "3 John",
 }
 
 _VERSION_ALIASES: dict[str, str] = {
@@ -45,17 +84,30 @@ class RenameBibleRequest(BaseModel):
     name: str
 
 
+class ActiveBibleVersionRequest(BaseModel):
+    version: str
+
+
 def _version_lookup_key(version: str) -> str:
     normalized = _normalize_identifier(version, version)
     return _VERSION_ALIASES.get(normalized.lower(), normalized)
 
 
-def _version_id(conn, version: str) -> int:
-    version = _version_lookup_key(version)
-    row = conn.execute(
-        "SELECT id FROM versions WHERE abbreviation = ? COLLATE NOCASE",
-        (version,),
+def _find_version_row(conn, version: str):
+    lookup_key = _version_lookup_key(version)
+    return conn.execute(
+        """
+        SELECT id, abbreviation, name FROM versions
+        WHERE abbreviation = ? COLLATE NOCASE
+           OR name = ? COLLATE NOCASE
+           OR abbreviation = ? COLLATE NOCASE
+        """,
+        (version, version, lookup_key),
     ).fetchone()
+
+
+def _version_id(conn, version: str) -> int:
+    row = _find_version_row(conn, version)
     if row is None:
         raise HTTPException(status_code=404, detail=f"unknown version '{version}'")
     return row["id"]
@@ -151,11 +203,18 @@ def _resolve_book_row(conn, name: str | None, abbreviation: str | None):
     return None
 
 
-def _canonical_book_id(conn, book: dict[str, Any]) -> int:
+def _canonical_book_row(conn, book: dict[str, Any]):
     row = _resolve_book_row(conn, book["name"], book.get("abbreviation"))
+    if row is None and book.get("canonical_position_hint"):
+        # Unnamed books (e.g. <testament name="Old"><book number="1">) were
+        # resolved to a canonical 1..66 position instead of a name/abbreviation.
+        row = conn.execute(
+            "SELECT id, name, abbreviation, testament, position FROM books WHERE position = ?",
+            (book["canonical_position_hint"],),
+        ).fetchone()
     if row is None:
         raise HTTPException(status_code=400, detail=f"unknown canonical book '{book['name']}'")
-    return row["id"]
+    return row
 
 
 def _ensure_chapter(conn, book_id: int, number: int) -> int:
@@ -184,6 +243,41 @@ def _is_book_element(element: ET.Element) -> bool:
     return name in {"biblebook", "book", "b"} or (
         name == "div" and element.attrib.get("type", "").lower() == "book"
     )
+
+
+def _is_testament_element(element: ET.Element) -> bool:
+    return _local_name(element.tag) == "testament"
+
+
+def _testament_offset(element: ET.Element) -> int | None:
+    """Canonical position offset for a <testament> wrapper (some XML schemas number
+    books 1..39 / 1..27 within Old/New Testament instead of giving them names)."""
+    label = (
+        _first_non_empty(
+            element.attrib.get("name"), element.attrib.get("type"), element.attrib.get("testament")
+        )
+        or ""
+    ).strip().lower()
+    if label.startswith("old") or label in {"ot", "o"}:
+        return 0
+    if label.startswith("new") or label in {"nt", "n"}:
+        return 39
+    return None
+
+
+def _canonical_testament_position(offset: int | None, number: int | None) -> int | None:
+    if offset is None or number is None:
+        return None
+    if offset == 39 and number >= 40:
+        return number
+    return offset + number
+
+
+def _book_elements_under(element: ET.Element) -> list[ET.Element]:
+    return [
+        candidate for candidate in element.iter()
+        if candidate is not element and _is_book_element(candidate)
+    ]
 
 
 def _is_chapter_element(element: ET.Element) -> bool:
@@ -257,7 +351,9 @@ def _parse_xml_chapter(element: ET.Element, fallback_number: int) -> dict[str, A
     return {"number": number, "verses": parsed_verses}
 
 
-def _parse_xml_book(element: ET.Element, fallback_position: int) -> dict[str, Any]:
+def _parse_xml_book(
+    element: ET.Element, fallback_position: int, position_hint: int | None = None
+) -> dict[str, Any]:
     name = _xml_label(element, f"Book {fallback_position}")
     abbreviation = _normalize_identifier(
         _first_non_empty(
@@ -271,7 +367,15 @@ def _parse_xml_book(element: ET.Element, fallback_position: int) -> dict[str, An
         name,
     )
     testament = _first_non_empty(element.attrib.get("testament"), "NT") or "NT"
-    position = _xml_number(element, "position", "index", "order") or fallback_position
+    # Zefania XML's `bnumber` is the book's canonical 1..66 position (not a
+    # testament-local number) — the most reliable signal when a file omits a
+    # recognizable name/abbreviation, so prefer it over the generic fallbacks.
+    explicit_position = (
+        position_hint
+        or _xml_number(element, "bnumber")
+        or _xml_number(element, "position", "index", "order", "number")
+    )
+    position = explicit_position or fallback_position
 
     chapter_elements = [child for child in list(element) if _is_chapter_element(child)]
     if not chapter_elements:
@@ -289,6 +393,7 @@ def _parse_xml_book(element: ET.Element, fallback_position: int) -> dict[str, An
         "abbreviation": abbreviation,
         "testament": testament.upper(),
         "position": position,
+        "canonical_position_hint": explicit_position,
         "chapters": parsed_chapters,
     }
 
@@ -317,15 +422,31 @@ def _parse_xml_import(filename: str, content: str) -> tuple[str, str, list[dict[
         },
     )
 
-    book_elements = [element for element in root.iter() if _is_book_element(element)]
-    if not book_elements and _is_book_element(root):
-        book_elements = [root]
-    if not book_elements:
+    # Schemas like <bible><testament name="Old"><book number="1">... number books
+    # 1..39 / 1..27 within their testament instead of naming them — resolve the
+    # canonical 1..66 position from the testament label so lookup can fall back
+    # to it when no book name/abbreviation is present.
+    testament_elements = [element for element in root.iter() if _is_testament_element(element)]
+    book_entries: list[tuple[ET.Element, int | None]] = []
+    if testament_elements:
+        for testament in testament_elements:
+            offset = _testament_offset(testament)
+            for book in _book_elements_under(testament):
+                number = _xml_number(book, "number", "position", "index", "order")
+                hint = _canonical_testament_position(offset, number)
+                book_entries.append((book, hint))
+    else:
+        book_elements = [element for element in root.iter() if _is_book_element(element)]
+        if not book_elements and _is_book_element(root):
+            book_elements = [root]
+        book_entries = [(book, None) for book in book_elements]
+
+    if not book_entries:
         raise HTTPException(status_code=400, detail="XML bible file is missing book elements")
 
     parsed_books = [
-        _parse_xml_book(book, book_index)
-        for book_index, book in enumerate(book_elements, start=1)
+        _parse_xml_book(book, book_index, position_hint)
+        for book_index, (book, position_hint) in enumerate(book_entries, start=1)
     ]
     return version_name, version_abbreviation, parsed_books
 
@@ -379,7 +500,12 @@ def import_bible(payload: ImportBibleRequest) -> dict:
 
         verse_count = 0
         for book in books:
-            book_id = _canonical_book_id(conn, book)
+            row = _canonical_book_row(conn, book)
+            book_id = row["id"]
+            # Display the canonical name/abbreviation, not an unnamed schema's
+            # positional fallback (e.g. "Book 1"), in the response payload below.
+            book["name"] = row["name"]
+            book["abbreviation"] = row["abbreviation"]
             for chapter_index, chapter in enumerate(book["chapters"], start=1):
                 chapter_number = chapter.get("number") or chapter_index
                 chapter_id = _ensure_chapter(conn, book_id, chapter_number)
@@ -448,6 +574,32 @@ def list_versions() -> dict:
         conn.close()
 
 
+@router.put("/active-version")
+def set_active_version(payload: ActiveBibleVersionRequest) -> dict:
+    """Set the version used by live scripture matching."""
+    conn = get_connection()
+    try:
+        row = _find_version_row(conn, payload.version)
+        if row is not None:
+            count_row = conn.execute(
+                "SELECT COUNT(*) AS verse_count FROM verses WHERE version_id = ?",
+                (row["id"],),
+            ).fetchone()
+            verse_count = count_row["verse_count"] if count_row else 0
+        else:
+            verse_count = 0
+    finally:
+        conn.close()
+
+    if row is None or verse_count == 0:
+        raise HTTPException(
+            status_code=400, detail=f"Bible version '{payload.version}' is not available"
+        )
+
+    active = get_orchestrator().set_version(row["abbreviation"])
+    return {"version": active}
+
+
 @router.patch("/versions/{version}")
 def rename_version(version: str, payload: RenameBibleRequest) -> dict:
     """Rename a registered Bible version without changing its abbreviation."""
@@ -457,11 +609,7 @@ def rename_version(version: str, payload: RenameBibleRequest) -> dict:
 
     conn = get_writable_connection()
     try:
-        lookup_key = _version_lookup_key(version)
-        row = conn.execute(
-            "SELECT id, abbreviation FROM versions WHERE abbreviation = ? COLLATE NOCASE",
-            (lookup_key,),
-        ).fetchone()
+        row = _find_version_row(conn, version)
         if row is None:
             raise HTTPException(status_code=404, detail=f"unknown version '{version}'")
         conn.execute(
@@ -479,11 +627,7 @@ def delete_version(version: str) -> dict:
     """Delete a downloaded/imported version and its verse text."""
     conn = get_writable_connection()
     try:
-        lookup_key = _version_lookup_key(version)
-        row = conn.execute(
-            "SELECT id, abbreviation FROM versions WHERE abbreviation = ? COLLATE NOCASE",
-            (lookup_key,),
-        ).fetchone()
+        row = _find_version_row(conn, version)
         if row is None:
             raise HTTPException(status_code=404, detail=f"unknown version '{version}'")
 
@@ -607,12 +751,20 @@ def lookup(
                 status_code=404,
                 detail=f"{book_row['name']} {chapter}:{verse} not found in {version.upper()}",
             )
+        vrow = conn.execute(
+            "SELECT name, abbreviation FROM versions WHERE id = ?",
+            (vid,),
+        ).fetchone()
+        version_display = (
+            vrow["name"] if vrow and vrow["name"]
+            else (vrow["abbreviation"] if vrow else version.upper())
+        )
         return {
             "reference": f"{book_row['name']} {chapter}:{verse}",
             "book": book_row["name"],
             "chapter": chapter,
             "verse": verse,
-            "version": version.upper(),
+            "version": version_display,
             "text": row["text"],
             "testament": book_row["testament"],
         }

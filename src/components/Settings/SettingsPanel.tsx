@@ -5,12 +5,14 @@ import {
   IconBook,
   IconGeneral,
   IconHelp,
+  IconKeyboard,
+  IconLayout,
   IconMic,
   IconMonitor,
-  IconLayout,
   IconPalette,
   IconSparkles,
   IconTerminal,
+  IconTransition,
   IconUserCircle,
   IconX,
 } from "./icons";
@@ -24,9 +26,12 @@ import { IntelligenceTab } from "./tabs/IntelligenceTab";
 import { LogsTab } from "./tabs/LogsTab";
 import { PresentationTab } from "./tabs/PresentationTab";
 import { ProfilesTab } from "./tabs/ProfilesTab";
+import { ShortcutsTab } from "./tabs/ShortcutsTab";
 import { ThemeTab } from "./tabs/ThemeTab";
+import { TransitionsTab } from "./tabs/TransitionsTab";
 import { DEFAULT_SETTINGS_PANEL_STATE, type SettingsPanelState } from "./types";
 import type { AudioInputDevice, AudioStatus, UiTheme } from "../../types/state";
+import { useProjectorStore } from "../../stores/projectorStore";
 
 export type SettingsTabId =
   | "general"
@@ -35,6 +40,8 @@ export type SettingsTabId =
   | "bible"
   | "display"
   | "presentation"
+  | "shortcuts"
+  | "transitions"
   | "theme"
   | "archive"
   | "logs"
@@ -48,6 +55,8 @@ const TABS: { id: SettingsTabId; label: string; icon: ReactElement }[] = [
   { id: "bible", label: "Bible Versions", icon: <IconBook /> },
   { id: "display", label: "Display & Middleware", icon: <IconMonitor /> },
   { id: "presentation", label: "Presentation", icon: <IconLayout /> },
+  { id: "shortcuts", label: "Keyboard Shortcuts", icon: <IconKeyboard /> },
+  { id: "transitions", label: "Transitions & Motion", icon: <IconTransition /> },
   { id: "theme", label: "Theme", icon: <IconPalette /> },
   { id: "archive", label: "Archival", icon: <IconArchive /> },
   { id: "logs", label: "Session Logs", icon: <IconTerminal /> },
@@ -73,6 +82,20 @@ export interface SettingsPanelProps {
   onVadSensitivityChange: (value: number) => void;
 }
 
+const SETTINGS_STORAGE_KEY = "sermonsync-settings-panel";
+
+function loadPanelState(): SettingsPanelState {
+  if (typeof window === "undefined") return DEFAULT_SETTINGS_PANEL_STATE;
+
+  try {
+    const stored = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!stored) return DEFAULT_SETTINGS_PANEL_STATE;
+    return { ...DEFAULT_SETTINGS_PANEL_STATE, ...JSON.parse(stored) as Partial<SettingsPanelState> };
+  } catch {
+    return DEFAULT_SETTINGS_PANEL_STATE;
+  }
+}
+
 export function SettingsPanel({
   open,
   onClose,
@@ -91,31 +114,68 @@ export function SettingsPanel({
   onVadSensitivityChange,
 }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<SettingsTabId>("general");
-  const [panelState, setPanelState] = useState<SettingsPanelState>(DEFAULT_SETTINGS_PANEL_STATE);
+  const [visitedTabs, setVisitedTabs] = useState<Set<SettingsTabId>>(() => new Set(["general"]));
+  const [panelState, setPanelState] = useState<SettingsPanelState>(loadPanelState);
+
+  useEffect(() => {
+    window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(panelState));
+    useProjectorStore.getState().setTransitions(panelState.transitions);
+  }, [panelState]);
 
   useEffect(() => {
     if (!open) return;
+    const preload = () => {
+      setVisitedTabs(new Set(TABS.map((tab) => tab.id)));
+    };
+    const idleHandle = typeof window.requestIdleCallback === "function"
+      ? window.requestIdleCallback(preload)
+      : window.setTimeout(preload, 100);
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
     document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      if ("cancelIdleCallback" in window && typeof idleHandle === "number") {
+        window.cancelIdleCallback(idleHandle);
+      } else {
+        window.clearTimeout(idleHandle);
+      }
+    };
   }, [open, onClose]);
 
   if (!open) return null;
 
   const handlePanelChange = <K extends keyof SettingsPanelState>(key: K, value: SettingsPanelState[K]) => {
     setPanelState((prev) => ({ ...prev, [key]: value }));
+    if (key === "transitions") {
+      useProjectorStore.getState().setTransitions(value as SettingsPanelState["transitions"]);
+    }
   };
 
   const handleImportSettings = (value: Partial<SettingsPanelState>) => {
-    setPanelState((prev) => ({ ...prev, ...value }));
+    setPanelState((prev) => {
+      const next = { ...prev, ...value };
+      if (next.transitions) {
+        useProjectorStore.getState().setTransitions(next.transitions);
+      }
+      return next;
+    });
   };
 
   const handleResetSettings = () => {
     if (window.confirm("Reset all settings to their default values? This cannot be undone.")) {
       setPanelState(DEFAULT_SETTINGS_PANEL_STATE);
+      useProjectorStore.getState().setTransitions(DEFAULT_SETTINGS_PANEL_STATE.transitions);
     }
+  };
+
+  const handleTabChange = (tabId: SettingsTabId) => {
+    setActiveTab(tabId);
+    setVisitedTabs((previous) => {
+      if (previous.has(tabId)) return previous;
+      return new Set(previous).add(tabId);
+    });
   };
 
   return (
@@ -200,7 +260,7 @@ export function SettingsPanel({
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => handleTabChange(tab.id)}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -259,40 +319,38 @@ export function SettingsPanel({
 
           <main style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "var(--space-6)" }}>
             <div style={{ maxWidth: "760px", margin: "0 auto" }}>
-              {activeTab === "general" && <GeneralTab panelState={panelState} onPanelChange={handlePanelChange} />}
-              {activeTab === "audio" && (
-                <AudioDetectionTab
-                  panelState={panelState}
-                  onPanelChange={handlePanelChange}
-                  audioDevices={audioDevices}
-                  selectedDevice={selectedDevice}
-                  inputChannel={inputChannel}
-                  audioStatus={audioStatus}
-                  audioError={audioError}
-                  levelRms={levelRms}
-                  levelPeak={levelPeak}
-                  vadSensitivity={vadSensitivity}
-                  onAudioDeviceChange={onAudioDeviceChange}
-                  onAudioChannelChange={onAudioChannelChange}
-                  onVadSensitivityChange={onVadSensitivityChange}
-                />
-              )}
-              {activeTab === "intelligence" && <IntelligenceTab panelState={panelState} onPanelChange={handlePanelChange} />}
-              {activeTab === "bible" && <BibleVersionsTab />}
-              {activeTab === "display" && <DisplayMiddlewareTab panelState={panelState} onPanelChange={handlePanelChange} />}
-              {activeTab === "presentation" && <PresentationTab panelState={panelState} onPanelChange={handlePanelChange} />}
-              {activeTab === "theme" && <ThemeTab theme={uiTheme} onThemeChange={onUiThemeChange} />}
-              {activeTab === "archive" && <ArchivalTab panelState={panelState} onPanelChange={handlePanelChange} />}
-              {activeTab === "logs" && <LogsTab />}
-              {activeTab === "profiles" && (
-                <ProfilesTab
-                  panelState={panelState}
-                  onPanelChange={handlePanelChange}
-                  onImportSettings={handleImportSettings}
-                  onResetSettings={handleResetSettings}
-                />
-              )}
-              {activeTab === "help" && <HelpTab />}
+              {visitedTabs.has("general") ? <div style={{ display: activeTab === "general" ? "block" : "none" }}><GeneralTab panelState={panelState} onPanelChange={handlePanelChange} /></div> : null}
+              {visitedTabs.has("audio") ? <div style={{ display: activeTab === "audio" ? "block" : "none" }}><AudioDetectionTab
+                panelState={panelState}
+                onPanelChange={handlePanelChange}
+                audioDevices={audioDevices}
+                selectedDevice={selectedDevice}
+                inputChannel={inputChannel}
+                audioStatus={audioStatus}
+                audioError={audioError}
+                levelRms={levelRms}
+                levelPeak={levelPeak}
+                vadSensitivity={vadSensitivity}
+                onAudioDeviceChange={onAudioDeviceChange}
+                onAudioChannelChange={onAudioChannelChange}
+                onVadSensitivityChange={onVadSensitivityChange}
+              /></div> : null}
+              {visitedTabs.has("intelligence") ? <div style={{ display: activeTab === "intelligence" ? "block" : "none" }}><IntelligenceTab panelState={panelState} onPanelChange={handlePanelChange} /></div> : null}
+              {visitedTabs.has("bible") ? <div style={{ display: activeTab === "bible" ? "block" : "none" }}><BibleVersionsTab /></div> : null}
+              {visitedTabs.has("display") ? <div style={{ display: activeTab === "display" ? "block" : "none" }}><DisplayMiddlewareTab panelState={panelState} onPanelChange={handlePanelChange} /></div> : null}
+              {visitedTabs.has("presentation") ? <div style={{ display: activeTab === "presentation" ? "block" : "none" }}><PresentationTab panelState={panelState} onPanelChange={handlePanelChange} /></div> : null}
+              {visitedTabs.has("shortcuts") ? <div style={{ display: activeTab === "shortcuts" ? "block" : "none" }}><ShortcutsTab /></div> : null}
+              {visitedTabs.has("transitions") ? <div style={{ display: activeTab === "transitions" ? "block" : "none" }}><TransitionsTab panelState={panelState} onPanelChange={handlePanelChange} /></div> : null}
+              {visitedTabs.has("theme") ? <div style={{ display: activeTab === "theme" ? "block" : "none" }}><ThemeTab theme={uiTheme} onThemeChange={onUiThemeChange} /></div> : null}
+              {visitedTabs.has("archive") ? <div style={{ display: activeTab === "archive" ? "block" : "none" }}><ArchivalTab panelState={panelState} onPanelChange={handlePanelChange} /></div> : null}
+              {visitedTabs.has("logs") ? <div style={{ display: activeTab === "logs" ? "block" : "none" }}><LogsTab /></div> : null}
+              {visitedTabs.has("profiles") ? <div style={{ display: activeTab === "profiles" ? "block" : "none" }}><ProfilesTab
+                panelState={panelState}
+                onPanelChange={handlePanelChange}
+                onImportSettings={handleImportSettings}
+                onResetSettings={handleResetSettings}
+              /></div> : null}
+              {visitedTabs.has("help") ? <div style={{ display: activeTab === "help" ? "block" : "none" }}><HelpTab /></div> : null}
             </div>
           </main>
         </div>
