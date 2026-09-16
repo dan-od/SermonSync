@@ -1,6 +1,6 @@
 """Stage 1 — Explicit Trie matcher for direct scripture quotes (SS-017).
 
-Builds a word-level prefix trie from the KJV verses at startup. Given a
+Builds a word-level prefix trie from the active Bible version at startup. Given a
 transcript sentence, it slides over the words and walks the trie to find exact
 (or near-exact) verse-opening matches — fast, high-precision detection of direct
 quotes. Near-matches are scored by a difflib similarity ratio.
@@ -17,6 +17,7 @@ from difflib import SequenceMatcher
 from database import get_connection
 
 from .text_utils import STOPWORDS, normalize_words
+from .version import get_active_version
 
 logger = logging.getLogger("sermonsync.matching.trie")
 
@@ -54,7 +55,8 @@ class TrieMatcher:
                 ).fetchone()
                 if version
                 else conn.execute(
-                    "SELECT id, abbreviation FROM versions ORDER BY id LIMIT 1"
+                    "SELECT id, abbreviation FROM versions WHERE abbreviation = ? COLLATE NOCASE",
+                    (get_active_version(),),
                 ).fetchone()
             )
             if vid is None:
@@ -146,7 +148,7 @@ class TrieMatcher:
                         "book": book,
                         "chapter": chapter,
                         "verse": verse,
-                        "version": "KJV",
+                        "version": get_active_version(),
                         "reference": f"{book} {chapter}:{verse}",
                         "text": text,
                         "matched_text": matched_text,

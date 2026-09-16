@@ -77,9 +77,12 @@ class StreamingTranscriber:
             return
         self._running = True
         self._task = asyncio.create_task(self._run())
-        # Pay model-load cost during sidecar startup so the first spoken word
-        # is not delayed by lazy initialization.
-        await asyncio.to_thread(whisper_engine.get_engine)
+        # Warm the Whisper model in the background instead of blocking
+        # startup on it — otherwise the launch screen sits waiting on a
+        # multi-second (or much longer, for large models) model load before
+        # the UI ever appears. The first inference call falls back to lazy
+        # loading via get_engine() if this hasn't finished yet.
+        asyncio.create_task(asyncio.to_thread(whisper_engine.get_engine))
         logger.info("streaming transcriber started")
 
     async def stop(self) -> None:

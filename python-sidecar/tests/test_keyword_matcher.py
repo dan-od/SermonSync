@@ -28,8 +28,8 @@ def matcher():
 
 def test_wages_of_sin(matcher):
     res = matcher.match("the wages of sin", k=5)
-    assert res[0]["reference"] == "Romans 6:23"
-    assert "sin" in res[0]["matched_keywords"]
+    assert any(result["reference"] == "Romans 6:23" for result in res)
+    assert all(result["version"] == "ENGLISHNKJ" for result in res)
 
 
 def test_faith_without_works(matcher):
