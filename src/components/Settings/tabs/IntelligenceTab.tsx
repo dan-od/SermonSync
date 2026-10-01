@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { testGroqConnection } from "../../../lib/sidecarClient";
 import { useConfigStore } from "../../../stores/configStore";
 import type { ModelProviderId } from "../../../types/state";
 import { IconRefresh, IconSparkles } from "../icons";
@@ -29,6 +30,7 @@ export function IntelligenceTab({ panelState, onPanelChange }: IntelligenceTabPr
   const setDefaultModelProvider = useConfigStore((s) => s.setDefaultModelProvider);
 
   const [testStatus, setTestStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [testMessage, setTestMessage] = useState<string | null>(null);
   const [groqDraft, setGroqDraft] = useState("");
   const [providerDrafts, setProviderDrafts] = useState({ openai: "", anthropic: "", gemini: "" });
   const [isLoadingKeys, setIsLoadingKeys] = useState(true);
@@ -71,17 +73,37 @@ export function IntelligenceTab({ panelState, onPanelChange }: IntelligenceTabPr
     }
   };
 
-  const handleTestConnection = () => {
+  // Real round-trip to Groq via the sidecar. The previous version was a 1.2s
+  // setTimeout that only checked `length >= 8`, so placeholders like "gsk_fake"
+  // were saved as verified and every Stage 3 call then failed silently.
+  const handleTestConnection = async () => {
     setTestStatus("loading");
-    setTimeout(() => {
-      if (!groqDraft || groqDraft.trim().length < 8) {
-        setTestStatus("error");
-        void setGroq(groqDraft || null, false);
-      } else {
+    setTestMessage(null);
+    const key = groqDraft.trim();
+    if (!key) {
+      setTestStatus("error");
+      setTestMessage("Enter a Groq API key first.");
+      await setGroq(null, false);
+      return;
+    }
+    try {
+      const result = await testGroqConnection(key);
+      if (result.ok) {
         setTestStatus("success");
-        void setGroq(groqDraft, true);
+        setTestMessage(null);
+        await setGroq(key, true);
+      } else {
+        setTestStatus("error");
+        setTestMessage([result.error, result.hint && `(${result.hint})`].filter(Boolean).join(" "));
+        await setGroq(key, false);
       }
-    }, 1200);
+    } catch (error) {
+      setTestStatus("error");
+      setTestMessage(
+        error instanceof Error ? error.message : "Could not reach the SermonSync sidecar.",
+      );
+      await setGroq(key, false);
+    }
   };
 
   return (
@@ -106,7 +128,7 @@ export function IntelligenceTab({ panelState, onPanelChange }: IntelligenceTabPr
             <button
               type="button"
               disabled={testStatus === "loading"}
-              onClick={handleTestConnection}
+              onClick={() => void handleTestConnection()}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -137,7 +159,9 @@ export function IntelligenceTab({ panelState, onPanelChange }: IntelligenceTabPr
           <InfoBanner>Groq key verified. Intelligence layer features below are now active.</InfoBanner>
         ) : null}
         {testStatus === "error" ? (
-          <InfoBanner tone="warning">Could not verify key. Double-check it was copied correctly from console.groq.com.</InfoBanner>
+          <InfoBanner tone="warning">
+            {testMessage ?? "Could not verify key. Double-check it was copied correctly from console.groq.com."}
+          </InfoBanner>
         ) : null}
       </SettingsCard>
 

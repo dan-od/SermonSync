@@ -127,3 +127,65 @@ export async function lookupScriptureVerse(book: string, chapter: number, verse:
     return null;
   }
 }
+
+/**
+ * Groq cloud fallback (SS-050).
+ *
+ * `linked` is the sidecar's own verdict on whether Stage 3 can actually reach
+ * Groq right now — it goes false when calls are failing, so the UI must not
+ * infer "Connected" from the mere presence of a key.
+ */
+export interface GroqLastError {
+  kind: string;
+  message: string;
+  retryable: boolean;
+  status?: number;
+  hint?: string;
+}
+
+export interface GroqStatusResponse {
+  enabled: boolean;
+  model: string;
+  linked: boolean;
+  active: boolean;
+  key_problem: string | null;
+  reason: string | null;
+  healthy: boolean;
+  last_error: GroqLastError | null;
+  last_error_at: number | null;
+  last_success_at: number | null;
+  consecutive_failures: number;
+  calls: number;
+  failures: number;
+  circuit_open: boolean;
+  verification?: GroqTestResponse;
+}
+
+export interface GroqTestResponse {
+  ok: boolean;
+  model: string;
+  sample?: string;
+  error?: string;
+  kind?: string;
+  hint?: string;
+  status?: number;
+  retryable?: boolean;
+}
+
+export function getGroqStatus(verify = false) {
+  return fetchJson<GroqStatusResponse>(`/api/groq/status${verify ? "?verify=true" : ""}`);
+}
+
+export function testGroqConnection(apiKey?: string | null, model?: string | null) {
+  return fetchJson<GroqTestResponse>("/api/groq/test", {
+    method: "POST",
+    body: JSON.stringify({ api_key: apiKey ?? null, model: model ?? null }),
+  });
+}
+
+export function saveGroqConfig(apiKey: string | null, enabled: boolean, model?: string | null) {
+  return fetchJson<GroqStatusResponse>("/api/groq/config", {
+    method: "POST",
+    body: JSON.stringify({ api_key: apiKey, enabled, model: model ?? null }),
+  });
+}

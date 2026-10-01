@@ -192,15 +192,38 @@ def configure_groq(enabled: bool, api_key: str | None, model: str | None = None)
 
     When enabled with a key, installs a GroqMatcher. When disabled, resets so the
     next get_matcher() re-evaluates (local GGUF → mock).
+
+    A key that fails the format check is still installed — the matcher is what
+    carries the health/last_error state that /api/groq/status reports, so
+    installing it (and letting it fail loudly on the first call) is more visible
+    than silently refusing. The problem is logged at WARNING here regardless.
     """
     global _matcher
     if enabled and api_key:
-        from .groq_matcher import DEFAULT_GROQ_MODEL, GroqMatcher
+        from .groq_matcher import DEFAULT_GROQ_MODEL, GroqMatcher, describe_key_problem
 
+        problem = describe_key_problem(api_key)
+        if problem:
+            logger.warning(
+                "Groq enabled but the stored key looks invalid (%s) — Stage 3 will "
+                "degrade to the local matcher on every call",
+                problem,
+            )
         _matcher = GroqMatcher(api_key=api_key, model=model or DEFAULT_GROQ_MODEL)
-        logger.info("Stage 3 routed to Groq cloud fallback")
+        logger.info("Stage 3 routed to Groq cloud fallback (model=%s)", _matcher.model)
     else:
         _matcher = None
+
+
+def active_groq_matcher():
+    """Return the live GroqMatcher if Stage 3 is currently routed to Groq, else None.
+
+    Lets /api/groq/status report the real runtime health of the matcher that is
+    actually serving calls, instead of inferring "linked" from stored config.
+    """
+    from .groq_matcher import GroqMatcher
+
+    return _matcher if isinstance(_matcher, GroqMatcher) else None
 
 
 def apply_persisted_groq() -> None:

@@ -9,6 +9,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { invoke } from "@tauri-apps/api/core";
 
+import { saveGroqConfig } from "../lib/sidecarClient";
 import type { BibleVersionSummary, ModelProviderId, SystemConfig, UiTheme } from "../types/state";
 import { getBrowserStorage } from "./persistStorage";
 
@@ -57,6 +58,14 @@ export const useConfigStore = create<ConfigStore>()(
       setGroq: async (groqApiKey, groqEnabled) => {
         await invoke("save_provider_key", { provider: "groq", apiKey: groqApiKey ?? "" });
         set({ groqApiKey, groqEnabled });
+        // The sidecar keeps its own copy in app.db — Python cannot read the OS
+        // keychain. Without this push, Stage 3 keeps using whatever key was last
+        // written to app.db (which is how a stale placeholder kept 403ing).
+        try {
+          await saveGroqConfig(groqApiKey, groqEnabled && Boolean(groqApiKey));
+        } catch (error) {
+          console.warn("Could not push Groq config to the sidecar", error);
+        }
       },
 
       setModelProviderKey: async (provider, apiKey) => {
