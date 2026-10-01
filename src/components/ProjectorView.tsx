@@ -6,6 +6,7 @@ import { useTemplateStore } from "../stores/templateStore";
 import { useProjectorStore } from "../stores/projectorStore";
 import { ResilientVideo } from "./ResilientVideo";
 import type { TemplateLayer, TemplateScene, TemplateTextScript } from "../types/templates";
+import type { ProjectorVideoControl } from "../lib/projectorOutput";
 import type { OverlayMode, ProjectorSlide, TransitionCategory, VerseTheme } from "../types/state";
 
 const OVERLAY_WIDTH = 1920;
@@ -600,15 +601,36 @@ interface ProjectorViewProps {
   theme: VerseTheme;
   isLive: boolean;
   fontSizePx: number;
+  /**
+   * Congregation output (SS-036): no header, no video controls, no frame, no
+   * padding, black letterboxing and a hidden cursor.
+   */
+  chromeless?: boolean;
+  /** Controlled background-video playback. Uncontrolled when omitted. */
+  videoControl?: ProjectorVideoControl;
+  onVideoControlChange?: (control: ProjectorVideoControl) => void;
 }
 
-export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive, fontSizePx }: ProjectorViewProps) {
+export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive, fontSizePx, chromeless = false, videoControl, onVideoControlChange }: ProjectorViewProps) {
   const stageRef = useRef<HTMLDivElement>(null);
   const backgroundVideoRef = useRef<HTMLVideoElement | null>(null);
   const [viewportSize, setViewportSize] = useState({ width: OVERLAY_WIDTH, height: OVERLAY_HEIGHT });
   const [backgroundVideo, setBackgroundVideo] = useState<HTMLVideoElement | null>(null);
-  const [isBackgroundVideoPlaying, setIsBackgroundVideoPlaying] = useState(true);
-  const [isBackgroundVideoLooping, setIsBackgroundVideoLooping] = useState(true);
+  const [internalVideoPlaying, setInternalVideoPlaying] = useState(true);
+  const [internalVideoLooping, setInternalVideoLooping] = useState(true);
+  const isBackgroundVideoPlaying = videoControl?.playing ?? internalVideoPlaying;
+  const isBackgroundVideoLooping = videoControl?.loop ?? internalVideoLooping;
+  const toggleBackgroundVideoPlaying = () => {
+    const next = { playing: !isBackgroundVideoPlaying, loop: isBackgroundVideoLooping };
+    setInternalVideoPlaying(next.playing);
+    onVideoControlChange?.(next);
+  };
+  const toggleBackgroundVideoLooping = () => {
+    const next = { playing: isBackgroundVideoPlaying, loop: !isBackgroundVideoLooping };
+    setInternalVideoLooping(next.loop);
+    onVideoControlChange?.(next);
+  };
+  const safeInset = chromeless ? 0 : VIEWPORT_SAFE_INSET;
   const [videoProgress, setVideoProgress] = useState(0);
   const [videoDuration, setVideoDuration] = useState(0);
   const [outgoingLayoutScene, setOutgoingLayoutScene] = useState<{ scene: TemplateScene; category: "scriptures" | "songs"; slide: ProjectorSlide; key: number } | null>(null);
@@ -623,8 +645,8 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
 
     const updateScale = () => {
       const bounds = stage.getBoundingClientRect();
-      const usableWidth = Math.max(0, bounds.width - VIEWPORT_SAFE_INSET * 2);
-      const usableHeight = Math.max(0, bounds.height - VIEWPORT_SAFE_INSET * 2);
+      const usableWidth = Math.max(0, bounds.width - safeInset * 2);
+      const usableHeight = Math.max(0, bounds.height - safeInset * 2);
       const overlayRatio = OVERLAY_WIDTH / OVERLAY_HEIGHT;
 
       if (usableWidth <= 0 || usableHeight <= 0) {
@@ -651,7 +673,7 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
     observer.observe(stage);
 
     return () => observer.disconnect();
-  }, []);
+  }, [safeInset]);
 
   const canvasScale = viewportSize.width / OVERLAY_WIDTH;
   const isBlackOverride = feedOverride === "black";
@@ -792,9 +814,57 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",
-        background: "transparent",
+        background: chromeless ? "#000000" : "transparent",
+        cursor: chromeless ? "none" : undefined,
       }}
     >
+      <style>{`
+        @keyframes ssOnAirBlink {
+          0%, 100% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.35;
+          }
+        }
+        @keyframes projFadeIn {
+          0% { opacity: 0; }
+          100% { opacity: 1; }
+        }
+        @keyframes projFadeOut {
+          0% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+        @keyframes projSlideLeft {
+          0% { transform: translate3d(100%, 0, 0); opacity: ${transitionSetting?.crossfade ? 0.2 : 1}; }
+          100% { transform: translate3d(0, 0, 0); opacity: 1; }
+        }
+        @keyframes projSlideRight {
+          0% { transform: translate3d(-100%, 0, 0); opacity: ${transitionSetting?.crossfade ? 0.2 : 1}; }
+          100% { transform: translate3d(0, 0, 0); opacity: 1; }
+        }
+        @keyframes projSlideUp {
+          0% { transform: translate3d(0, 100%, 0); opacity: ${transitionSetting?.crossfade ? 0.2 : 1}; }
+          100% { transform: translate3d(0, 0, 0); opacity: 1; }
+        }
+        @keyframes projSlideDown {
+          0% { transform: translate3d(0, -100%, 0); opacity: ${transitionSetting?.crossfade ? 0.2 : 1}; }
+          100% { transform: translate3d(0, 0, 0); opacity: 1; }
+        }
+        @keyframes projPushUpCrossfade {
+          0% { transform: translate3d(0, 100%, 0); opacity: 0.2; }
+          100% { transform: translate3d(0, 0, 0); opacity: 1; }
+        }
+        @keyframes projZoomIn {
+          0% { transform: scale3d(0.65, 0.65, 1); opacity: 0; }
+          100% { transform: scale3d(1, 1, 1); opacity: 1; }
+        }
+        @keyframes projZoomOut {
+          0% { transform: scale3d(1.35, 1.35, 1); opacity: 0; }
+          100% { transform: scale3d(1, 1, 1); opacity: 1; }
+        }
+      `}</style>
+      {chromeless ? null : (
       <div
         style={{
           display: "flex",
@@ -810,52 +880,6 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
           overflow: "hidden",
         }}
       >
-        <style>{`
-          @keyframes ssOnAirBlink {
-            0%, 100% {
-              opacity: 1;
-            }
-            50% {
-              opacity: 0.35;
-            }
-          }
-          @keyframes projFadeIn {
-            0% { opacity: 0; }
-            100% { opacity: 1; }
-          }
-          @keyframes projFadeOut {
-            0% { opacity: 1; }
-            100% { opacity: 0; }
-          }
-          @keyframes projSlideLeft {
-            0% { transform: translate3d(100%, 0, 0); opacity: ${transitionSetting?.crossfade ? 0.2 : 1}; }
-            100% { transform: translate3d(0, 0, 0); opacity: 1; }
-          }
-          @keyframes projSlideRight {
-            0% { transform: translate3d(-100%, 0, 0); opacity: ${transitionSetting?.crossfade ? 0.2 : 1}; }
-            100% { transform: translate3d(0, 0, 0); opacity: 1; }
-          }
-          @keyframes projSlideUp {
-            0% { transform: translate3d(0, 100%, 0); opacity: ${transitionSetting?.crossfade ? 0.2 : 1}; }
-            100% { transform: translate3d(0, 0, 0); opacity: 1; }
-          }
-          @keyframes projSlideDown {
-            0% { transform: translate3d(0, -100%, 0); opacity: ${transitionSetting?.crossfade ? 0.2 : 1}; }
-            100% { transform: translate3d(0, 0, 0); opacity: 1; }
-          }
-          @keyframes projPushUpCrossfade {
-            0% { transform: translate3d(0, 100%, 0); opacity: 0.2; }
-            100% { transform: translate3d(0, 0, 0); opacity: 1; }
-          }
-          @keyframes projZoomIn {
-            0% { transform: scale3d(0.65, 0.65, 1); opacity: 0; }
-            100% { transform: scale3d(1, 1, 1); opacity: 1; }
-          }
-          @keyframes projZoomOut {
-            0% { transform: scale3d(1.35, 1.35, 1); opacity: 0; }
-            100% { transform: scale3d(1, 1, 1); opacity: 1; }
-          }
-        `}</style>
         <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "var(--projector-status-idle)" }} />
           {title}
@@ -880,6 +904,7 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
           </span>
         </span>
       </div>
+      )}
       <div
         ref={stageRef}
         style={{
@@ -888,12 +913,9 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          paddingLeft: `${VIEWPORT_SAFE_INSET}px`,
-          paddingRight: `${VIEWPORT_SAFE_INSET}px`,
-          paddingTop: `${VIEWPORT_SAFE_INSET}px`,
-          paddingBottom: `${VIEWPORT_SAFE_INSET}px`,
+          padding: `${safeInset}px`,
           overflow: "hidden",
-          background: "transparent",
+          background: chromeless ? "#000000" : "transparent",
         }}
       >
         <div
@@ -901,8 +923,8 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
             width: `${viewportSize.width}px`,
             height: `${viewportSize.height}px`,
             position: "relative",
-            borderRadius: "var(--radius-lg)",
-            background: isBlackOverride
+            borderRadius: chromeless ? 0 : "var(--radius-lg)",
+            background: isBlackOverride || chromeless
               ? "#000000"
               : "linear-gradient(180deg, rgba(16, 20, 44, 0.95), rgba(8, 9, 18, 1))",
             overflow: "hidden",
@@ -994,10 +1016,11 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
           )}
         </div>
       </div>
+      {chromeless ? null : (
       <div style={{ display: "flex", alignItems: "center", gap: "8px", minHeight: "28px", padding: "6px 4px 0", color: "var(--fg-muted)", fontFamily: "var(--font-mono)", fontSize: "10px" }}>
         <button
           type="button"
-          onClick={() => setIsBackgroundVideoPlaying((current) => !current)}
+          onClick={toggleBackgroundVideoPlaying}
           disabled={!hasBackgroundVideo}
           aria-label={isBackgroundVideoPlaying ? `Pause ${title} background video` : `Play ${title} background video`}
           title={isBackgroundVideoPlaying ? "Pause background video" : "Play background video"}
@@ -1023,7 +1046,7 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
         />
         <button
           type="button"
-          onClick={() => setIsBackgroundVideoLooping((current) => !current)}
+          onClick={toggleBackgroundVideoLooping}
           disabled={!hasBackgroundVideo}
           aria-pressed={isBackgroundVideoLooping}
           aria-label={`${isBackgroundVideoLooping ? "Disable" : "Enable"} loop for ${title} background video`}
@@ -1033,6 +1056,7 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
           ↻
         </button>
       </div>
+      )}
     </div>
   );
 }

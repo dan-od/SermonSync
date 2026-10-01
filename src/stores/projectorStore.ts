@@ -2,7 +2,8 @@
  * Projector store (SS-004 scaffold).
  *
  * Controls what is shown on the projector output (slide, overlay style, theme,
- * NDI/HDMI). External projector and NDI output remain outside this change.
+ * NDI/HDMI). The congregation window mirrors this store through
+ * useProjectorOutputBridge (SS-036); NDI output is not built yet.
  */
 import { create } from "zustand";
 
@@ -91,7 +92,6 @@ export const useProjectorStore = create<ProjectorStore>((set) => ({
 
   setPreview: (previewSlide) => set({ previewSlide }),
 
-  // TODO(Dee): render `slide` to the projector window and mark it live.
   sendLive: (currentSlide) =>
     set({ currentSlide, liveSlide: currentSlide, isLive: true }),
 

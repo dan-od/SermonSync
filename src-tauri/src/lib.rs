@@ -10,6 +10,8 @@ use std::io::{BufRead, BufReader};
 #[cfg(debug_assertions)]
 use std::process::{Child as SidecarChild, Stdio};
 use tauri::{Emitter, Manager, WindowEvent};
+
+mod projector;
 #[cfg(not(debug_assertions))]
 use tauri_plugin_shell::{
     process::{CommandChild as SidecarChild, CommandEvent},
@@ -480,7 +482,10 @@ pub fn run() {
             import_bible_file,
             load_template_themes,
             save_template_themes,
-            save_text_file
+            save_text_file,
+            projector::list_displays,
+            projector::open_projector_window,
+            projector::close_projector_window
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

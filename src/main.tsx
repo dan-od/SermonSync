@@ -1,9 +1,12 @@
-import { Component, StrictMode, type ErrorInfo, type ReactNode } from 'react'
+import { Component, StrictMode, Suspense, type ErrorInfo, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
-import App from './App.tsx'
+import { isProjectorWindow } from './lib/projectorOutput'
+import { OperatorApp, ProjectorOutputWindow } from './windowRoots'
 import './styles/global.css'
 
-class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+const projectorWindow = isProjectorWindow()
+
+class AppErrorBoundary extends Component<{ children: ReactNode; silent?: boolean }, { error: Error | null }> {
   state = { error: null as Error | null };
 
   static getDerivedStateFromError(error: Error) {
@@ -12,9 +15,17 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('SermonSync render error', error, info);
+    if (this.props.silent) {
+      // Congregation output: retry instead of staying black until someone notices.
+      window.setTimeout(() => this.setState({ error: null }), 2000);
+    }
   }
 
   render() {
+    if (this.state.error && this.props.silent) {
+      // Never show an error dialog to the congregation; go to black instead.
+      return <div style={{ position: 'fixed', inset: 0, background: '#000', cursor: 'none' }} />;
+    }
     if (this.state.error) {
       return <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24, boxSizing: 'border-box', background: '#181818', color: '#f4f7ff', fontFamily: 'system-ui, sans-serif' }}>
         <section style={{ maxWidth: 620, width: '100%', padding: 24, border: '1px solid #664c85', borderRadius: 12, background: '#24202c' }}>
@@ -31,6 +42,10 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <AppErrorBoundary><App /></AppErrorBoundary>
+    <AppErrorBoundary silent={projectorWindow}>
+      <Suspense fallback={projectorWindow ? <div style={{ position: 'fixed', inset: 0, background: '#000' }} /> : null}>
+        {projectorWindow ? <ProjectorOutputWindow /> : <OperatorApp />}
+      </Suspense>
+    </AppErrorBoundary>
   </StrictMode>,
 )
