@@ -1,15 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Textbox } from "fabric";
 
-import type { TemplateCanvasTheme, TemplateCategory, TemplateLayer, TemplateScene, TemplateTextScript } from "../../types/templates";
+import type { TemplateCategory } from "../../types/templates";
 import type { OverlayMode } from "../../types/state";
 import { createEmptyStudioDocument, type StudioDocument } from "../../types/studioDocument";
 import { useTemplateStore } from "../../stores/templateStore";
-import { isShortcutEvent, useShortcutStore } from "../../stores/shortcutStore";
+import { useShortcutStore } from "../../stores/shortcutStore";
 import { FabricStudioCanvas, type StudioCanvasHandle, type StudioTextSelection } from "./FabricStudioCanvas";
 import { StudioLayersPanel } from "./StudioLayersPanel";
 import { StudioToolbar } from "./StudioToolbar";
+import { CameraCaptureDialog } from "./editor/CameraCaptureDialog";
+import { SaveTemplateTitleDialog } from "./editor/SaveTemplateTitleDialog";
+import { TemplateEditorFooter } from "./editor/TemplateEditorFooter";
+import { TemplateEditorHeader } from "./editor/TemplateEditorHeader";
+import { sceneFromStudioDocument } from "./editor/sceneFromStudioDocument";
+import { studioDocumentFromLegacyTemplate } from "./editor/studioDocumentFromLegacyTemplate";
+import { handleTemplateEditorKeyDown } from "./editor/templateEditorKeyboard";
+import { categoryLabel } from "./editor/templateEditorLabels";
 
 interface TemplateEditorModalProps {
   open: boolean;
@@ -17,339 +24,6 @@ interface TemplateEditorModalProps {
   category: TemplateCategory;
   templateId: string | null;
   onClose: () => void;
-}
-
-function categoryLabel(category: TemplateCategory) {
-  return category === "songs" ? "Song" : "Scripture";
-}
-
-function studioDocumentFromLegacyTemplate(template: TemplateCanvasTheme): StudioDocument {
-  const { scene } = template;
-  const width = scene.canvasWidth;
-  const height = scene.canvasHeight;
-  const objects = [...scene.layers].sort((a, b) => a.zIndex - b.zIndex).map((layer) => {
-    const base = {
-      left: layer.x / 100 * width,
-      top: layer.y / 100 * height,
-      width: layer.width / 100 * width,
-      height: layer.height / 100 * height,
-      angle: layer.rotation,
-      opacity: layer.opacity,
-      visible: layer.visible,
-      selectable: !layer.locked,
-      evented: !layer.locked,
-      studioId: layer.id,
-      studioRole: "layer" as const,
-      studioName: layer.name,
-      studioLocked: layer.locked,
-    };
-    if (layer.type === "text") {
-      return {
-        ...base,
-        type: "Textbox",
-        text: layer.content,
-        fill: layer.color,
-        stroke: layer.outlineColor || null,
-        strokeWidth: layer.outlineWidth,
-        fontFamily: layer.fontFamily === "var(--font-sans)" ? "Inter, system-ui, sans-serif" : layer.fontFamily,
-        fontStyle: layer.fontStyle,
-        fontSize: layer.fontSize,
-        fontWeight: layer.fontWeight,
-        textAlign: layer.align,
-        lineHeight: layer.lineHeight,
-        lineSpacing: layer.lineSpacing,
-        charSpacing: layer.charSpacing,
-        backgroundColor: layer.backgroundColor,
-        cornerRadius: layer.cornerRadius,
-        lineBackgroundColor: layer.lineBackgroundColor,
-        shadow: layer.shadow,
-        scrollDuration: layer.scrollDuration,
-        scrollGap: layer.scrollGap,
-        studioBoxHeight: base.height,
-        autoSize: layer.autoFit === "grow" ? "Grow to fit" : layer.autoFit === "shrink" ? "Shrink to fit" : "None",
-      };
-    }
-    return {
-      ...base,
-      type: layer.shapeKind === "circle" ? "Ellipse" : layer.shapeKind === "triangle" ? "Triangle" : layer.shapeKind === "line" ? "Line" : layer.shapeKind === "arrow" || layer.shapeKind === "polygon" || layer.shapeKind === "star" ? "Polygon" : "Rect",
-      studioShapeKind: layer.shapeKind,
-      fill: layer.fill,
-      stroke: layer.borderColor || null,
-      strokeWidth: layer.borderWidth,
-      strokeDashArray: layer.borderDash === "dashed" ? [12, 8] : layer.borderDash === "dotted" ? [1, 6] : null,
-      strokeLineCap: layer.borderLineCap,
-      strokeLineJoin: layer.borderLineJoin,
-      globalCompositeOperation: layer.blendMode,
-      flipX: layer.flipX,
-      flipY: layer.flipY,
-      shadow: layer.shadow,
-      polygonSides: layer.polygonSides,
-      starPoints: layer.starPoints,
-      starInnerRadius: layer.starInnerRadius,
-      ...(layer.shapeKind === "circle" ? { rx: base.width / 2, ry: base.height / 2 } : { rx: layer.radius, ry: layer.radius }),
-    };
-  });
-  const now = Date.now();
-  return {
-    id: `studio-${template.id}`,
-    name: template.name,
-    category: template.category,
-    width,
-    height,
-    background: scene.backgroundStart,
-    fabricVersion: "7.0.0",
-    objects,
-    createdAt: template.createdAt,
-    updatedAt: now,
-  };
-}
-
-function scriptStylesFromStudioObject(object: Record<string, unknown>): Record<string, TemplateTextScript> {
-  const serializedStyles = object.styles;
-  const text = typeof object.text === "string" ? object.text : "";
-  if (!serializedStyles || typeof serializedStyles !== "object" || !text) return {};
-  if (Array.isArray(serializedStyles)) {
-    const scriptStyles: Record<string, TemplateTextScript> = {};
-    serializedStyles.forEach((entry) => {
-      if (!entry || typeof entry !== "object") return;
-      const range = entry as Record<string, unknown>;
-      const start = typeof range.start === "number" ? Math.max(0, Math.floor(range.start)) : -1;
-      const end = typeof range.end === "number" ? Math.min(text.length, Math.floor(range.end)) : -1;
-      const style = range.style;
-      const script = style && typeof style === "object" ? (style as Record<string, unknown>).studioScript : undefined;
-      if (start < 0 || end <= start || (script !== "superscript" && script !== "subscript")) return;
-      for (let index = start; index < end; index += 1) scriptStyles[String(index)] = script;
-    });
-    return scriptStyles;
-  }
-  const lines = text.split("\n");
-  const lineStarts: number[] = [];
-  let offset = 0;
-  lines.forEach((line) => {
-    lineStarts.push(offset);
-    offset += line.length + 1;
-  });
-
-  const scriptStyles: Record<string, TemplateTextScript> = {};
-  Object.entries(serializedStyles as Record<string, unknown>).forEach(([lineKey, line]) => {
-    const lineIndex = Number(lineKey);
-    if (!Number.isInteger(lineIndex) || !line || typeof line !== "object") return;
-    Object.entries(line as Record<string, unknown>).forEach(([charKey, style]) => {
-      const charIndex = Number(charKey);
-      if (!Number.isInteger(charIndex) || !style || typeof style !== "object") return;
-      const script = (style as Record<string, unknown>).studioScript;
-      if ((script === "superscript" || script === "subscript") && lineStarts[lineIndex] !== undefined) {
-        scriptStyles[String(lineStarts[lineIndex] + charIndex)] = script;
-      }
-    });
-  });
-  return scriptStyles;
-}
-
-function sceneFromStudioDocument(document: StudioDocument, fallback: TemplateScene): TemplateScene {
-  const numberValue = (value: unknown, defaultValue = 0) => typeof value === "number" && Number.isFinite(value) ? value : defaultValue;
-  const objectNumber = (object: Record<string, unknown>, key: string, defaultValue = 0) => numberValue(object[key], defaultValue);
-  const flattenObjects = (objects: Array<Record<string, unknown>>, parent = { left: 0, top: 0, scaleX: 1, scaleY: 1, angle: 0, opacity: 1, visible: true }): Array<Record<string, unknown>> => objects.flatMap((object) => {
-    const localLeft = objectNumber(object, "left");
-    const localTop = objectNumber(object, "top");
-    const radians = parent.angle * Math.PI / 180;
-    const scaledLeft = localLeft * parent.scaleX;
-    const scaledTop = localTop * parent.scaleY;
-    const composite = {
-      ...object,
-      left: parent.left + scaledLeft * Math.cos(radians) - scaledTop * Math.sin(radians),
-      top: parent.top + scaledLeft * Math.sin(radians) + scaledTop * Math.cos(radians),
-      scaleX: objectNumber(object, "scaleX", 1) * parent.scaleX,
-      scaleY: objectNumber(object, "scaleY", 1) * parent.scaleY,
-      angle: objectNumber(object, "angle") + parent.angle,
-      opacity: objectNumber(object, "opacity", 1) * parent.opacity,
-      visible: object.visible !== false && parent.visible,
-    };
-    const children = object.objects;
-    const isGroup = String(object.type ?? "").toLowerCase() === "group";
-    const groupWidth = objectNumber(object, "width") * composite.scaleX;
-    const groupHeight = objectNumber(object, "height") * composite.scaleY;
-    return isGroup && Array.isArray(children)
-      ? flattenObjects(children.filter((child): child is Record<string, unknown> => Boolean(child) && typeof child === "object"), {
-          ...composite,
-          left: composite.left + groupWidth / 2,
-          top: composite.top + groupHeight / 2,
-        })
-      : [composite];
-  });
-  const effectiveTextFontSize = (object: Record<string, unknown>, fallbackSize: number) => {
-    const serializedStyles = object.styles;
-    if (!serializedStyles || typeof serializedStyles !== "object") return fallbackSize;
-    if (Array.isArray(serializedStyles)) {
-      const fontSizes = serializedStyles.flatMap((entry) => {
-        if (!entry || typeof entry !== "object") return [];
-        const style = (entry as Record<string, unknown>).style;
-        const value = style && typeof style === "object" ? (style as Record<string, unknown>).fontSize : undefined;
-        return typeof value === "number" && Number.isFinite(value) ? [value] : [];
-      });
-      if (fontSizes.length === 0) return fallbackSize;
-      const first = fontSizes[0];
-      return fontSizes.every((size) => Math.abs(size - first) < 0.01) ? first : fallbackSize;
-    }
-    const fontSizes = Object.values(serializedStyles as Record<string, unknown>).flatMap((line) => {
-      if (!line || typeof line !== "object") return [];
-      return Object.values(line as Record<string, unknown>).map((style) => {
-        if (!style || typeof style !== "object") return null;
-        const value = (style as Record<string, unknown>).fontSize;
-        return typeof value === "number" && Number.isFinite(value) ? value : null;
-      });
-    }).filter((value): value is number => value !== null);
-    if (fontSizes.length === 0) return fallbackSize;
-    const first = fontSizes[0];
-    return fontSizes.every((size) => Math.abs(size - first) < 0.01) ? first : fallbackSize;
-  };
-  const width = Math.max(1, document.width);
-  const height = Math.max(1, document.height);
-  const layers: TemplateLayer[] = flattenObjects(document.objects).flatMap((object, index): TemplateLayer[] => {
-    const type = String(object.type ?? "").toLowerCase();
-    const objectWidth = objectNumber(object, "width") * objectNumber(object, "scaleX", 1);
-    const objectHeight = objectNumber(object, "studioBoxHeight", objectNumber(object, "height")) * objectNumber(object, "scaleY", 1);
-    if (objectWidth <= 0 || objectHeight <= 0) return [];
-    const base = {
-      id: typeof object.studioId === "string" ? object.studioId : `studio-layer-${index + 1}`,
-      name: typeof object.studioName === "string" ? object.studioName : `Layer ${index + 1}`,
-      visible: object.visible !== false,
-      locked: object.studioLocked === true,
-      x: objectNumber(object, "left") / width * 100,
-      y: objectNumber(object, "top") / height * 100,
-      width: objectWidth / width * 100,
-      height: objectHeight / height * 100,
-      rotation: objectNumber(object, "angle"),
-      zIndex: index + 1,
-      opacity: objectNumber(object, "opacity", 1),
-    };
-    if (type === "textbox" || type === "i-text") {
-      const autoSize = object.autoSize === "Grow to fit" ? "grow" : object.autoSize === "Shrink to fit" ? "shrink" : "none";
-      const scriptStyles = scriptStylesFromStudioObject(object);
-      return [{
-        ...base,
-        type: "text" as const,
-        content: typeof object.text === "string" ? object.text : "",
-        color: typeof object.fill === "string" ? object.fill : "#f4f7ff",
-        outlineColor: typeof object.stroke === "string" ? object.stroke : "",
-        outlineWidth: objectNumber(object, "strokeWidth"),
-        boxBorderColor: typeof object.boxBorderColor === "string" ? object.boxBorderColor : typeof object.stroke === "string" ? object.stroke : "",
-        boxBorderWidth: objectNumber(object, "boxBorderWidth", objectNumber(object, "strokeWidth")),
-        fontFamily: typeof object.fontFamily === "string" ? object.fontFamily : "Inter, system-ui, sans-serif",
-        fontStyle: object.fontStyle === "italic" ? "italic" as const : "normal" as const,
-        fontSize: effectiveTextFontSize(object, objectNumber(object, "fontSize", 28)),
-        fontWeight: objectNumber(object, "fontWeight", 400),
-        align: object.textAlign === "left" || object.textAlign === "right" ? object.textAlign : "center" as const,
-        lineHeight: objectNumber(object, "lineHeight", 1.16),
-        lineSpacing: objectNumber(object, "lineSpacing"),
-        charSpacing: objectNumber(object, "charSpacing"),
-        backgroundColor: typeof object.backgroundColor === "string" ? object.backgroundColor : "",
-        cornerRadius: objectNumber(object, "cornerRadius"),
-        lineBackgroundColor: typeof object.lineBackgroundColor === "string" ? object.lineBackgroundColor : "",
-        shadow: object.shadow && typeof object.shadow === "object" ? {
-          color: typeof (object.shadow as Record<string, unknown>).color === "string" ? (object.shadow as Record<string, unknown>).color as string : "#000000",
-          blur: objectNumber(object.shadow as Record<string, unknown>, "blur"),
-          offsetX: objectNumber(object.shadow as Record<string, unknown>, "offsetX"),
-          offsetY: objectNumber(object.shadow as Record<string, unknown>, "offsetY"),
-        } : null,
-        scrollDuration: objectNumber(object, "scrollDuration"),
-        scrollGap: objectNumber(object, "scrollGap", 100),
-        autoFit: autoSize as "none" | "grow" | "shrink",
-        ...(Object.keys(scriptStyles).length > 0 ? { scriptStyles } : {}),
-      }];
-    }
-    if (type === "rect" || type === "ellipse" || type === "triangle" || type === "line" || type === "polygon") {
-      const storedKind = object.studioShapeKind;
-      const shapeKind = storedKind === "rectangle" || storedKind === "square" || storedKind === "circle" || storedKind === "triangle" || storedKind === "line" || storedKind === "arrow" || storedKind === "polygon" || storedKind === "star"
-        ? storedKind
-        : type === "ellipse" ? "circle" : type === "triangle" ? "triangle" : type === "line" ? "line" : "rectangle";
-      const dash = Array.isArray(object.strokeDashArray) ? object.strokeDashArray : [];
-      const pattern = object.fill && typeof object.fill === "object" ? object.fill as Record<string, unknown> : null;
-      const patternSource = pattern?.type === "pattern" && typeof pattern.source === "string" ? pattern.source : undefined;
-      const fillImage = typeof object.studioShapeFillMediaSource === "string" ? object.studioShapeFillMediaSource : patternSource;
-      const fillImageType = object.studioShapeFillMediaType === "video" ? "video" as const : "image" as const;
-      const fillFit = object.studioShapeFillFit === "contain" || object.studioShapeFillFit === "tile" ? object.studioShapeFillFit : "cover";
-      return [{
-        ...base,
-        type: "shape" as const,
-        shapeKind,
-        fill: typeof object.fill === "string" ? object.fill : typeof object.studioShapeFillColor === "string" ? object.studioShapeFillColor : "#101319",
-        fillMode: fillImage ? "image" as const : "solid" as const,
-        ...(fillImage ? { fillImage } : {}),
-        ...(fillImage ? { fillImageType } : {}),
-        ...(fillImage ? { fillImageFit: fillFit } : {}),
-        ...(fillImage ? { fillImageScale: objectNumber(object, "studioShapeFillScale", 100) } : {}),
-        ...(fillImage ? { fillImageX: objectNumber(object, "studioShapeFillX"), fillImageY: objectNumber(object, "studioShapeFillY") } : {}),
-        ...(fillImage ? { fillImageOpacity: objectNumber(object, "studioShapeFillOpacity", 1) } : {}),
-        borderColor: typeof object.stroke === "string" ? object.stroke : "",
-        borderWidth: objectNumber(object, "strokeWidth", 1),
-        radius: objectNumber(object, "rx", 8),
-        borderDash: dash.length === 0 ? "solid" : dash[0] === 1 ? "dotted" : "dashed",
-        borderLineCap: object.strokeLineCap === "butt" || object.strokeLineCap === "square" ? object.strokeLineCap : "round",
-        borderLineJoin: object.strokeLineJoin === "miter" || object.strokeLineJoin === "bevel" ? object.strokeLineJoin : "round",
-        blendMode: typeof object.globalCompositeOperation === "string" ? object.globalCompositeOperation : "source-over",
-        flipX: object.flipX === true,
-        flipY: object.flipY === true,
-        polygonSides: objectNumber(object, "polygonSides", 6),
-        starPoints: objectNumber(object, "starPoints", 5),
-        starInnerRadius: objectNumber(object, "starInnerRadius", 0.44) * 100,
-        shadow: object.shadow && typeof object.shadow === "object" ? {
-          color: typeof (object.shadow as Record<string, unknown>).color === "string" ? (object.shadow as Record<string, unknown>).color as string : "#000000",
-          blur: objectNumber(object.shadow as Record<string, unknown>, "blur"),
-          offsetX: objectNumber(object.shadow as Record<string, unknown>, "offsetX"),
-          offsetY: objectNumber(object.shadow as Record<string, unknown>, "offsetY"),
-        } : null,
-      }];
-    }
-    // Legacy safety net: templates saved before media add-ons became pattern-filled
-    // shapes may still contain bare Fabric images with no shape settings.
-    if (type === "image") {
-      const source = typeof object.src === "string" ? object.src : undefined;
-      if (!source) return [];
-      return [{
-        ...base,
-        type: "shape" as const,
-        shapeKind: "rectangle" as const,
-        fill: "#101319",
-        fillMode: "image" as const,
-        fillImage: source,
-        fillImageType: "image" as const,
-        fillImageFit: "cover" as const,
-        fillImageScale: 100,
-        fillImageX: 0,
-        fillImageY: 0,
-        fillImageOpacity: objectNumber(object, "opacity", 1),
-        borderColor: "",
-        borderWidth: 0,
-        radius: 0,
-        borderDash: "solid" as const,
-        borderLineCap: "round" as const,
-        borderLineJoin: "round" as const,
-        blendMode: typeof object.globalCompositeOperation === "string" ? object.globalCompositeOperation : "source-over",
-        flipX: object.flipX === true,
-        flipY: object.flipY === true,
-        polygonSides: 6,
-        starPoints: 5,
-        starInnerRadius: 44,
-        shadow: object.shadow && typeof object.shadow === "object" ? {
-          color: typeof (object.shadow as Record<string, unknown>).color === "string" ? (object.shadow as Record<string, unknown>).color as string : "#000000",
-          blur: objectNumber(object.shadow as Record<string, unknown>, "blur"),
-          offsetX: objectNumber(object.shadow as Record<string, unknown>, "offsetX"),
-          offsetY: objectNumber(object.shadow as Record<string, unknown>, "offsetY"),
-        } : null,
-      }];
-    }
-    return [];
-  });
-  return {
-    ...fallback,
-    canvasWidth: document.width,
-    canvasHeight: document.height,
-    backgroundStart: document.background,
-    gradientAngle: document.backgroundGradientAngle ?? 135,
-    gradientStyle: document.backgroundGradientStyle ?? "linear",
-    layers: layers.length > 0 ? layers : fallback.layers,
-  };
 }
 
 export function TemplateEditorModal(props: TemplateEditorModalProps) {
@@ -548,62 +222,7 @@ export function TemplateEditorModal(props: TemplateEditorModalProps) {
   useEffect(() => {
     if (!open) return;
 
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const isTextEditing = target?.tagName === "TEXTAREA" || target?.isContentEditable;
-      const isFormEditing = isTextEditing || target?.tagName === "INPUT" || target?.tagName === "SELECT" || target?.tagName === "BUTTON";
-      if (event.key === "Escape") {
-        if (isTitlePromptOpen) {
-          setIsTitlePromptOpen(false);
-          return;
-        }
-        if (isTextEditing) return;
-        if (selectedIds.length > 0) {
-          canvasHandleRef.current?.getCanvas()?.discardActiveObject();
-          canvasHandleRef.current?.getCanvas()?.requestRenderAll();
-          return;
-        }
-        onClose();
-        return;
-      }
-      if (!isFormEditing && isShortcutEvent(event, shortcuts["template-undo"])) {
-        event.preventDefault();
-        void canvasHandleRef.current?.undo();
-        return;
-      }
-      const canvas = canvasHandleRef.current?.getCanvas();
-      const activeCanvasObject = canvas?.getActiveObject();
-      const isCanvasTextEditing = activeCanvasObject instanceof Textbox && activeCanvasObject.isEditing;
-      if (!isFormEditing && !isCanvasTextEditing && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c") {
-        event.preventDefault();
-        void canvasHandleRef.current?.copySelection();
-        return;
-      }
-      if (!isFormEditing && !isCanvasTextEditing && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "v") {
-        event.preventDefault();
-        void canvasHandleRef.current?.pasteSelection();
-        return;
-      }
-      if (!isFormEditing && !isCanvasTextEditing && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "g") {
-        event.preventDefault();
-        canvasHandleRef.current?.groupSelection();
-        return;
-      }
-      if (!isFormEditing && !isCanvasTextEditing && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "u") {
-        event.preventDefault();
-        canvasHandleRef.current?.ungroupSelection();
-        return;
-      }
-      if (!isFormEditing && isShortcutEvent(event, shortcuts["template-redo"])) {
-        event.preventDefault();
-        void canvasHandleRef.current?.redo();
-        return;
-      }
-      if (event.key === "Delete" && !isFormEditing && selectedIds.length > 0) {
-        event.preventDefault();
-        canvasHandleRef.current?.deleteSelection();
-      }
-    };
+    const onKeyDown = (event: KeyboardEvent) => handleTemplateEditorKeyDown(event, { isTitlePromptOpen, setIsTitlePromptOpen, selectedIds, onClose, shortcuts, canvasHandleRef });
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -645,34 +264,7 @@ export function TemplateEditorModal(props: TemplateEditorModalProps) {
           boxShadow: "var(--shadow-lg)",
         }}
       >
-        <header
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: "10px",
-            borderBottom: "1px solid var(--border-base)",
-            padding: "10px 14px",
-            background: "var(--bg-surface)",
-          }}
-        >
-          <div style={{ display: "grid", gap: "2px" }}>
-            <span style={{ color: "var(--fg-base)", fontWeight: 700, fontSize: "14px" }}>
-              {mode === "edit" ? "Edit Template" : "Create Template"}
-            </span>
-            <span style={{ color: "var(--fg-subtle)", fontFamily: "var(--font-mono)", fontSize: "10px", letterSpacing: "0.06em" }}>
-              {categoryLabel(category).toUpperCase()} · CANVAS AUTHORING
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{ border: "none", background: "var(--bg-elevated)", color: "var(--fg-base)", borderRadius: "6px", width: "28px", height: "28px", cursor: "pointer" }}
-            title="Close"
-          >
-            ×
-          </button>
-        </header>
+        <TemplateEditorHeader mode={mode} category={category} onClose={onClose} />
 
         <div style={{ minHeight: 0, minWidth: 0, display: "grid", gridTemplateColumns: "minmax(0, 1fr) 260px" }}>
           <div style={{ position: "relative", minHeight: 0, minWidth: 0 }}>
@@ -764,143 +356,32 @@ export function TemplateEditorModal(props: TemplateEditorModalProps) {
           />
         </div>
 
-        <footer
-          style={{
-            borderTop: "1px solid var(--border-base)",
-            padding: "10px 14px",
-            display: "flex",
-            justifyContent: "flex-end",
-            gap: "8px",
-            background: "var(--bg-surface)",
-          }}
-        >
-          {saveError ? <span style={{ marginRight: "auto", alignSelf: "center", color: "var(--color-error)", fontSize: "12px" }}>{saveError}</span> : null}
-          <button
-            type="button"
-            onClick={onClose}
-            style={{ border: "1px solid var(--border-base)", background: "var(--bg-elevated)", color: "var(--fg-base)", borderRadius: "8px", padding: "8px 12px", cursor: "pointer" }}
-          >
-            Close
-          </button>
-          <button
-            type="button"
-            onClick={requestSave}
-            disabled={isSaving}
-            style={{ border: "none", background: isSaving ? "var(--bg-elevated)" : "var(--color-primary)", color: isSaving ? "var(--fg-subtle)" : "white", borderRadius: "8px", padding: "8px 12px", fontWeight: 700, cursor: isSaving ? "wait" : "pointer" }}
-          >
-            {isSaving ? "Saving..." : "Save Template"}
-          </button>
-        </footer>
+        <TemplateEditorFooter saveError={saveError} isSaving={isSaving} onClose={onClose} requestSave={requestSave} />
       </div>
 
       {isCameraDialogOpen ? (
-        <div role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeCameraDialog(); }} style={{ position: "absolute", inset: 0, zIndex: 3, display: "grid", placeItems: "center", padding: "16px", background: "color-mix(in srgb, var(--overlay-backdrop) 72%, transparent)" }}>
-          <section role="dialog" aria-modal="true" aria-labelledby="camera-capture-title" style={{ width: "min(560px, 100%)", background: "var(--bg-surface)", border: "1px solid var(--border-base)", borderRadius: "10px", boxShadow: "var(--shadow-lg)", padding: "16px" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", marginBottom: "12px" }}>
-              <div><h2 id="camera-capture-title" style={{ margin: 0, color: "var(--fg-base)", fontSize: "16px" }}>Camera capture</h2><p style={{ margin: "4px 0 0", color: "var(--fg-muted)", fontSize: "12px" }}>Select an integrated or connected video device, then capture a frame.</p></div>
-              <button type="button" onClick={closeCameraDialog} title="Close camera capture" style={{ width: "28px", height: "28px", border: "none", borderRadius: "6px", background: "var(--bg-elevated)", color: "var(--fg-base)", cursor: "pointer" }}>×</button>
-            </div>
-            <label style={{ display: "grid", gap: "4px", color: "var(--fg-muted)", fontSize: "11px", marginBottom: "10px" }}>Video device
-              <select value={selectedCameraId} onChange={(event) => setSelectedCameraId(event.target.value)} style={{ border: "none", borderRadius: "5px", background: "var(--bg-base)", color: "var(--fg-base)", padding: "8px", fontSize: "12px" }}>
-                {cameraDevices.length === 0 ? <option value="">Detecting cameras...</option> : cameraDevices.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `Camera ${index + 1}`}</option>)}
-              </select>
-            </label>
-            <div style={{ aspectRatio: "16 / 9", overflow: "hidden", borderRadius: "6px", background: "#0b0d14", display: "grid", placeItems: "center" }}>
-              <video ref={cameraPreviewRef} muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              {cameraError ? <span style={{ gridArea: "1 / 1", maxWidth: "80%", color: "#fff", fontSize: "12px", lineHeight: 1.4, textAlign: "center" }}>{cameraError}</span> : null}
-            </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "14px" }}><button type="button" onClick={closeCameraDialog} style={{ border: "none", borderRadius: "6px", background: "var(--bg-elevated)", color: "var(--fg-base)", padding: "8px 12px", cursor: "pointer" }}>Cancel</button><button type="button" onClick={captureCameraFrame} disabled={Boolean(cameraError)} style={{ border: "none", borderRadius: "6px", background: "var(--color-primary)", color: "var(--fg-on-accent)", padding: "8px 12px", fontWeight: 700, cursor: cameraError ? "not-allowed" : "pointer", opacity: cameraError ? 0.55 : 1 }}>Capture frame</button></div>
-          </section>
-        </div>
+        <CameraCaptureDialog
+          cameraDevices={cameraDevices}
+          selectedCameraId={selectedCameraId}
+          setSelectedCameraId={setSelectedCameraId}
+          cameraError={cameraError}
+          cameraPreviewRef={cameraPreviewRef}
+          closeCameraDialog={closeCameraDialog}
+          captureCameraFrame={captureCameraFrame}
+        />
       ) : null}
 
       {isTitlePromptOpen ? (
-        <div
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget && !isSaving) setIsTitlePromptOpen(false);
-          }}
-          style={{
-            position: "absolute",
-            inset: 0,
-            zIndex: 2,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "16px",
-            background: "color-mix(in srgb, var(--overlay-backdrop) 72%, transparent)",
-          }}
-        >
-          <form
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="save-template-title"
-            onSubmit={(event) => {
-              event.preventDefault();
-              confirmTitleAndSave();
-            }}
-            style={{
-              width: "min(400px, 100%)",
-              background: "var(--bg-surface)",
-              border: "1px solid var(--border-base)",
-              borderRadius: "12px",
-              boxShadow: "var(--shadow-lg)",
-              padding: "18px",
-            }}
-          >
-            <div style={{ display: "grid", gap: "5px", marginBottom: "16px" }}>
-              <div id="save-template-title" style={{ color: "var(--fg-base)", fontSize: "16px", fontWeight: 700 }}>
-                Save template
-              </div>
-              <div style={{ color: "var(--fg-subtle)", fontSize: "12px", lineHeight: 1.45 }}>
-                Give this {categoryLabel(category).toLowerCase()} template a name so you can find it later.
-              </div>
-            </div>
-            <label style={{ display: "grid", gap: "6px", color: "var(--fg-muted)", fontSize: "11px", fontWeight: 700 }}>
-              Template title
-              <input
-                autoFocus
-                value={titleDraft}
-                onChange={(event) => {
-                  setTitleDraft(event.target.value);
-                  if (titlePromptError) setTitlePromptError(null);
-                }}
-                placeholder={`New ${categoryLabel(category)} Template`}
-                aria-invalid={Boolean(titlePromptError)}
-                style={{
-                  width: "100%",
-                  boxSizing: "border-box",
-                  border: `1px solid ${titlePromptError ? "var(--color-error)" : "var(--border-base)"}`,
-                  borderRadius: "7px",
-                  background: "var(--bg-elevated)",
-                  color: "var(--fg-base)",
-                  padding: "10px 11px",
-                  font: "inherit",
-                  fontSize: "13px",
-                  outline: "none",
-                }}
-              />
-              {titlePromptError ? <span style={{ color: "var(--color-error)", fontSize: "11px", fontWeight: 500 }}>{titlePromptError}</span> : null}
-            </label>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "18px" }}>
-              <button
-                type="button"
-                onClick={() => setIsTitlePromptOpen(false)}
-                disabled={isSaving}
-                style={{ border: "1px solid var(--border-base)", background: "var(--bg-elevated)", color: "var(--fg-base)", borderRadius: "8px", padding: "8px 12px", cursor: isSaving ? "not-allowed" : "pointer" }}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={isSaving}
-                style={{ border: "none", background: isSaving ? "var(--bg-elevated)" : "var(--color-primary)", color: isSaving ? "var(--fg-subtle)" : "white", borderRadius: "8px", padding: "8px 12px", fontWeight: 700, cursor: isSaving ? "wait" : "pointer" }}
-              >
-                {isSaving ? "Saving..." : "Save template"}
-              </button>
-            </div>
-          </form>
-        </div>
+        <SaveTemplateTitleDialog
+          category={category}
+          isSaving={isSaving}
+          titleDraft={titleDraft}
+          setTitleDraft={setTitleDraft}
+          titlePromptError={titlePromptError}
+          setTitlePromptError={setTitlePromptError}
+          setIsTitlePromptOpen={setIsTitlePromptOpen}
+          confirmTitleAndSave={confirmTitleAndSave}
+        />
       ) : null}
     </div>,
     globalThis.document.body,
