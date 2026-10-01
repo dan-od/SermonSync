@@ -19,6 +19,8 @@ interface TemplateStore {
   templates: TemplateCanvasTheme[];
   defaults: Record<TemplateCategory, Record<OverlayMode, string | null>>;
   initialize: () => Promise<void>;
+  /** Re-read templates from disk (the projector window, after main saves). */
+  reload: () => Promise<void>;
   upsertTemplate: (template: TemplateCanvasTheme) => Promise<void>;
   createTemplateDraft: (category: TemplateCategory) => TemplateCanvasTheme;
   makeDefault: (category: TemplateCategory, layout: OverlayMode, templateId: string) => Promise<void>;
@@ -53,9 +55,24 @@ function toDocument(templates: TemplateCanvasTheme[], defaults: Record<TemplateC
   };
 }
 
+// Every write goes through here so callers can wait for the file to land
+// (the projector window re-reads templates from disk after a save).
+let pendingSaves: Promise<unknown> = Promise.resolve();
+
+function trackedSave(document: TemplateThemeDocument): Promise<void> {
+  const save = saveTemplateThemes(document);
+  pendingSaves = Promise.allSettled([pendingSaves, save]);
+  return save;
+}
+
+/** Resolves once every template save started so far has finished. */
+export function flushTemplateSaves(): Promise<void> {
+  return pendingSaves.then(() => undefined);
+}
+
 function persist(templates: TemplateCanvasTheme[], defaults: Record<TemplateCategory, Record<OverlayMode, string | null>>) {
   // Fire-and-forget: persistence must never block the UI from reflecting scene edits instantly.
-  void saveTemplateThemes(toDocument(templates, defaults)).catch((error) => {
+  void trackedSave(toDocument(templates, defaults)).catch((error) => {
     console.error("Failed to persist template themes", error);
   });
 }
@@ -93,6 +110,15 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     }
   },
 
+  reload: async () => {
+    try {
+      const data = await loadTemplateThemes();
+      set({ templates: data.templates, defaults: data.defaults, initialized: true, loading: false, error: null });
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : "Failed to reload templates" });
+    }
+  },
+
   upsertTemplate: async (template) => {
     const now = Date.now();
     const nextTemplate = { ...template, updatedAt: now };
@@ -115,7 +141,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     });
 
     set({ templates: nextTemplates, defaults: nextDefaults });
-    await saveTemplateThemes(toDocument(nextTemplates, nextDefaults));
+    await trackedSave(toDocument(nextTemplates, nextDefaults));
   },
 
   createTemplateDraft: (category) => {
@@ -131,7 +157,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
 
     const nextDefaults = { ...get().defaults, [category]: { ...get().defaults[category], [layout]: templateId } };
     set({ defaults: nextDefaults });
-    await saveTemplateThemes(toDocument(get().templates, nextDefaults));
+    await trackedSave(toDocument(get().templates, nextDefaults));
   },
 
   renameTemplate: async (templateId, name) => {
@@ -145,7 +171,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     );
 
     set({ templates: nextTemplates });
-    await saveTemplateThemes(toDocument(nextTemplates, get().defaults));
+    await trackedSave(toDocument(nextTemplates, get().defaults));
   },
 
   deleteTemplate: async (templateId) => {
@@ -162,7 +188,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     });
 
     set({ templates: nextTemplates, defaults: nextDefaults });
-    await saveTemplateThemes(toDocument(nextTemplates, nextDefaults));
+    await trackedSave(toDocument(nextTemplates, nextDefaults));
   },
 
   duplicateTemplate: async (templateId) => {
@@ -182,7 +208,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
 
     const nextTemplates = [copy, ...get().templates];
     set({ templates: nextTemplates });
-    await saveTemplateThemes(toDocument(nextTemplates, get().defaults));
+    await trackedSave(toDocument(nextTemplates, get().defaults));
   },
 
   patchTemplateScene: (templateId, updater) => {

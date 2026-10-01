@@ -143,18 +143,6 @@ export const MOCK_AUDIO_INPUTS: AudioInputOption[] = [
   { id: "virtual-cable", label: "Virtual Audio Cable" },
 ];
 
-export interface DisplayOption {
-  id: string;
-  label: string;
-  resolution: string;
-}
-
-export const MOCK_DISPLAYS: DisplayOption[] = [
-  { id: "display-1", label: "Display 1 — Main Projector", resolution: "1920×1080 @ 60Hz" },
-  { id: "display-2", label: "Display 2 — Foyer TV", resolution: "1920×1080 @ 60Hz" },
-  { id: "display-3", label: "Display 3 — Stage Monitor", resolution: "Offline / Standby" },
-];
-
 export interface SessionLogEntry {
   id: string;
   timestamp: string;

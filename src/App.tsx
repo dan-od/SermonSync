@@ -12,6 +12,7 @@ import type { LibraryNavigationHandler, LibraryTab, ScriptureSearchMode } from "
 import { getAudioDevices, getSidecarHttpBase, getSidecarStatus, lookupScriptureVerse, selectAudioDevice, setVadSensitivity, startAudioCapture, stopAudioCapture } from "./lib/sidecarClient";
 import { knownScriptureBooks, matchScriptureReferenceIncremental, resolveScriptureSearch } from "./lib/scriptureSearch";
 import { startSidecarWsBridge } from "./lib/sidecarWs";
+import { useProjectorOutputBridge } from "./lib/useProjectorOutputBridge";
 import {
   useAudioStore,
   useConfigStore,
@@ -480,6 +481,8 @@ function App() {
   const [showLaunchScreen, setShowLaunchScreen] = useState(true);
   const [authenticatedBranch, setAuthenticatedBranch] = useState<BranchAccount | null>(null);
   const libraryNavigationRef = useRef<LibraryNavigationHandler | null>(null);
+  // SS-036: mirror the LIVE stage to the congregation output window.
+  useProjectorOutputBridge();
 
   const theme = useConfigStore((s) => s.theme);
   const setTheme = useConfigStore((s) => s.setTheme);

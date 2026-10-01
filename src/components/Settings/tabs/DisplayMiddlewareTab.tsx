@@ -1,6 +1,7 @@
 import { IconMonitor } from "../icons";
-import { InfoBanner, RadioCardGroup, SectionIntro, SelectRow, SettingsCard, SliderRow, TextRow, ToggleRow } from "../primitives";
-import { MOCK_DISPLAYS, type IdleScreenMode, type SettingsPanelState } from "../types";
+import { InfoBanner, RadioCardGroup, SectionIntro, SettingsCard, SliderRow, TextRow, ToggleRow } from "../primitives";
+import { ProjectorOutputControl } from "../../ProjectorOutputControl";
+import type { IdleScreenMode, SettingsPanelState } from "../types";
 
 interface DisplayMiddlewareTabProps {
   panelState: SettingsPanelState;
@@ -22,12 +23,7 @@ export function DisplayMiddlewareTab({ panelState, onPanelChange }: DisplayMiddl
       />
 
       <SettingsCard icon={<IconMonitor />} title="Output Display" subtitle="Any resolution, hot-plug supported">
-        <SelectRow
-          label="Active Output Display"
-          value={panelState.outputDisplayId}
-          options={MOCK_DISPLAYS.map((d) => ({ value: d.id, label: `${d.label} — ${d.resolution}` }))}
-          onChange={(value) => onPanelChange("outputDisplayId", value)}
-        />
+        <ProjectorOutputControl />
         <SliderRow
           label="Default projector font size"
           value={panelState.defaultProjectorFontSizePx}

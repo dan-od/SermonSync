@@ -156,6 +156,8 @@ export function ResilientVideo({
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  // Whether the caller wants playback, readable from media event handlers.
+  const playingRef = useRef(playing);
 
   useLayoutEffect(() => {
     const host = hostRef.current;
@@ -197,6 +199,22 @@ export function ResilientVideo({
       if (active) clearFallback(host);
     };
 
+    // WebKit can pause a playing video on its own (window shown or refocused,
+    // page briefly hidden). Nobody can press play on the congregation screen,
+    // so resume whenever playback is wanted and the video hasn't ended.
+    const resumeIfWanted = () => {
+      if (active && playingRef.current && video.paused && !video.ended) {
+        void video.play().catch(() => undefined);
+      }
+    };
+    const handlePause = () => {
+      if (!active || !playingRef.current || video.ended) return;
+      window.setTimeout(resumeIfWanted, 250);
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") resumeIfWanted();
+    };
+
     const handleError = () => {
       if (!active) return;
       if (source.startsWith("data:") && !normalizationAttempted && !normalizationInProgress) {
@@ -235,6 +253,8 @@ export function ResilientVideo({
       });
       video.addEventListener("error", handleError);
       video.addEventListener("loadeddata", handleLoaded);
+      video.addEventListener("pause", handlePause);
+      document.addEventListener("visibilitychange", handleVisibility);
       host.appendChild(video);
       video.src = resolved.src;
       video.load();
@@ -248,6 +268,8 @@ export function ResilientVideo({
       try {
         video.removeEventListener("error", handleError);
         video.removeEventListener("loadeddata", handleLoaded);
+        video.removeEventListener("pause", handlePause);
+        document.removeEventListener("visibilitychange", handleVisibility);
       } catch {
         // Ignore cleanup for an already-invalid media node.
       }
@@ -279,6 +301,7 @@ export function ResilientVideo({
   }, [media.src]);
 
   useLayoutEffect(() => {
+    playingRef.current = playing;
     const video = videoRef.current;
     if (!video) return;
     configureVideo(video, {

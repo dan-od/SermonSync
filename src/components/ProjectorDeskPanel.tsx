@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 
+import { useProjectorOutputStore } from "../stores/projectorOutputStore";
 import type { OverlayMode, ProjectorSlide, VerseTheme } from "../types/state";
 
+import { ProjectorOutputControl } from "./ProjectorOutputControl";
 import { ProjectorView } from "./ProjectorView";
 
 const SPLIT_DIVIDER_WIDTH = 6;
@@ -38,6 +40,8 @@ export function ProjectorDeskPanel({
   const [previewWidth, setPreviewWidth] = useState(0);
   const [isDividerHovering, setIsDividerHovering] = useState(false);
   const [isDividerDragging, setIsDividerDragging] = useState(false);
+  const liveVideo = useProjectorOutputStore((s) => s.liveVideo);
+  const setLiveVideo = useProjectorOutputStore((s) => s.setLiveVideo);
 
   const clampPreviewWidth = useCallback((containerWidth: number, nextPreviewWidth: number) => {
     const availableWidth = Math.max(0, containerWidth - SPLIT_DIVIDER_WIDTH);
@@ -239,6 +243,10 @@ export function ProjectorDeskPanel({
         </div>
       </div>
 
+      <div style={{ padding: "6px 8px 0", minWidth: 0 }}>
+        <ProjectorOutputControl variant="compact" />
+      </div>
+
       <div
         ref={splitContainerRef}
         style={{
@@ -300,7 +308,17 @@ export function ProjectorDeskPanel({
             padding: "8px",
           }}
         >
-          <ProjectorView title="LIVE" slide={liveSlide} feedOverride={feedOverride} overlayMode={overlayMode} theme={theme} isLive={liveSlide !== null} fontSizePx={PROJECTION_FONT_SIZE_PX} />
+          <ProjectorView
+            title="LIVE"
+            slide={liveSlide}
+            feedOverride={feedOverride}
+            overlayMode={overlayMode}
+            theme={theme}
+            isLive={liveSlide !== null}
+            fontSizePx={PROJECTION_FONT_SIZE_PX}
+            videoControl={liveVideo}
+            onVideoControlChange={setLiveVideo}
+          />
         </div>
       </div>
     </div>
