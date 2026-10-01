@@ -1,9 +1,11 @@
+import { useCallback } from "react";
 import { IconMic } from "../icons";
 import { InfoBanner, RadioCardGroup, SectionIntro, SelectRow, SettingsCard, SliderRow } from "../primitives";
 import { computeAudioAmplitude } from "../../../lib/audioLevel";
 import { useMicMuteDetection } from "../../../lib/micMuteDetection";
+import { getSidecarHttpBase } from "../../../lib/sidecarClient";
 import type { AudioInputDevice, AudioStatus } from "../../../types/state";
-import type { SettingsPanelState, SttMode } from "../types";
+import type { SettingsPanelState, SttMode, WhisperModel } from "../types";
 
 interface AudioDetectionTabProps {
   panelState: SettingsPanelState;
@@ -29,8 +31,26 @@ const STT_MODE_OPTIONS: { value: SttMode; label: string; description: string }[]
   },
   {
     value: "whisper",
-    label: "High Quality — Whisper Tiny",
-    description: "75MB, CPU-only, ~2-4s per chunk. For churches with better hardware.",
+    label: "High Quality — Whisper",
+    description: "GPU-accelerated (Metal on Mac, CUDA on Windows). Best accuracy.",
+  },
+];
+
+const WHISPER_MODEL_OPTIONS: { value: WhisperModel; label: string; description: string }[] = [
+  {
+    value: "large-v3-turbo",
+    label: "Large V3 Turbo (Recommended)",
+    description: "809M params. Best accuracy-to-speed ratio. ~1.5GB download.",
+  },
+  {
+    value: "base",
+    label: "Base",
+    description: "74M params. Fast, lower accuracy. Good for testing.",
+  },
+  {
+    value: "tiny",
+    label: "Tiny",
+    description: "39M params. Fastest, lowest accuracy. Dev/debug only.",
   },
 ];
 
@@ -51,6 +71,18 @@ export function AudioDetectionTab({
 }: AudioDetectionTabProps) {
   const levelPercent = Math.round(computeAudioAmplitude(levelRms, levelPeak) * 100);
   const isMicMuted = useMicMuteDetection(audioStatus === "capturing", levelRms, levelPeak);
+
+  const handleWhisperModelChange = useCallback(
+    (value: WhisperModel) => {
+      onPanelChange("whisperModel", value);
+      fetch(`${getSidecarHttpBase()}/api/settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "whisper.model", value }),
+      }).catch(() => undefined);
+    },
+    [onPanelChange],
+  );
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-6)" }}>
@@ -113,6 +145,20 @@ export function AudioDetectionTab({
       <SettingsCard icon={<IconMic />} title="Speech-to-Text Engine">
         <RadioCardGroup options={STT_MODE_OPTIONS} value={panelState.sttMode} onChange={(value) => onPanelChange("sttMode", value)} columns={1} />
       </SettingsCard>
+
+      {panelState.sttMode === "whisper" && (
+        <SettingsCard icon={<IconMic />} title="Whisper Model">
+          <RadioCardGroup
+            options={WHISPER_MODEL_OPTIONS}
+            value={panelState.whisperModel}
+            onChange={(value) => handleWhisperModelChange(value as WhisperModel)}
+            columns={1}
+          />
+          <InfoBanner>
+            Changing the model takes effect on next sidecar restart. Mac uses Metal (mlx-whisper); Windows uses CUDA (faster-whisper).
+          </InfoBanner>
+        </SettingsCard>
+      )}
 
       <SettingsCard icon={<IconMic />} title="Worship / Speech Detector & Auto-Send">
         <SliderRow

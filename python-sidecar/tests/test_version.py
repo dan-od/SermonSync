@@ -9,7 +9,7 @@ def test_version_shape():
     cfg = pipeline_config()
     assert cfg["engine"] == "sermonsync-ai"
     assert cfg["version"] == ENGINE_VERSION
-    assert cfg["transcription"]["backend"] == "faster-whisper"
+    assert cfg["transcription"]["backend"] in ("faster-whisper", "mlx-whisper")
     assert cfg["matching"]["stage_count"] == 4
     assert len(cfg["matching"]["stages"]) == 4
     # thresholds present and ordered
@@ -34,9 +34,9 @@ def test_engine_status_does_not_load_the_model():
     assert status["loaded"] is False
     assert status["loaded_model"] is None
     assert whisper_engine._engine is None  # still not loaded
-    assert status["configured_model"] == whisper_engine.DEFAULT_MODEL
-    assert status["device"] in {"cpu", "cuda"}
-    assert status["compute_type"] in {"int8", "float16"}
+    assert status["configured_model"] == whisper_engine._configured_model()
+    assert status["device"] in {"cpu", "cuda", "metal"}
+    assert status["compute_type"] in {"int8", "float16", "int8_float16"}
 
 
 def test_engine_status_reports_the_loaded_model(monkeypatch):

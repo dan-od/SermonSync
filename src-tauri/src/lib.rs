@@ -319,18 +319,32 @@ pub fn run() {
                 });
             }
 
+            // SS-066: read whisper.model from the sidecar config file and pass
+            // it as WHISPER_MODEL env so the sidecar knows which model to load
+            // before it can reach its own settings DB.
+            let whisper_model = {
+                let config_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("../python-sidecar/data/whisper_config.json");
+                std::fs::read_to_string(&config_path)
+                    .ok()
+                    .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+                    .and_then(|v| v.get("model").and_then(|m| m.as_str()).map(str::to_owned))
+            };
+
             #[cfg(debug_assertions)]
             let sidecar_result = {
                 let sidecar_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../python-sidecar");
                 let venv_python = sidecar_dir.parent().unwrap_or(&sidecar_dir).join(".venv/bin/python");
                 let python = if venv_python.exists() { venv_python } else { PathBuf::from("python3") };
-                std::process::Command::new(python)
-                    .arg("main.py")
-                    .current_dir(sidecar_dir)
+                let mut cmd = std::process::Command::new(python);
+                cmd.arg("main.py")
+                    .current_dir(&sidecar_dir)
                     .stdout(Stdio::piped())
-                    .stderr(Stdio::piped())
-                    .spawn()
-                    .map_err(|error| error.to_string())
+                    .stderr(Stdio::piped());
+                if let Some(ref model) = whisper_model {
+                    cmd.env("WHISPER_MODEL", model);
+                }
+                cmd.spawn().map_err(|error| error.to_string())
             };
 
             #[cfg(not(debug_assertions))]

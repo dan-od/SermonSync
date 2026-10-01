@@ -40,7 +40,7 @@ def test_streaming_buffer_keeps_recent_audio_only():
 
 
 def test_streaming_discards_stale_partial_buffer():
-    transcriber = streaming.StreamingTranscriber(sample_rate=16000)
+    transcriber = streaming.StreamingTranscriber(sample_rate=16000, max_buffer_seconds=2.0)
     transcriber._running = True
     transcriber.feed(float_to_pcm16(np.zeros(8000, dtype="float32")))
     transcriber._expire_stale_buffer(time.time() + 3.0)
@@ -168,7 +168,7 @@ def test_engine_status_endpoint_shape():
     assert payload["engine"] == "sermonsync-ai"
     assert payload["version"]
     t = payload["transcription"]
-    assert t["backend"] == "faster-whisper"
+    assert t["backend"] in ("faster-whisper", "mlx-whisper")
     for key in ("configured_model", "loaded_model", "loaded", "device",
                 "compute_type", "model_source", "fallback_chain"):
         assert key in t, key

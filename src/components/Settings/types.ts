@@ -19,6 +19,7 @@ import { DEFAULT_TRANSITIONS } from "../../stores/projectorStore";
 export type { TransitionEasing, TransitionEffect, TransitionSetting, TransitionsConfig };
 
 export type SttMode = "moonshine" | "whisper";
+export type WhisperModel = "large-v3-turbo" | "base" | "tiny";
 export type IdleScreenMode = "logo" | "background" | "color";
 export type UpdateChannel = "stable" | "beta";
 export type DevotionalExportFormat = "pdf" | "text";
@@ -36,6 +37,7 @@ export interface SettingsPanelState {
 
   // AI scripture detection — offline (PRD §5.1)
   sttMode: SttMode;
+  whisperModel: WhisperModel;
   worshipDetectorSensitivity: number;
   autoSendConfidenceThreshold: number;
 
@@ -92,6 +94,7 @@ export const DEFAULT_SETTINGS_PANEL_STATE: SettingsPanelState = {
   audioLevelDb: -18,
 
   sttMode: "moonshine",
+  whisperModel: "large-v3-turbo",
   worshipDetectorSensitivity: 65,
   autoSendConfidenceThreshold: 80,
 

@@ -1,4 +1,4 @@
-"""Engine status endpoint (SS-065).
+"""Engine status endpoint (SS-065 / SS-066).
 
 Single authoritative answer to "what is actually running?" — engine version
 plus the transcription model that is *configured* and the one that actually
@@ -28,7 +28,6 @@ def engine_status() -> dict:
         "engine": ENGINE_NAME,
         "version": ENGINE_VERSION,
         "transcription": {
-            "backend": "faster-whisper",
             **status,
             "streaming": streaming_transcriber._running,
         },
