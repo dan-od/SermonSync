@@ -2,6 +2,7 @@ import { IconMic } from "../icons";
 import { InfoBanner, RadioCardGroup, SectionIntro, SelectRow, SettingsCard, SliderRow } from "../primitives";
 import { computeAudioAmplitude } from "../../../lib/audioLevel";
 import { useMicMuteDetection } from "../../../lib/micMuteDetection";
+import { useAudioStore } from "../../../stores/audioStore";
 import type { AudioInputDevice, AudioStatus } from "../../../types/state";
 import type { SettingsPanelState, SttMode } from "../types";
 
@@ -13,8 +14,6 @@ interface AudioDetectionTabProps {
   inputChannel: number;
   audioStatus: AudioStatus;
   audioError: string | null;
-  levelRms: number;
-  levelPeak: number;
   vadSensitivity: number;
   onAudioDeviceChange: (name: string) => void;
   onAudioChannelChange: (channel: number) => void;
@@ -42,13 +41,13 @@ export function AudioDetectionTab({
   inputChannel,
   audioStatus,
   audioError,
-  levelRms,
-  levelPeak,
   vadSensitivity,
   onAudioDeviceChange,
   onAudioChannelChange,
   onVadSensitivityChange,
 }: AudioDetectionTabProps) {
+  const levelRms = useAudioStore((state) => state.levelRms);
+  const levelPeak = useAudioStore((state) => state.levelPeak);
   const levelPercent = Math.round(computeAudioAmplitude(levelRms, levelPeak) * 100);
   const isMicMuted = useMicMuteDetection(audioStatus === "capturing", levelRms, levelPeak);
 

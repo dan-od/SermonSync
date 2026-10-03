@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import math
 from collections import defaultdict
+from heapq import nlargest
 
 from database import get_connection
 
@@ -129,7 +130,7 @@ class KeywordMatcher:
                 scores[doc_id] += idf * (tf * (K1 + 1)) / denom
                 matched_terms[doc_id].add(term)
 
-        results = []
+        ranked: list[tuple[float, int, int]] = []
         for doc_id, score in scores.items():
             score += self._proximity_bonus(doc_id, q_set)
             coverage = len(matched_terms[doc_id]) / len(q_set)
@@ -137,6 +138,11 @@ class KeywordMatcher:
             confidence = round(min(0.99, 0.45 * coverage + 0.55 * bm25_norm), 4)
             if confidence < min_confidence:
                 continue
+            # Preserve encounter order for equal scores, as stable sorting did.
+            ranked.append((confidence, -len(ranked), doc_id))
+
+        results = []
+        for confidence, _, doc_id in nlargest(k, ranked):
             book, chapter, verse, text = self._verses[doc_id]
             results.append(
                 {
@@ -152,8 +158,7 @@ class KeywordMatcher:
                 }
             )
 
-        results.sort(key=lambda m: m["confidence"], reverse=True)
-        return results[:k]
+        return results
 
 
 _matcher = KeywordMatcher()

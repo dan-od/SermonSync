@@ -47,6 +47,17 @@ def test_streaming_discards_stale_partial_buffer():
 
     assert transcriber._buffered_seconds() == 0.0
     assert transcriber._first_chunk_ts is None
+    assert transcriber._last_feed_ts is None
+
+
+def test_streaming_keeps_recent_audio_when_speech_continues():
+    transcriber = streaming.StreamingTranscriber(sample_rate=16000)
+    transcriber._running = True
+    transcriber.feed(float_to_pcm16(np.zeros(8000, dtype="float32")))
+    transcriber._first_chunk_ts = time.time() - 10.0
+    transcriber._expire_stale_buffer(time.time())
+
+    assert transcriber._buffered_seconds() == 0.5
 
 
 def test_streaming_emits_transcription(monkeypatch):
