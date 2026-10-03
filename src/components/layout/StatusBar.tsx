@@ -25,8 +25,6 @@ export interface StatusBarProps {
   locationLabel: string;
   latencyMs?: number;
   uptimeSeconds?: number;
-  levelRms?: number;
-  levelPeak?: number;
   isSpeech?: boolean;
   modelProvider?: { id: "groq" | "openai" | "anthropic" | "gemini"; label: string } | null;
 }
@@ -74,8 +72,6 @@ export function StatusBar({
   locationLabel,
   latencyMs = 0,
   uptimeSeconds = 0,
-  levelRms = 0,
-  levelPeak = 0,
   isSpeech = false,
   modelProvider = null,
 }: StatusBarProps) {
@@ -85,8 +81,10 @@ export function StatusBar({
   const [isChannelMenuOpen, setIsChannelMenuOpen] = useState(false);
   const clampedVad = Math.min(100, Math.max(0, vadPercent));
   // Real input meter: a rolling history of measured levels, oldest → newest.
-  // isSpeech arrives as a prop; only the meter history is read from the store.
+  // Read high-frequency audio values here so they do not re-render App.
   const levels = useAudioStore((state) => state.levels);
+  const levelRms = useAudioStore((state) => state.levelRms);
+  const levelPeak = useAudioStore((state) => state.levelPeak);
   const decayMeter = useAudioStore((state) => state.decayMeter);
   const activeInput = Boolean(inputName);
   const hasSignal = levels.some((value) => value > 0);

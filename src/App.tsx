@@ -577,8 +577,6 @@ function App() {
   const setAudioChannel = useAudioStore((s) => s.setChannel);
   const setAudioSensitivity = useAudioStore((s) => s.setVadSensitivity);
   const setAudioStatus = useAudioStore((s) => s.setStatus);
-  const levelRms = useAudioStore((s) => s.levelRms);
-  const levelPeak = useAudioStore((s) => s.levelPeak);
   const isSpeech = useAudioStore((s) => s.isSpeech);
   const sessionLatencyMs = useSessionStore((s) => s.lastLatencyMs);
   const sessionUptimeSeconds = useSessionStore((s) => s.uptimeSeconds);
@@ -1165,8 +1163,6 @@ function App() {
           locationLabel: "Foursquare Nigeria © 2026",
           latencyMs: sessionLatencyMs,
           uptimeSeconds: sessionUptimeSeconds,
-          levelRms,
-          levelPeak,
           isSpeech,
           modelProvider: activeModelProvider,
         }}
@@ -1228,8 +1224,6 @@ function App() {
         inputChannel={inputChannel}
         audioStatus={audioStatus}
         audioError={audioError}
-        levelRms={levelRms}
-        levelPeak={levelPeak}
         vadSensitivity={vadSensitivity}
         onAudioDeviceChange={handleAudioDeviceChange}
         onAudioChannelChange={handleAudioChannelChange}

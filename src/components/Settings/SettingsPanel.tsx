@@ -74,8 +74,6 @@ export interface SettingsPanelProps {
   inputChannel: number;
   audioStatus: AudioStatus;
   audioError: string | null;
-  levelRms: number;
-  levelPeak: number;
   vadSensitivity: number;
   onAudioDeviceChange: (name: string) => void;
   onAudioChannelChange: (channel: number) => void;
@@ -106,8 +104,6 @@ export function SettingsPanel({
   inputChannel,
   audioStatus,
   audioError,
-  levelRms,
-  levelPeak,
   vadSensitivity,
   onAudioDeviceChange,
   onAudioChannelChange,
@@ -328,8 +324,6 @@ export function SettingsPanel({
                 inputChannel={inputChannel}
                 audioStatus={audioStatus}
                 audioError={audioError}
-                levelRms={levelRms}
-                levelPeak={levelPeak}
                 vadSensitivity={vadSensitivity}
                 onAudioDeviceChange={onAudioDeviceChange}
                 onAudioChannelChange={onAudioChannelChange}
