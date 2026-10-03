@@ -43,11 +43,11 @@ MIN_MATCH_WORDS = 3
 def has_substance(sentence: str) -> bool:
     """Whether a transcript line carries enough signal to be worth matching."""
     words = re.findall(r"[a-z0-9']+", (sentence or "").lower())
-    if len(words) < MIN_MATCH_WORDS:
-        return False
     # A scripture reference ("John 3:16") is always worth matching, however short.
     if re.search(r"\d+\s*[:.]\s*\d+", sentence or ""):
         return True
+    if len(words) < MIN_MATCH_WORDS:
+        return False
     return any(w not in _FILLER_WORDS for w in words)
 
 

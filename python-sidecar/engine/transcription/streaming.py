@@ -18,6 +18,7 @@ from . import whisper_engine
 from .buffer import transcript_buffer
 
 logger = logging.getLogger("sermonsync.transcription.streaming")
+STALE_BUFFER_SECONDS = 3.0
 
 try:
     import numpy as np
@@ -122,12 +123,15 @@ class StreamingTranscriber:
         return len(self._buf) / (self.sample_rate * 2)
 
     def _expire_stale_buffer(self, now: float | None = None) -> None:
-        if self._first_chunk_ts is None:
+        if self._last_feed_ts is None:
             return
         current_time = now if now is not None else time.time()
-        if current_time - self._first_chunk_ts > self.max_buffer_seconds:
+        # Sub-threshold fragments cannot be flushed. Drop them after a long
+        # pause so the next utterance does not inherit stale audio.
+        if current_time - self._last_feed_ts >= STALE_BUFFER_SECONDS:
             self._buf.clear()
             self._first_chunk_ts = None
+            self._last_feed_ts = None
 
     def _ready_to_infer(self, now: float | None = None) -> bool:
         """True when the speaker has paused, or the chunk ceiling is reached."""
@@ -159,7 +163,10 @@ class StreamingTranscriber:
                     self._first_chunk_ts = None
                     self._last_partial_ts = time.time()
                     await self._infer_and_emit(chunk, received_ts)
-                elif self._ready_for_partial():
+                else:
+                    self._expire_stale_buffer()
+                    if not self._ready_for_partial():
+                        continue
                     # Transcribe what is buffered WITHOUT consuming it; the
                     # final pass over the complete phrase supersedes this.
                     self._last_partial_ts = time.time()

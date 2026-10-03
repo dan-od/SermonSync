@@ -121,6 +121,7 @@ def test_has_substance_accepts_real_content():
         "turn with me to the book of Habakkuk",
         "he gave his only begotten son",
         "John 3:16",          # short, but an explicit reference
+        "Jn 3:16",            # abbreviated book names are also explicit references
         "let us pray together now",
     ]:
         assert has_substance(real) is True, real
