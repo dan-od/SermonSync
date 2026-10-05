@@ -1,6 +1,10 @@
 import { create } from "zustand";
 
 import { createEmptyTemplate, loadTemplateThemes, saveTemplateThemes } from "../lib/templateStorage";
+import { isStagedTemplateVideo, stageTemplateVideo } from "../lib/templateVideo";
+import { importErrorMessage, importVideo, isManagedVideo } from "../lib/videoImport";
+import { warmDefaultTemplateVideos } from "../lib/templateVideoWarmup";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import type {
   TemplateBackgroundMedia,
   TemplateCategory,
@@ -19,6 +23,7 @@ interface TemplateStore {
   templates: TemplateCanvasTheme[];
   defaults: Record<TemplateCategory, Record<OverlayMode, string | null>>;
   initialize: () => Promise<void>;
+  reload: () => Promise<void>;
   upsertTemplate: (template: TemplateCanvasTheme) => Promise<void>;
   createTemplateDraft: (category: TemplateCategory) => TemplateCanvasTheme;
   makeDefault: (category: TemplateCategory, layout: OverlayMode, templateId: string) => Promise<void>;
@@ -60,14 +65,93 @@ function persist(templates: TemplateCanvasTheme[], defaults: Record<TemplateCate
   });
 }
 
+let latestLoadRequest = 0;
+const migratingTemplateSources = new Set<string>();
+
+export function finishSavedTemplateVideo(templateId: string, stagedPath: string): void {
+  if (!isStagedTemplateVideo(stagedPath)) return;
+  void importVideo(stagedPath, { legacy: true }).then((asset) => {
+    const preparedPath = asset.path;
+    const store = useTemplateStore.getState();
+    const currentTemplate = store.templates.find((template) => template.id === templateId);
+    if (currentTemplate?.scene.backgroundMedia?.src !== stagedPath && currentTemplate?.studioDocument?.backgroundMedia?.src !== stagedPath) return;
+    store.patchTemplateScene(templateId, (current) => ({
+      ...current,
+      scene: {
+        ...current.scene,
+        backgroundMedia: current.scene.backgroundMedia?.src === stagedPath
+          ? { ...current.scene.backgroundMedia, src: preparedPath }
+          : current.scene.backgroundMedia,
+      },
+      studioDocument: current.studioDocument ? {
+        ...current.studioDocument,
+        backgroundMedia: current.studioDocument.backgroundMedia?.src === stagedPath
+          ? { ...current.studioDocument.backgroundMedia, src: preparedPath }
+          : current.studioDocument.backgroundMedia,
+      } : undefined,
+    }));
+  }).catch((error: unknown) => {
+    console.error("Failed to prepare saved template video", error);
+    useTemplateStore.setState({ error: error instanceof Error ? error.message : "Failed to prepare template video" });
+  });
+}
+
+function resumeSavedTemplateVideos(templates: TemplateCanvasTheme[]): void {
+  if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window) || getCurrentWindow().label !== "main") return;
+  for (const template of templates) {
+    const sources = new Set<string>();
+    for (const media of [template.scene.backgroundMedia, template.studioDocument?.backgroundMedia]) {
+      if (media?.type === "video" && media.src && !isManagedVideo(media.src)) sources.add(media.src);
+    }
+    for (const layer of template.scene.layers) {
+      if (layer.type === "shape" && layer.fillImageType === "video" && layer.fillImage && !isManagedVideo(layer.fillImage)) sources.add(layer.fillImage);
+    }
+    for (const object of template.studioDocument?.objects ?? []) {
+      if (object.studioShapeFillMediaType === "video" && typeof object.studioShapeFillMediaSource === "string" && !isManagedVideo(object.studioShapeFillMediaSource)) {
+        sources.add(object.studioShapeFillMediaSource);
+      }
+    }
+    for (const source of sources) {
+      const migrationKey = `${template.id}:${source}`;
+      if (migratingTemplateSources.has(migrationKey)) continue;
+      migratingTemplateSources.add(migrationKey);
+      void (async () => {
+        const local = source.startsWith("data:") ? await stageTemplateVideo(source) : source;
+        if (!local.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(local)) return;
+        const asset = await importVideo(local, { legacy: true });
+        useTemplateStore.getState().patchTemplateScene(template.id, (current) => ({
+          ...current,
+          scene: {
+            ...current.scene,
+            backgroundMedia: current.scene.backgroundMedia?.type === "video" && current.scene.backgroundMedia.src === source
+              ? { ...current.scene.backgroundMedia, src: asset.path } : current.scene.backgroundMedia,
+            layers: current.scene.layers.map((layer) => layer.type === "shape" && layer.fillImageType === "video" && layer.fillImage === source
+              ? { ...layer, fillImage: asset.path } : layer),
+          },
+          studioDocument: current.studioDocument ? {
+            ...current.studioDocument,
+            backgroundMedia: current.studioDocument.backgroundMedia?.type === "video" && current.studioDocument.backgroundMedia.src === source
+              ? { ...current.studioDocument.backgroundMedia, src: asset.path } : current.studioDocument.backgroundMedia,
+            objects: current.studioDocument.objects.map((object) =>
+              object.studioShapeFillMediaType === "video" && object.studioShapeFillMediaSource === source
+                ? { ...object, studioShapeFillMediaSource: asset.path } : object),
+          } : undefined,
+        }));
+      })().catch((error) => {
+        console.warn("Existing template video remains in place until migration succeeds", importErrorMessage(error));
+      }).finally(() => migratingTemplateSources.delete(migrationKey));
+    }
+  }
+}
+
 export const useTemplateStore = create<TemplateStore>((set, get) => ({
   initialized: false,
   loading: false,
   error: null,
   templates: [],
   defaults: {
-    scriptures: { widescreen: null, "lower-third": null },
-    songs: { widescreen: null, "lower-third": null },
+    scriptures: { widescreen: null, "lower-third": null, "split-screen": null },
+    songs: { widescreen: null, "lower-third": null, "split-screen": null },
   },
 
   initialize: async () => {
@@ -75,21 +159,40 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       return;
     }
 
+    const request = ++latestLoadRequest;
     set({ loading: true, error: null });
     try {
       const data = await loadTemplateThemes();
+      if (request !== latestLoadRequest) return;
       set({
         templates: data.templates,
         defaults: data.defaults,
         initialized: true,
         loading: false,
       });
+      resumeSavedTemplateVideos(data.templates);
+      warmDefaultTemplateVideos(data);
     } catch (error) {
+      if (request !== latestLoadRequest) return;
       set({
         loading: false,
         initialized: true,
         error: error instanceof Error ? error.message : "Failed to load templates",
       });
+    }
+  },
+
+  reload: async () => {
+    const request = ++latestLoadRequest;
+    try {
+      const data = await loadTemplateThemes();
+      if (request !== latestLoadRequest) return;
+      set({ templates: data.templates, defaults: data.defaults, initialized: true, loading: false, error: null });
+      resumeSavedTemplateVideos(data.templates);
+      warmDefaultTemplateVideos(data);
+    } catch (error) {
+      if (request !== latestLoadRequest) return;
+      set({ loading: false, error: error instanceof Error ? error.message : "Failed to reload templates" });
     }
   },
 
@@ -107,7 +210,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       songs: { ...get().defaults.songs },
     };
     (["scriptures", "songs"] as TemplateCategory[]).forEach((category) => {
-      (["widescreen", "lower-third"] as OverlayMode[]).forEach((layout) => {
+      (["widescreen", "lower-third", "split-screen"] as OverlayMode[]).forEach((layout) => {
         if (nextDefaults[category][layout] === nextTemplate.id && (category !== nextTemplate.category || layout !== nextTemplate.layout)) {
           nextDefaults[category][layout] = null;
         }
@@ -157,7 +260,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     const nextTemplates = get().templates.filter((entry) => entry.id !== templateId);
     const nextDefaults = { ...get().defaults };
 
-    (["widescreen", "lower-third"] as OverlayMode[]).forEach((layout) => {
+    (["widescreen", "lower-third", "split-screen"] as OverlayMode[]).forEach((layout) => {
       if (nextDefaults[target.category][layout] === templateId) nextDefaults[target.category][layout] = null;
     });
 

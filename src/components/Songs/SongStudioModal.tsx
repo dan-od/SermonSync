@@ -108,6 +108,12 @@ function SongStudioContent({ song, onClose, onCreateCue }: Omit<SongStudioModalP
     return songTemplates[0] ?? null;
   }, [defaults, templates]);
 
+  // Computed once per template instead of once per slide/canvas render (thumbnails + main preview all share it).
+  const defaultSongScene = useMemo(
+    () => (defaultSongTemplate ? projectionScene(defaultSongTemplate) : null),
+    [defaultSongTemplate],
+  );
+
   const currentSlide = slides[activeSlideIndex] ?? slides[0] ?? { label: "Verse 1", text: "" };
   const hasTaggedSections = /^\s*\[[^\]\n]+\]\s*$/m.test(songText);
 
@@ -346,6 +352,7 @@ function SongStudioContent({ song, onClose, onCreateCue }: Omit<SongStudioModalP
       }}
     >
       <div
+        className="studio-modal"
         style={{
           width: "min(1380px, 98vw)",
           height: "min(840px, 94vh)",
@@ -505,6 +512,7 @@ function SongStudioContent({ song, onClose, onCreateCue }: Omit<SongStudioModalP
           >
             {/* Header with '+' button */}
             <div
+              className="studio-scroll-pane"
               style={{
                 padding: "10px 14px",
                 borderBottom: "1px solid var(--border-base)",
@@ -742,9 +750,9 @@ function SongStudioContent({ song, onClose, onCreateCue }: Omit<SongStudioModalP
                         background: "var(--bg-surface)",
                       }}
                     >
-                      {defaultSongTemplate ? (
+                      {defaultSongScene ? (
                         <TemplateSceneOverlay
-                          scene={projectionScene(defaultSongTemplate)}
+                          scene={defaultSongScene}
                           slide={projSlide}
                           category="songs"
                           fitToContainer
@@ -811,12 +819,13 @@ function SongStudioContent({ song, onClose, onCreateCue }: Omit<SongStudioModalP
                   boxShadow: "var(--shadow-lg)",
                 }}
               >
-                {defaultSongTemplate ? (
+                {defaultSongScene ? (
                   <TemplateSceneOverlay
-                    scene={projectionScene(defaultSongTemplate)}
+                    scene={defaultSongScene}
                     slide={activeProjectorSlide}
                     category="songs"
                     fitToContainer
+                    isThumbnail
                   />
                 ) : (
                   <div
@@ -859,6 +868,7 @@ function SongStudioContent({ song, onClose, onCreateCue }: Omit<SongStudioModalP
               </div>
             </div>
             <textarea
+              className="studio-scroll-pane"
               value={songText}
               aria-label="Full song text"
               placeholder="[Verse 1]\nAmazing grace...\n\n[Chorus]\nHow sweet the sound..."

@@ -9,8 +9,10 @@
  * second re-render only the status bar, not the whole app.
  */
 import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
 
 import type { AudioInputDevice, AudioPipelineState } from "../types/state";
+import { getBrowserStorage } from "./persistStorage";
 
 /** Number of bars in the status-bar meter (oldest → newest, left → right). */
 export const METER_BARS = 8;
@@ -27,6 +29,8 @@ export function rmsToLevel(rms: number): number {
 }
 
 interface AudioStore extends AudioPipelineState {
+  preferredDeviceName: string | null;
+  preferredChannel: number;
   setAvailableDevices: (devices: AudioInputDevice[]) => void;
   /** Rolling meter history, oldest first, derived from setAudioLevel. */
   levels: number[];
@@ -68,10 +72,14 @@ const initialState: AudioPipelineState = {
 
 const emptyMeter = () => new Array<number>(METER_BARS).fill(0);
 
-export const useAudioStore = create<AudioStore>((set, get) => ({
-  ...initialState,
-  levels: emptyMeter(),
-  lastLevelAt: 0,
+export const useAudioStore = create<AudioStore>()(
+  persist(
+    (set, get) => ({
+      ...initialState,
+      preferredDeviceName: null,
+      preferredChannel: 1,
+      levels: emptyMeter(),
+      lastLevelAt: 0,
 
   // Levels stop arriving when capture stops; let the meter fall to zero
   // instead of freezing on its last reading.
@@ -95,6 +103,8 @@ export const useAudioStore = create<AudioStore>((set, get) => ({
     set({
       inputDevice,
       inputChannel: 1,
+      preferredDeviceName: inputDevice?.name ?? null,
+      preferredChannel: 1,
       sampleRate: inputDevice?.defaultSampleRate ?? 16000,
       status: inputDevice ? "connected" : "disconnected",
     }),
@@ -108,13 +118,15 @@ export const useAudioStore = create<AudioStore>((set, get) => ({
       return {
         inputDevice: selected,
         inputChannel: 1,
+        preferredDeviceName: selected.name,
+        preferredChannel: 1,
         sampleRate: selected.defaultSampleRate,
         status: "connected",
       };
     }),
 
   // TODO(Dee): POST /api/audio/start-capture | stop-capture.
-  setChannel: (inputChannel) => set({ inputChannel }),
+  setChannel: (inputChannel) => set({ inputChannel, preferredChannel: inputChannel }),
 
   setCapturing: (isCapturing) =>
     set((s) => ({
@@ -122,8 +134,8 @@ export const useAudioStore = create<AudioStore>((set, get) => ({
       status: isCapturing ? "capturing" : s.inputDevice ? "connected" : "disconnected",
     })),
 
-  // TODO(Dee): debounce + POST /api/audio/vad-sensitivity.
-  setVadSensitivity: (vadSensitivity) => set({ vadSensitivity }),
+  // The app component mirrors this persisted value to the sidecar detector.
+      setVadSensitivity: (vadSensitivity) => set({ vadSensitivity: Math.max(0, Math.min(1, vadSensitivity)) }),
 
   setLatency: (latencyMs) => set({ latencyMs }),
 
@@ -151,5 +163,34 @@ export const useAudioStore = create<AudioStore>((set, get) => ({
 
   setStatus: (status) => set({ status }),
 
-  reset: () => set({ ...initialState, levels: emptyMeter(), isSpeech: false, lastLevelAt: 0 }),
-}));
+      reset: () => set({ ...initialState, preferredDeviceName: null, preferredChannel: 1, levels: emptyMeter(), isSpeech: false, lastLevelAt: 0 }),
+    }),
+    {
+      name: "sermonsync-audio-settings",
+      version: 1,
+      storage: createJSONStorage(getBrowserStorage),
+      partialize: (state) => ({
+        vadSensitivity: state.vadSensitivity,
+        preferredDeviceName: state.preferredDeviceName,
+        preferredChannel: state.preferredChannel,
+      }),
+      merge: (persisted, current) => {
+        const savedState = persisted as Partial<AudioStore> | undefined;
+        const saved = savedState?.vadSensitivity;
+        const preferredChannel = savedState?.preferredChannel;
+        return {
+          ...current,
+          vadSensitivity: typeof saved === "number" && Number.isFinite(saved)
+            ? Math.max(0, Math.min(1, saved))
+            : current.vadSensitivity,
+          preferredDeviceName: typeof savedState?.preferredDeviceName === "string"
+            ? savedState.preferredDeviceName
+            : current.preferredDeviceName,
+          preferredChannel: typeof preferredChannel === "number" && Number.isInteger(preferredChannel)
+            ? Math.max(1, preferredChannel)
+            : current.preferredChannel,
+        };
+      },
+    },
+  ),
+);

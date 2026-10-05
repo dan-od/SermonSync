@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { postProjectorChannelMessage } from "./projectorChannel";
 
 import type {
   TemplateBackgroundMedia,
@@ -17,6 +18,7 @@ const DEFAULT_CANVAS_HEIGHT = 1080;
 const MAX_MEDIA_SOURCE_LENGTH = 90 * 1024 * 1024;
 
 const LOCAL_STORAGE_KEY = "sermonsync-template-themes-v1";
+export const TEMPLATE_THEMES_CHANGED_EVENT = "templates://changed";
 
 const LEGACY_DEFAULT_TEMPLATE_IDS = new Set([
   "tpl-scripture-grace-dawn",
@@ -25,8 +27,8 @@ const LEGACY_DEFAULT_TEMPLATE_IDS = new Set([
 
 function emptyDefaults(): Record<TemplateCategory, Record<OverlayMode, string | null>> {
   return {
-    scriptures: { widescreen: null, "lower-third": null },
-    songs: { widescreen: null, "lower-third": null },
+    scriptures: { widescreen: null, "lower-third": null, "split-screen": null },
+    songs: { widescreen: null, "lower-third": null, "split-screen": null },
   };
 }
 
@@ -211,33 +213,38 @@ function sanitizeBackgroundMedia(input: unknown): TemplateBackgroundMedia | null
     return null;
   }
   const media = input as Partial<TemplateBackgroundMedia>;
-  if (media.type !== "image" && media.type !== "video") {
+  if (media.type !== "image" && media.type !== "video" && media.type !== "camera") {
     return null;
   }
-  if (typeof media.src !== "string" || !media.src || media.src.length > MAX_MEDIA_SOURCE_LENGTH) {
+  const source = typeof media.src === "string" ? media.src : "";
+  if (media.type !== "camera" && (!source || source.length > MAX_MEDIA_SOURCE_LENGTH)) {
     return null;
   }
   const fit: TemplateMediaFit = media.fit === "contain" || media.fit === "fill" ? media.fit : "cover";
+  const x = coerceNumber(media.x, 0, 0, 95);
+  const y = coerceNumber(media.y, 0, 0, 95);
+  const cropTop = coerceNumber(media.cropTop, 0, 0, 95);
+  const cropLeft = coerceNumber(media.cropLeft, 0, 0, 95);
   return {
     type: media.type,
-    src: media.src,
+    src: source,
     name: typeof media.name === "string" && media.name.trim() ? media.name.trim().slice(0, 255) : undefined,
     fit,
     loop: media.loop !== false,
-    x: coerceNumber(media.x, 0, 0, 95),
-    y: coerceNumber(media.y, 0, 0, 95),
-    width: coerceNumber(media.width, 100, 5, 100),
-    height: coerceNumber(media.height, 100, 5, 100),
+    x,
+    y,
+    width: coerceNumber(media.width, 100, 5, media.type === "camera" ? 100 - x : 100),
+    height: coerceNumber(media.height, 100, 5, media.type === "camera" ? 100 - y : 100),
     opacity: coerceNumber(media.opacity, 1, 0.1, 1),
     blendMode: typeof media.blendMode === "string" && media.blendMode ? media.blendMode : "normal",
     muted: media.muted !== false,
     speed: coerceNumber(media.speed, 1, 0.1, 4),
     flipX: media.flipX === true,
     flipY: media.flipY === true,
-    cropTop: coerceNumber(media.cropTop, 0, 0, 95),
-    cropRight: coerceNumber(media.cropRight, 0, 0, 95),
-    cropBottom: coerceNumber(media.cropBottom, 0, 0, 95),
-    cropLeft: coerceNumber(media.cropLeft, 0, 0, 95),
+    cropTop,
+    cropRight: coerceNumber(media.cropRight, 0, 0, media.type === "camera" ? 95 - cropLeft : 95),
+    cropBottom: coerceNumber(media.cropBottom, 0, 0, media.type === "camera" ? 95 - cropTop : 95),
+    cropLeft,
     hueRotate: coerceNumber(media.hueRotate, 0, -360, 360),
     invert: coerceNumber(media.invert, 0, 0, 100),
     blur: coerceNumber(media.blur, 0, 0, 100),
@@ -246,6 +253,18 @@ function sanitizeBackgroundMedia(input: unknown): TemplateBackgroundMedia | null
     brightness: coerceNumber(media.brightness, 100, 0, 400),
     contrast: coerceNumber(media.contrast, 100, 0, 400),
     saturate: coerceNumber(media.saturate, 100, 0, 400),
+    cameraSourceType: media.type === "camera"
+      ? (media.cameraSourceType === "network" ? "network" : "local")
+      : undefined,
+    cameraDeviceId: media.type === "camera" && typeof media.cameraDeviceId === "string" && media.cameraDeviceId.trim()
+      ? media.cameraDeviceId.trim()
+      : undefined,
+    cameraLabel: media.type === "camera" && typeof media.cameraLabel === "string" && media.cameraLabel.trim()
+      ? media.cameraLabel.trim().slice(0, 255)
+      : undefined,
+    cameraUrl: media.type === "camera" && typeof media.cameraUrl === "string" && media.cameraUrl.trim()
+      ? media.cameraUrl.trim().slice(0, MAX_MEDIA_SOURCE_LENGTH)
+      : undefined,
   };
 }
 
@@ -297,7 +316,7 @@ function createDefaultScene(
 function sanitizeTheme(theme: TemplateCanvasTheme): TemplateCanvasTheme {
   const nextScale = Number.isFinite(theme.fontScale) ? theme.fontScale : 1;
   const category = theme.category === "songs" ? "songs" : "scriptures";
-  const layout: OverlayMode = theme.layout === "lower-third" ? "lower-third" : "widescreen";
+  const layout: OverlayMode = theme.layout === "lower-third" || theme.layout === "split-screen" ? theme.layout : "widescreen";
   const accent = isHexColor(theme.accent) ? theme.accent : "#8c62ff";
   const backgroundStart = isHexColor(theme.backgroundStart) ? theme.backgroundStart : "#493072";
   const backgroundEnd = isHexColor(theme.backgroundEnd) ? theme.backgroundEnd : "#090a13";
@@ -348,7 +367,7 @@ function sanitizeDocument(value: TemplateThemeDocument): TemplateThemeDocument {
   (["scriptures", "songs"] as TemplateCategory[]).forEach((category) => {
     const saved = value.defaults[category];
     const savedByLayout = saved && typeof saved === "object" ? saved as Record<OverlayMode, string | null> : null;
-    (["widescreen", "lower-third"] as OverlayMode[]).forEach((layout) => {
+    (["widescreen", "lower-third", "split-screen"] as OverlayMode[]).forEach((layout) => {
       const templateId = savedByLayout?.[layout] ?? (layout === "widescreen" ? legacyDefaults[category] : null);
       defaults[category][layout] = typeof templateId === "string" && templates.some((entry) => entry.id === templateId && entry.category === category && entry.layout === layout)
         ? templateId
@@ -399,11 +418,11 @@ export async function saveTemplateThemes(document: TemplateThemeDocument): Promi
   const payload = JSON.stringify(sanitized, null, 2);
 
   if (isTauriRuntime()) {
-    try {
-      await invoke("save_template_themes", { payload });
-    } catch {
-      // Fall through to local storage backup.
-    }
+    // The projector window reloads from this file after the event below. A
+    // failed native write must surface as a failed save, not appear successful
+    // while the projector keeps reading an older template.
+    await invoke("save_template_themes", { payload });
+    postProjectorChannelMessage({ type: "templates-changed" });
   }
 
   if (typeof window !== "undefined") {

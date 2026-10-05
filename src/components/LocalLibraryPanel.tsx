@@ -4,32 +4,54 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { createPortal } from "react-dom";
 
 import { matchScriptureReferenceIncremental } from "../lib/scriptureSearch";
+import { contextMenuPosition } from "../lib/contextMenuPosition";
 import { setActiveBibleVersion } from "../lib/sidecarClient";
+import { filtersToCss, flipTransform } from "../lib/mediaFilters";
+import { MEDIA_CATEGORIES, mediaCategoryForPath } from "../lib/mediaLibrary";
+import { importErrorMessage, importVideo, isManagedVideo, managedVideoPosterUrl, managedVideoUrl, type VideoAsset, type VideoImportProgress } from "../lib/videoImport";
+import { warmPreparedVideo } from "../lib/templateVideoWarmup";
+import { useAudioPeaks } from "../lib/waveform";
 import { useConfigStore } from "../stores/configStore";
 import { useTemplateStore } from "../stores/templateStore";
 import { useSongStore, type Song, type SongSlide } from "../stores/songStore";
-import type { ProjectorSlide } from "../types/state";
+import type { ProjectorMedia, ProjectorSlide } from "../types/state";
+import {
+  DEFAULT_AUDIO_SETTINGS,
+  DEFAULT_IMAGE_SETTINGS,
+  DEFAULT_VIDEO_SETTINGS,
+  type AudioMediaSettings,
+  type ImageMediaSettings,
+  type MediaCategory,
+  type MediaItem,
+  type VideoMediaSettings,
+} from "../types/media";
 import { TemplateSceneOverlay } from "./ProjectorView";
 import { projectionScene } from "../lib/projectionScene";
-import { ResilientVideo } from "./ResilientVideo";
 import { TemplateEditorModal } from "./Templates/TemplateEditorModal";
 import { NewSongModal } from "./Songs/NewSongModal";
 import { SongStudioModal } from "./Songs/SongStudioModal";
+import { AudioStudioModal } from "./Media/AudioStudioModal";
+import { ImageStudioModal } from "./Media/ImageStudioModal";
+import { ResilientImage } from "./ResilientImage";
+import { VideoStudioModal } from "./Media/VideoStudioModal";
+import { WaveformCanvas } from "./Media/Waveform";
+import { OverlaysTab } from "./Overlays/OverlaysTab";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type LibraryTab = "scriptures" | "songs" | "media" | "templates";
+export type LibraryTab = "scriptures" | "songs" | "media" | "overlays" | "templates";
 export type LibraryNavigationHandler = (direction: -1 | 1) => void;
 /** "words" free-text searches verse content; "reference" only matches an explicit book/chapter/verse lookup, FreeShow-style. */
 export type ScriptureSearchMode = "words" | "reference";
 type TemplateFilter = "scriptures" | "songs";
 
 interface SearchableLibraryTabProps {
+  isActive?: boolean;
   previewReference: string | null;
   liveReference: string | null;
   onPreviewSlide: (slide: ProjectorSlide) => void;
   onSendLive: (slide: ProjectorSlide) => void;
-  onAddToSchedule?: (slide: ProjectorSlide) => void;
+  onSelectedScriptureChange?: (slide: ProjectorSlide | null) => void;
   onCreateCue?: (cue: { title: string; slides: SongSlide[] }) => void;
   searchQuery: string;
   onNavigationHandlerChange?: (handler: LibraryNavigationHandler | null) => void;
@@ -80,15 +102,19 @@ interface BibleImportResult {
 interface LocalLibraryPanelProps {
   previewReference: string | null;
   liveReference: string | null;
+  previewMedia?: ProjectorMedia | null;
+  liveMedia?: ProjectorMedia | null;
   activeTab: LibraryTab;
   searchQuery: string;
   searchMode: ScriptureSearchMode;
   onActiveTabChange: (tab: LibraryTab) => void;
   onPreviewSlide: (slide: ProjectorSlide) => void;
   onSendLive: (slide: ProjectorSlide) => void;
-  onAddToSchedule?: (slide: ProjectorSlide) => void;
+  onSelectedScriptureChange?: (slide: ProjectorSlide | null) => void;
   onCreateCue?: (cue: { title: string; slides: SongSlide[] }) => void;
   onNavigationHandlerChange?: (handler: LibraryNavigationHandler | null) => void;
+  onPreviewMedia: (media: ProjectorMedia) => void;
+  onSendMedia: (media: ProjectorMedia) => void;
 }
 
 const BIBLE_API_BASE = "http://127.0.0.1:8000";
@@ -285,10 +311,12 @@ function isTauriRuntime() {
 }
 
 function ScripturesTab({
+  isActive = true,
   previewReference,
   liveReference,
   onPreviewSlide,
   onSendLive,
+  onSelectedScriptureChange,
   searchQuery,
   searchMode,
   onNavigationHandlerChange,
@@ -665,6 +693,7 @@ function ScripturesTab({
     setSelectedChapter(null);
     setSelectedVerse(null);
     setBookPayload(null);
+    onSelectedScriptureChange?.(null);
 
     fetchBibleJson<{ books: BibleBook[] }>(`/api/bible/books?version=${encodeURIComponent(bible.abbreviation)}`)
       .then((payload) => {
@@ -723,6 +752,7 @@ function ScripturesTab({
   const handleTextClick = (book: string, chapter: number, verse: BibleVerse) => {
     const slide = toProjectorSlide(book, chapter, verse, selectedDisplayName);
     setSelectedReference(referenceLabel(slide));
+    onSelectedScriptureChange?.(slide);
     if (scriptureClickAction === "preview") {
       onPreviewSlide(slide);
     } else {
@@ -736,6 +766,7 @@ function ScripturesTab({
     }
     const slide = toProjectorSlide(book, chapter, verse, selectedDisplayName);
     setSelectedReference(referenceLabel(slide));
+    onSelectedScriptureChange?.(slide);
     onSendLive(slide);
   };
 
@@ -747,6 +778,7 @@ function ScripturesTab({
     event.preventDefault();
     const slide = toProjectorSlide(book, chapter, verse, selectedDisplayName);
     setSelectedReference(referenceLabel(slide));
+    onSelectedScriptureChange?.(slide);
     if (scriptureClickAction === "preview") {
       onPreviewSlide(slide);
     } else {
@@ -772,9 +804,10 @@ function ScripturesTab({
   );
 
   useEffect(() => {
+    if (!isActive) return;
     onNavigationHandlerChange?.(navigateVerses);
     return () => onNavigationHandlerChange?.(null);
-  }, [navigateVerses, onNavigationHandlerChange]);
+  }, [isActive, navigateVerses, onNavigationHandlerChange]);
 
   return (
     <div
@@ -799,7 +832,7 @@ function ScripturesTab({
         <div className="scripture-scroll-pane" style={{ flex: 1, minHeight: 0 }}>
           {/* Local Bibles accordion */}
           <AccordionGroup
-            label="+ Local Bibles"
+            label="Local Bibles"
             isOpen={localOpen}
             onToggle={() => setLocalOpen((v) => !v)}
           >
@@ -827,9 +860,10 @@ function ScripturesTab({
 
           {/* API Bibles accordion */}
           <AccordionGroup
-            label="+ API Bibles"
+            label="API Bibles"
             isOpen={apiOpen}
             onToggle={() => setApiOpen((v) => !v)}
+            showDivider={false}
           >
             <div
               style={{
@@ -848,13 +882,12 @@ function ScripturesTab({
         <div
           style={{
             padding: "var(--space-2)",
-            borderTop: "1px solid var(--border-base)",
           }}
         >
           <button
             type="button"
             onClick={() => setAddModalOpen(true)}
-            title="Add scripture"
+            title="Import Bible file"
             style={{
               display: "flex",
               alignItems: "center",
@@ -863,7 +896,7 @@ function ScripturesTab({
               height: 28,
               borderRadius: "var(--radius-sm)",
               background: "var(--color-primary-muted)",
-              border: "1px solid var(--color-primary)",
+              border: "none",
               color: "var(--color-primary)",
               fontSize: "var(--text-base)",
               lineHeight: 1,
@@ -906,6 +939,7 @@ function ScripturesTab({
                 setSelectedBook(entry.name);
                 setSelectedChapter(null);
                 setSelectedVerse(null);
+                onSelectedScriptureChange?.(null);
               }}
             >
               {entry.name}
@@ -924,6 +958,7 @@ function ScripturesTab({
               onClick={() => {
                 setSelectedChapter(chapterNumber);
                 setSelectedVerse(null);
+                onSelectedScriptureChange?.(null);
               }}
             >
               {chapterNumber}
@@ -970,7 +1005,7 @@ function ScripturesTab({
             const label = referenceLabel(slide);
 
             return (
-              <div key={`${book}-${chapter}-${verse.verse}`} style={{ position: "relative" }}>
+              <div key={`${book}-${chapter}-${verse.verse}`}>
               <button
                 type="button"
                 ref={(el) => {
@@ -982,7 +1017,7 @@ function ScripturesTab({
                 }}
                 onClick={() => handleTextClick(book, chapter, verse)}
                 onDoubleClick={() => handleTextDoubleClick(book, chapter, verse)}
-                onFocus={() => setSelectedReference(label)}
+                onFocus={() => { setSelectedReference(label); onSelectedScriptureChange?.(slide); }}
                 onKeyDown={(event) => handleTextKeyDown(event, book, chapter, verse)}
                 style={{
                   width: "100%",
@@ -1075,11 +1110,13 @@ function AccordionGroup({
   isOpen,
   onToggle,
   children,
+  showDivider = true,
 }: {
   label: string;
   isOpen: boolean;
   onToggle: () => void;
   children: React.ReactNode;
+  showDivider?: boolean;
 }) {
   return (
     <div>
@@ -1094,7 +1131,7 @@ function AccordionGroup({
           padding: "7px 10px",
           background: "transparent",
           border: "none",
-          borderBottom: "1px solid var(--border-base)",
+          borderBottom: showDivider ? "1px solid var(--border-base)" : "none",
           cursor: "pointer",
           fontFamily: "var(--font-mono)",
           fontSize: "var(--text-xs)",
@@ -1128,7 +1165,7 @@ function AccordionGroup({
         <div
           className="scripture-scroll-pane"
           style={{
-            borderBottom: "1px solid var(--border-base)",
+            borderBottom: showDivider ? "1px solid var(--border-base)" : "none",
             maxHeight: 200,
           }}
         >
@@ -1513,7 +1550,10 @@ interface SongContextMenuState {
   y: number;
 }
 
-function SongsTab({ previewReference, liveReference, onPreviewSlide, onSendLive, onCreateCue, searchQuery, onNavigationHandlerChange }: SearchableLibraryTabProps) {
+function SongsTab({ isActive = true, previewReference, liveReference, onPreviewSlide, onSendLive, onCreateCue, searchQuery, onNavigationHandlerChange, slideClickAction, onSlideClickActionChange }: SearchableLibraryTabProps & {
+  slideClickAction: "preview" | "live";
+  onSlideClickActionChange: (action: "preview" | "live") => void;
+}) {
   const songs = useSongStore((s) => s.songs);
   const initializeSongs = useSongStore((s) => s.initialize);
   const deleteSong = useSongStore((s) => s.deleteSong);
@@ -1523,7 +1563,6 @@ function SongsTab({ previewReference, liveReference, onPreviewSlide, onSendLive,
   const [hoveredSongId, setHoveredSongId] = useState<string | null>(null);
   const [selectedSlideReference, setSelectedSlideReference] = useState<string | null>(null);
   const [slidesWidth, setSlidesWidth] = useState<number>(738);
-  const [slideClickAction, setSlideClickAction] = useState<"preview" | "live">("live");
 
   const [isNewSongModalOpen, setIsNewSongModalOpen] = useState(false);
   const [studioSong, setStudioSong] = useState<Song | null>(null);
@@ -1636,27 +1675,34 @@ function SongsTab({ previewReference, liveReference, onPreviewSlide, onSendLive,
       if (!song || song.slides.length === 0) return;
 
       if (!selectedSong) setSelectedSongId(song.id);
-      const currentReference = selectedSlideReference ?? liveReference;
+      const currentReference = selectedSlideReference ?? (slideClickAction === "preview" ? previewReference : liveReference);
       const currentIndex = song.slides.findIndex((_, index) => `${song.title} 1:${index + 1}` === currentReference);
       const nextIndex = (currentIndex + direction + song.slides.length) % song.slides.length;
       const nextSlide = toSongProjectorSlide(song, song.slides[nextIndex], nextIndex);
       setSelectedSlideReference(`${song.title} 1:${nextIndex + 1}`);
-      onPreviewSlide(nextSlide);
-      onSendLive(nextSlide);
+      if (slideClickAction === "preview") onPreviewSlide(nextSlide);
+      else onSendLive(nextSlide);
     },
-    [filteredSongs, liveReference, onPreviewSlide, onSendLive, selectedSlideReference, selectedSong],
+    [filteredSongs, liveReference, onPreviewSlide, onSendLive, previewReference, selectedSlideReference, selectedSong, slideClickAction],
   );
 
   useEffect(() => {
+    if (!isActive) return;
     onNavigationHandlerChange?.(navigateSongSlides);
     return () => onNavigationHandlerChange?.(null);
-  }, [navigateSongSlides, onNavigationHandlerChange]);
+  }, [isActive, navigateSongSlides, onNavigationHandlerChange]);
 
   const handleSongKeyDownCapture = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
       return;
     }
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+      return;
+    }
+
+    // Song Studio's textarea is portaled but still bubbles through this tree; let it handle its own cursor movement.
+    const target = event.target as HTMLElement;
+    if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) {
       return;
     }
 
@@ -1714,8 +1760,6 @@ function SongsTab({ previewReference, liveReference, onPreviewSlide, onSendLive,
                 onMouseLeave={() => setHoveredSongId((current) => (current === song.id ? null : current))}
                 onClick={() => {
                   handleSongSelect(song.id);
-                  const firstSlide = song.slides[0];
-                  if (firstSlide) onPreviewSlide(toSongProjectorSlide(song, firstSlide, 0));
                 }}
                 onDoubleClick={() => {
                   const firstSlide = song.slides[0];
@@ -1862,7 +1906,7 @@ function SongsTab({ previewReference, liveReference, onPreviewSlide, onSendLive,
               <button
                 type="button"
                 aria-pressed={slideClickAction === "preview"}
-                onClick={() => setSlideClickAction("preview")}
+                onClick={() => onSlideClickActionChange("preview")}
                 style={slideActionButtonStyle(slideClickAction === "preview")}
               >
                 Preview First
@@ -1870,7 +1914,7 @@ function SongsTab({ previewReference, liveReference, onPreviewSlide, onSendLive,
               <button
                 type="button"
                 aria-pressed={slideClickAction === "live"}
-                onClick={() => setSlideClickAction("live")}
+                onClick={() => onSlideClickActionChange("live")}
                 style={slideActionButtonStyle(slideClickAction === "live")}
               >
                 Live
@@ -2296,22 +2340,35 @@ const deleteSongButton: React.CSSProperties = {
 
 // ─── Media tab ────────────────────────────────────────────────────────────────
 
-type MediaCategory = "audio" | "images" | "videos";
+const MEDIA_STORAGE_KEY = "sermonsync-media-library-v1";
+const MEDIA_CATALOG_EVENT = "sermonsync-media-catalog-changed";
+const MEDIA_IMPORT_EVENT = "sermonsync-media-import-changed";
+type PendingVideo = { path: string; name: string; state: string; percent: number | null; error?: string; assetId?: string; recoveryInFlight?: boolean; startedAt: number; controller: AbortController };
+const pendingVideos = new Map<string, PendingVideo>();
+const migratingVideos = new Set<string>();
 
-interface MediaItem {
-  id: string;
-  name: string;
-  path: string;
-  category: MediaCategory;
+function notifyMediaCatalog(): void {
+  window.dispatchEvent(new Event(MEDIA_CATALOG_EVENT));
 }
 
-const MEDIA_STORAGE_KEY = "sermonsync-media-library-v1";
+function notifyMediaImports(): void {
+  window.dispatchEvent(new Event(MEDIA_IMPORT_EVENT));
+}
 
-const MEDIA_CATEGORIES: { id: MediaCategory; label: string; extensions: string[] }[] = [
-  { id: "audio", label: "Audio", extensions: ["mp3", "wav", "ogg", "flac", "m4a", "aac"] },
-  { id: "images", label: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"] },
-  { id: "videos", label: "Videos", extensions: ["mp4", "mov", "webm", "mkv", "avi"] },
-];
+function mutateSavedMediaItems(update: (items: MediaItem[]) => MediaItem[]): void {
+  saveMediaItems(update(loadMediaItems()));
+  notifyMediaCatalog();
+}
+
+function finishMediaVideoImport(path: string, controller: AbortController, asset: VideoAsset): void {
+  const entry = pendingVideos.get(path);
+  if (!entry || entry.controller !== controller || controller.signal.aborted) return;
+  mutateSavedMediaItems((current) => current.some((item) => item.category === "videos" && item.path === asset.path)
+    ? current
+    : [...current, withDefaultSettings({ id: `videos-${asset.id}`, name: entry.name, path: asset.path, category: "videos" })]);
+  pendingVideos.delete(path);
+  notifyMediaImports();
+}
 
 function fileNameFromPath(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
@@ -2336,14 +2393,120 @@ function saveMediaItems(items: MediaItem[]): void {
   }
 }
 
-function MediaTab() {
-  const [items, setItems] = useState<MediaItem[]>(() => loadMediaItems());
+interface MediaContextMenuState {
+  item: MediaItem;
+  x: number;
+  y: number;
+}
+
+function withDefaultSettings(item: MediaItem): MediaItem {
+  if (item.category === "images" && !item.imageSettings) {
+    return { ...item, imageSettings: { ...DEFAULT_IMAGE_SETTINGS, filters: { ...DEFAULT_IMAGE_SETTINGS.filters } } };
+  }
+  if (item.category === "videos" && !item.videoSettings) {
+    return { ...item, videoSettings: { ...DEFAULT_VIDEO_SETTINGS, filters: { ...DEFAULT_VIDEO_SETTINGS.filters } } };
+  }
+  if (item.category === "audio" && !item.audioSettings) {
+    return { ...item, audioSettings: { ...DEFAULT_AUDIO_SETTINGS } };
+  }
+  return item;
+}
+
+function MediaTab({ onPreviewMedia, onSendMedia, clickAction, onClickActionChange, previewMedia, liveMedia }: {
+  onPreviewMedia: (media: ProjectorMedia) => void;
+  onSendMedia: (media: ProjectorMedia) => void;
+  clickAction: "preview" | "live";
+  onClickActionChange: (action: "preview" | "live") => void;
+  previewMedia?: ProjectorMedia | null;
+  liveMedia?: ProjectorMedia | null;
+}) {
+  const [items, setItems] = useState<MediaItem[]>(() => loadMediaItems().map(withDefaultSettings));
+  const [selectedMediaPath, setSelectedMediaPath] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<MediaCategory>("images");
   const [importError, setImportError] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<MediaContextMenuState | null>(null);
+  const [renameTarget, setRenameTarget] = useState<MediaItem | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<MediaItem | null>(null);
+  const [studioTarget, setStudioTarget] = useState<MediaItem | null>(null);
+  const [pending, setPending] = useState<PendingVideo[]>(() => [...pendingVideos.values()]);
+  const galleryRef = useRef<HTMLElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    saveMediaItems(items);
+    const refreshCatalog = () => setItems(loadMediaItems().map(withDefaultSettings));
+    const refreshPending = () => setPending([...pendingVideos.values()]);
+    window.addEventListener(MEDIA_CATALOG_EVENT, refreshCatalog);
+    window.addEventListener(MEDIA_IMPORT_EVENT, refreshPending);
+    return () => {
+      window.removeEventListener(MEDIA_CATALOG_EVENT, refreshCatalog);
+      window.removeEventListener(MEDIA_IMPORT_EVENT, refreshPending);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    const timer = window.setInterval(() => {
+      for (const [path, entry] of pendingVideos) {
+        if (!entry.assetId || entry.error || entry.controller.signal.aborted || entry.recoveryInFlight || Date.now() - entry.startedAt < 15000) continue;
+        entry.recoveryInFlight = true;
+        void invoke<VideoAsset | null>("get_ready_video_asset", { assetId: entry.assetId })
+          .then((asset) => { if (asset) finishMediaVideoImport(path, entry.controller, asset); })
+          .catch(() => { /* The normal import request still reports the actionable error. */ })
+          .finally(() => { entry.recoveryInFlight = false; });
+      }
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    for (const item of items) {
+      if (item.category !== "videos" || isManagedVideo(item.path) || migratingVideos.has(item.id)) continue;
+      migratingVideos.add(item.id);
+      void importVideo(item.path, { legacy: true }).then((asset) => {
+        mutateSavedMediaItems((current) => current.map((entry) =>
+          entry.id === item.id && entry.path === item.path ? { ...entry, path: asset.path } : entry));
+      }).catch((error) => {
+        console.warn("Existing video remains on its original path until migration succeeds", importErrorMessage(error));
+      }).finally(() => migratingVideos.delete(item.id));
+    }
   }, [items]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const gallery = galleryRef.current;
+    const handlePointerDown = () => setContextMenu(null);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setContextMenu(null);
+    };
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("resize", handlePointerDown);
+    gallery?.addEventListener("scroll", handlePointerDown, true);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("resize", handlePointerDown);
+      gallery?.removeEventListener("scroll", handlePointerDown, true);
+    };
+  }, [contextMenu]);
+
+  useLayoutEffect(() => {
+    if (!contextMenu || !contextMenuRef.current) return;
+    const menu = contextMenuRef.current;
+    const panel = galleryRef.current?.getBoundingClientRect();
+    const viewport = { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight };
+    const position = contextMenuPosition(
+      { x: contextMenu.x, y: contextMenu.y },
+      { width: menu.getBoundingClientRect().width || 168, height: menu.getBoundingClientRect().height || 112 },
+      panel ?? viewport,
+      viewport,
+    );
+    menu.style.left = `${position.x}px`;
+    menu.style.top = `${position.y}px`;
+    menu.style.visibility = "visible";
+  }, [contextMenu]);
 
   const countsByCategory = useMemo(() => {
     const counts: Record<MediaCategory, number> = { audio: 0, images: 0, videos: 0 };
@@ -2357,84 +2520,109 @@ function MediaTab() {
     () => items.filter((item) => item.category === selectedCategory),
     [items, selectedCategory],
   );
+  const selectMedia = useCallback((path: string) => setSelectedMediaPath(path), []);
+  const openMediaMenu = useCallback((event: React.MouseEvent, item: MediaItem) => {
+    event.preventDefault();
+    setContextMenu({ item, x: event.clientX, y: event.clientY });
+  }, []);
 
-  const handleImport = useCallback(async (category: MediaCategory) => {
+  const handleImport = useCallback(async () => {
     setImportError(null);
     try {
       if (!isTauriRuntime()) {
         throw new Error("Open SermonSync in Tauri to import local media files.");
       }
 
-      const definition = MEDIA_CATEGORIES.find((entry) => entry.id === category);
       const selected = await open({
         multiple: true,
-        filters: definition ? [{ name: definition.label, extensions: definition.extensions }] : undefined,
       });
 
       if (!selected) return;
       const paths = Array.isArray(selected) ? selected : [selected];
+      // Let the native probe inspect unfamiliar extensions. They may still be
+      // perfectly valid videos, and the engine gives a useful error if not.
+      const accepted = paths.map((path) => ({ path, category: mediaCategoryForPath(path) ?? "videos" as MediaCategory }));
 
-      setItems((current) => {
+      mutateSavedMediaItems((current) => {
         const existingPaths = new Set(current.map((item) => item.path));
-        const additions: MediaItem[] = paths
-          .filter((path) => !existingPaths.has(path))
-          .map((path) => ({
-            id: `${category}-${path}`,
-            name: fileNameFromPath(path),
-            path,
-            category,
-          }));
+        const additions: MediaItem[] = accepted.filter((entry) => entry.category !== "videos").flatMap(({ path, category }) => {
+          if (existingPaths.has(path)) return [];
+          existingPaths.add(path);
+          return [withDefaultSettings({ id: `${category}-${path}`, name: fileNameFromPath(path), path, category })];
+        });
         return [...current, ...additions];
       });
+      for (const { path, category } of accepted) {
+        if (category !== "videos" || pendingVideos.has(path)) continue;
+        if (loadMediaItems().some((item) => item.category === "videos" && item.path === path)) continue;
+        const controller = new AbortController();
+        const entry: PendingVideo = { path, name: fileNameFromPath(path), state: "queued", percent: null, startedAt: Date.now(), controller };
+        pendingVideos.set(path, entry);
+        notifyMediaImports();
+        void importVideo(path, {
+          maxSourceBytes: 600 * 1024 * 1024,
+          signal: controller.signal,
+          onProgress: (event: VideoImportProgress) => {
+            const current = pendingVideos.get(path);
+            if (!current || current.controller !== controller) return;
+            pendingVideos.set(path, { ...current, state: event.state, percent: event.percent, assetId: event.assetId ?? current.assetId });
+            notifyMediaImports();
+          },
+        }).then((asset) => {
+          finishMediaVideoImport(path, controller, asset);
+        }).catch((error) => {
+          if (pendingVideos.get(path)?.controller !== controller) return;
+          if (controller.signal.aborted) {
+            pendingVideos.delete(path);
+            notifyMediaImports();
+            return;
+          }
+          pendingVideos.set(path, { ...entry, state: "failed", percent: null, error: importErrorMessage(error) });
+          notifyMediaImports();
+        });
+      }
+      if (accepted.length > 0) setSelectedCategory(accepted[0].category);
     } catch (error) {
       setImportError(error instanceof Error ? error.message : "Failed to import media.");
     }
   }, []);
 
   const handleRemove = useCallback((id: string) => {
-    setItems((current) => current.filter((item) => item.id !== id));
+    mutateSavedMediaItems((current) => current.filter((item) => item.id !== id));
+  }, []);
+
+  const handleRename = useCallback((id: string, name: string) => {
+    mutateSavedMediaItems((current) => current.map((item) => (item.id === id ? { ...item, name } : item)));
+  }, []);
+
+  const handleUpdateSettings = useCallback((id: string, patch: Partial<MediaItem>) => {
+    mutateSavedMediaItems((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
   }, []);
 
   const activeCategoryLabel = MEDIA_CATEGORIES.find((entry) => entry.id === selectedCategory)?.label ?? "";
 
+  const confirmRename = () => {
+    if (!renameTarget || !renameValue.trim()) return;
+    handleRename(renameTarget.id, renameValue.trim());
+    setRenameTarget(null);
+  };
+
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
       {/* Column 1: media types */}
-      <ScripturePane title="Media Type" width="220px">
+      <div style={{ position: "relative", width: 220, height: "100%", flexShrink: 0 }}>
+      <ScripturePane title="Media Type" width="100%">
         {MEDIA_CATEGORIES.map((category) => {
           const isActive = selectedCategory === category.id;
           return (
-            <div
-              key={category.id}
-              style={{ display: "flex", alignItems: "stretch" }}
-            >
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <ScriptureCellButton isActive={isActive} onClick={() => setSelectedCategory(category.id)}>
-                  {category.label}
-                  <span style={{ marginLeft: 6, color: "var(--fg-subtle)", fontWeight: 400 }}>
-                    ({countsByCategory[category.id]})
-                  </span>
-                </ScriptureCellButton>
-              </div>
-              <button
-                type="button"
-                title={`Import ${category.label.toLowerCase()}`}
-                onClick={() => void handleImport(category.id)}
-                style={{
-                  flexShrink: 0,
-                  width: 30,
-                  border: "none",
-                  borderLeft: "1px solid var(--border-base)",
-                  background: "transparent",
-                  color: "var(--fg-muted)",
-                  cursor: "pointer",
-                  fontSize: "var(--text-xs)",
-                  fontWeight: 700,
-                }}
-              >
-                +
-              </button>
-            </div>
+            <ScriptureCellButton key={category.id} isActive={isActive} onClick={() => setSelectedCategory(category.id)}>
+              <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+                <span>{category.label}</span>
+                <span style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
+                  {countsByCategory[category.id]}
+                </span>
+              </span>
+            </ScriptureCellButton>
           );
         })}
         {importError && (
@@ -2443,9 +2631,21 @@ function MediaTab() {
           </div>
         )}
       </ScripturePane>
+      <button
+        type="button"
+        aria-label="Import media files"
+        title="Import audio, images, or videos"
+        onClick={() => void handleImport()}
+        style={{ ...addSongButtonStyle, position: "absolute", right: 16, bottom: 16, zIndex: 5 }}
+      >
+        +
+      </button>
+      </div>
 
       {/* Column 2: gallery of thumbnails for the selected category */}
       <section
+        data-media-gallery=""
+        ref={galleryRef}
         style={{
           flex: 1,
           minWidth: 0,
@@ -2456,121 +2656,370 @@ function MediaTab() {
           background: "var(--bg-base)",
         }}
       >
-        <div style={tableHeaderCellStyle()}>{activeCategoryLabel} Gallery</div>
+        <div style={{ ...tableHeaderCellStyle(), display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <span>{activeCategoryLabel} Gallery</span>
+          <div role="group" aria-label="Media click action" style={{ display: "flex", overflow: "hidden", borderRadius: "var(--radius-sm)" }}>
+            <button type="button" aria-pressed={clickAction === "preview"} disabled={selectedCategory === "audio"} title={selectedCategory === "audio" ? "Audio plays locally from its thumbnail" : undefined} onClick={() => onClickActionChange("preview")} style={{ ...slideActionButtonStyle(clickAction === "preview"), opacity: selectedCategory === "audio" ? 0.45 : 1 }}>Preview First</button>
+            <button type="button" aria-pressed={clickAction === "live"} disabled={selectedCategory === "audio"} title={selectedCategory === "audio" ? "Audio plays locally from its thumbnail" : undefined} onClick={() => onClickActionChange("live")} style={{ ...slideActionButtonStyle(clickAction === "live"), opacity: selectedCategory === "audio" ? 0.45 : 1 }}>Live</button>
+          </div>
+        </div>
         <div className="scripture-scroll-pane" style={{ flex: 1, minHeight: 0, padding: "var(--space-3)" }}>
           {visibleItems.length === 0 ? (
-            <PaneEmpty>No {activeCategoryLabel.toLowerCase()} imported yet — use the + button to add some.</PaneEmpty>
+            selectedCategory === "videos" && pending.length > 0 ? null : <PaneEmpty>No {activeCategoryLabel.toLowerCase()} imported yet — use the + button in Media Type to add files.</PaneEmpty>
           ) : (
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+                gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
                 gap: "var(--space-3)",
               }}
             >
               {visibleItems.map((item) => (
-                <MediaThumbnail key={item.id} item={item} onRemove={() => handleRemove(item.id)} />
+                <MediaThumbnail
+                  key={item.id}
+                  item={item}
+                  isSelected={item.path === (selectedMediaPath ?? (clickAction === "preview" ? previewMedia?.path : liveMedia?.path))}
+                  onSelect={selectMedia}
+                  onContextMenu={openMediaMenu}
+                  clickAction={clickAction}
+                  onPreviewMedia={onPreviewMedia}
+                  onSendMedia={onSendMedia}
+                />
               ))}
             </div>
           )}
+          {selectedCategory === "videos" && pending.map((entry) => (
+            <div key={entry.path} role="status" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, padding: 10, borderRadius: 6, background: "var(--bg-elevated)", color: "var(--fg-muted)", fontSize: 12 }}>
+              <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={entry.name}>{entry.name}</span>
+              <span>{entry.error ?? `${entry.state}${entry.percent == null ? "" : ` ${entry.percent}%`}`}</span>
+              <button type="button" onClick={() => {
+                if (entry.error) pendingVideos.delete(entry.path);
+                else entry.controller.abort();
+                notifyMediaImports();
+              }} aria-label={entry.error ? `Dismiss ${entry.name}` : `Cancel import ${entry.name}`}>{entry.error ? "Dismiss" : "Cancel"}</button>
+            </div>
+          ))}
         </div>
       </section>
-    </div>
-  );
-}
 
-function MediaThumbnail({ item, onRemove }: { item: MediaItem; onRemove: () => void }) {
-  const [isHovered, setIsHovered] = useState(false);
-  const src = useMemo(() => {
-    try {
-      return convertFileSrc(item.path);
-    } catch {
-      return "";
-    }
-  }, [item.path]);
-
-  return (
-    <div
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      style={{
-        position: "relative",
-        display: "flex",
-        flexDirection: "column",
-        gap: 4,
-      }}
-    >
-      <div
-        style={{
-          position: "relative",
-          width: "100%",
-          aspectRatio: "1 / 1",
-          borderRadius: "var(--radius-md)",
-          border: "1px solid var(--border-base)",
-          background: "var(--bg-elevated)",
-          overflow: "hidden",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        {item.category === "images" && (
-          <img src={src} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-        )}
-        {item.category === "videos" && (
-          <ResilientVideo
-            media={{ type: "video", src, fit: "cover", loop: false, x: 0, y: 0, width: 100, height: 100, opacity: 1, muted: true, speed: 1 }}
-            style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            autoPlay={false}
-            playing={false}
-            loop={false}
-            preload="metadata"
-          />
-        )}
-        {item.category === "audio" && (
-          <span style={{ fontSize: 28, color: "var(--fg-muted)" }} aria-hidden>
-            ♪
-          </span>
-        )}
-        {isHovered && (
+      {/* Right-click Context Menu */}
+      {contextMenu ? createPortal(
+        <div
+          ref={contextMenuRef}
+          role="menu"
+          onPointerDown={(event) => event.stopPropagation()}
+          style={{
+            position: "fixed",
+            left: contextMenu.x,
+            top: contextMenu.y,
+            visibility: "hidden",
+            width: "160px",
+            background: "var(--bg-surface)",
+            border: "none",
+            borderRadius: "8px",
+            boxShadow: "var(--shadow-lg)",
+            padding: "4px",
+            zIndex: 1000,
+          }}
+        >
           <button
             type="button"
-            title="Remove"
-            onClick={onRemove}
-            style={{
-              position: "absolute",
-              top: 4,
-              right: 4,
-              width: 20,
-              height: 20,
-              borderRadius: "50%",
-              border: "none",
-              background: "rgba(0, 0, 0, 0.6)",
-              color: "#fff",
-              cursor: "pointer",
-              fontSize: 12,
-              lineHeight: 1,
+            role="menuitem"
+            onClick={() => {
+              const target = contextMenu.item;
+              setContextMenu(null);
+              setStudioTarget(target);
             }}
+            onMouseEnter={(event) => { event.currentTarget.style.background = "var(--color-primary-muted)"; }}
+            onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}
+            style={songContextMenuItemStyle}
           >
-            ×
+            Edit
           </button>
-        )}
-      </div>
-      <span
-        title={item.name}
-        style={{
-          fontSize: "var(--text-xs)",
-          color: "var(--fg-muted)",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {item.name}
-      </span>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              const target = contextMenu.item;
+              setContextMenu(null);
+              setRenameTarget(target);
+              setRenameValue(target.name);
+            }}
+            onMouseEnter={(event) => { event.currentTarget.style.background = "var(--color-primary-muted)"; }}
+            onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}
+            style={songContextMenuItemStyle}
+          >
+            Rename
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              const target = contextMenu.item;
+              setContextMenu(null);
+              setDeleteTarget(target);
+            }}
+            onMouseEnter={(event) => { event.currentTarget.style.background = "var(--color-error-muted)"; }}
+            onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}
+            style={{ ...songContextMenuItemStyle, color: "var(--color-error)" }}
+          >
+            Delete
+          </button>
+        </div>,
+        document.body,
+      ) : null}
+
+      {/* Delete confirmation */}
+      {deleteTarget ? createPortal(
+        <div
+          role="presentation"
+          onMouseDown={(event) => { if (event.target === event.currentTarget) setDeleteTarget(null); }}
+          style={{ position: "fixed", inset: 0, zIndex: 1200, display: "grid", placeItems: "center", padding: 20, background: "var(--overlay-backdrop)" }}
+        >
+          <section
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-media-title"
+            aria-describedby="delete-media-description"
+            style={{ width: "min(400px, 94vw)", padding: 20, border: "1px solid var(--border-base)", borderRadius: "var(--radius-lg)", background: "var(--bg-surface)", boxShadow: "var(--shadow-lg)", display: "flex", flexDirection: "column", gap: 14 }}
+          >
+            <h2 id="delete-media-title" style={{ margin: 0, color: "var(--fg-base)", fontSize: 16, fontWeight: 700 }}>Delete media?</h2>
+            <p id="delete-media-description" style={{ margin: 0, color: "var(--fg-muted)", fontSize: 12, lineHeight: 1.5 }}>
+              Remove &quot;{deleteTarget.name}&quot; from the library? This cannot be undone.
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button type="button" autoFocus onClick={() => setDeleteTarget(null)} style={renameSecondaryButton}>Cancel</button>
+              <button
+                type="button"
+                onClick={() => {
+                  handleRemove(deleteTarget.id);
+                  setDeleteTarget(null);
+                }}
+                style={deleteSongButton}
+              >
+                Delete
+              </button>
+            </div>
+          </section>
+        </div>,
+        document.body,
+      ) : null}
+
+      {/* Rename dialog */}
+      {renameTarget ? createPortal(
+        <div
+          role="presentation"
+          onMouseDown={(event) => { if (event.target === event.currentTarget) setRenameTarget(null); }}
+          style={{ position: "fixed", inset: 0, zIndex: 1200, display: "grid", placeItems: "center", padding: 20, background: "rgba(8, 9, 14, 0.6)" }}
+        >
+          <section role="dialog" aria-modal="true" aria-labelledby="rename-media-title" style={{ width: "min(400px, 94vw)", padding: 20, border: "1px solid var(--border-base)", borderRadius: 10, background: "var(--bg-surface)", boxShadow: "var(--shadow-lg)", display: "flex", flexDirection: "column", gap: 14 }}>
+            <h2 id="rename-media-title" style={{ margin: 0, color: "var(--fg-base)", fontSize: 16, fontWeight: 700 }}>Rename media</h2>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, color: "var(--fg-muted)", fontSize: 12 }}>
+              Name
+              <input
+                autoFocus
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") confirmRename();
+                  if (e.key === "Escape") setRenameTarget(null);
+                }}
+                style={{ padding: "8px 10px", border: "1px solid var(--border-base)", borderRadius: 6, background: "var(--bg-base)", color: "var(--fg-base)", fontSize: 13, outline: "none" }}
+              />
+            </label>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button type="button" onClick={() => setRenameTarget(null)} style={renameSecondaryButton}>Cancel</button>
+              <button
+                type="button"
+                onClick={confirmRename}
+                disabled={!renameValue.trim()}
+                style={{ padding: "8px 14px", border: "none", borderRadius: 6, background: "var(--color-primary)", color: "var(--fg-on-accent)", cursor: "pointer", fontSize: 12, fontWeight: 600, opacity: renameValue.trim() ? 1 : 0.5 }}
+              >
+                Save
+              </button>
+            </div>
+          </section>
+        </div>,
+        document.body,
+      ) : null}
+
+      {/* Category-specific studio editors */}
+      {studioTarget?.category === "images" ? (
+        <ImageStudioModal
+          open
+          name={studioTarget.name}
+          src={studioTarget.path ? (() => { try { return managedVideoUrl(studioTarget.path) ?? convertFileSrc(studioTarget.path); } catch { return ""; } })() : ""}
+          sourcePath={studioTarget.path}
+          settings={studioTarget.imageSettings ?? DEFAULT_IMAGE_SETTINGS}
+          onClose={() => setStudioTarget(null)}
+          onSave={(name, settings: ImageMediaSettings) => {
+            handleUpdateSettings(studioTarget.id, { name, imageSettings: settings });
+            setStudioTarget(null);
+          }}
+        />
+      ) : null}
+      {studioTarget?.category === "videos" ? (
+        <VideoStudioModal
+          open
+          name={studioTarget.name}
+          src={studioTarget.path ? (() => { try { return managedVideoUrl(studioTarget.path) ?? convertFileSrc(studioTarget.path); } catch { return ""; } })() : ""}
+          sourcePath={studioTarget.path}
+          settings={studioTarget.videoSettings ?? DEFAULT_VIDEO_SETTINGS}
+          onClose={() => setStudioTarget(null)}
+          onSave={(name, settings: VideoMediaSettings) => {
+            handleUpdateSettings(studioTarget.id, { name, videoSettings: settings });
+            setStudioTarget(null);
+          }}
+        />
+      ) : null}
+      {studioTarget?.category === "audio" ? (
+        <AudioStudioModal
+          open
+          name={studioTarget.name}
+          src={studioTarget.path ? (() => { try { return managedVideoUrl(studioTarget.path) ?? convertFileSrc(studioTarget.path); } catch { return ""; } })() : ""}
+          settings={studioTarget.audioSettings ?? DEFAULT_AUDIO_SETTINGS}
+          onClose={() => setStudioTarget(null)}
+          onSave={(name, settings: AudioMediaSettings) => {
+            handleUpdateSettings(studioTarget.id, { name, audioSettings: settings });
+            setStudioTarget(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
+
+const MediaThumbnail = memo(function MediaThumbnail({ item, isSelected, onSelect, clickAction, onContextMenu, onPreviewMedia, onSendMedia }: {
+  item: MediaItem;
+  isSelected: boolean;
+  onSelect: (path: string) => void;
+  clickAction: "preview" | "live";
+  onContextMenu: (event: React.MouseEvent, item: MediaItem) => void;
+  onPreviewMedia: (media: ProjectorMedia) => void;
+  onSendMedia: (media: ProjectorMedia) => void;
+}) {
+  const tileRef = useRef<HTMLDivElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [inView, setInView] = useState(() => typeof IntersectionObserver === "undefined");
+  const [thumbnail, setThumbnail] = useState<{ key: string; src: string | null } | null>(null);
+  const [failedPosterPath, setFailedPosterPath] = useState<string | null>(null);
+  const [videoFailed, setVideoFailed] = useState(false);
+  const [audioPlaying, setAudioPlaying] = useState(false);
+  const src = useMemo(() => {
+    try { return managedVideoUrl(item.path) ?? convertFileSrc(item.path); } catch { return ""; }
+  }, [item.path]);
+  const thumbnailKey = `${item.category}:${item.path}`;
+  const nativeRuntime = isTauriRuntime();
+  const managedPoster = item.category === "videos" ? managedVideoPosterUrl(item.path) : null;
+  const posterFailed = managedPoster !== null && failedPosterPath === item.path;
+  const snapshot = managedPoster !== null ? posterFailed ? null : managedPoster : thumbnail?.key === thumbnailKey ? thumbnail.src : undefined;
+  const useFallback = !nativeRuntime || snapshot === null;
+  const { peaks, duration } = useAudioPeaks(item.category === "audio" && inView && useFallback ? src : null, 64);
+  const projectorMedia = item.category === "images" || item.category === "videos" ? {
+    path: item.path,
+    name: item.name,
+    category: item.category,
+    fit: item.videoSettings?.fit ?? item.imageSettings?.fit ?? "cover",
+    opacity: item.videoSettings?.opacity ?? item.imageSettings?.opacity ?? 1,
+  } satisfies ProjectorMedia : null;
+  const settings = item.category === "images" ? item.imageSettings : item.videoSettings;
+
+  useEffect(() => {
+    const tile = tileRef.current;
+    if (!tile || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setInView(true);
+        observer.disconnect();
+      }
+    }, { rootMargin: "240px" });
+    observer.observe(tile);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!inView || !nativeRuntime) return;
+    if (item.category === "videos" && isManagedVideo(item.path)) return;
+    let active = true;
+    void invoke<string>("create_media_thumbnail", { path: item.path, category: item.category })
+      .then((path) => {
+        if (!active) return;
+        if (item.category === "images") {
+          void invoke<string>("read_template_image_file", { path })
+            .then((dataUrl) => { if (active) setThumbnail({ key: thumbnailKey, src: dataUrl }); })
+            .catch(() => {
+              if (!active) return;
+              try { setThumbnail({ key: thumbnailKey, src: convertFileSrc(path) }); }
+              catch { setThumbnail({ key: thumbnailKey, src: null }); }
+            });
+        } else {
+          try { setThumbnail({ key: thumbnailKey, src: convertFileSrc(path) }); }
+          catch { setThumbnail({ key: thumbnailKey, src: null }); }
+        }
+      })
+      .catch(() => { if (active) setThumbnail({ key: thumbnailKey, src: null }); });
+    return () => { active = false; };
+  }, [inView, item.category, item.path, nativeRuntime, thumbnailKey]);
+
+  const activate = () => {
+    onSelect(item.path);
+    if (projectorMedia) {
+      if (clickAction === "preview") onPreviewMedia(projectorMedia);
+      else onSendMedia(projectorMedia);
+      return;
+    }
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (!audio.paused) {
+      audio.pause();
+      setAudioPlaying(false);
+      return;
+    }
+    audio.volume = Math.min(1, Math.max(0, item.audioSettings?.volume ?? 1));
+    try { audio.currentTime = item.audioSettings?.trimStart ?? 0; } catch { /* Metadata may not be loaded yet. */ }
+    void audio.play().then(() => setAudioPlaying(true)).catch(() => setAudioPlaying(false));
+  };
+
+  const imageSrc = typeof snapshot === "string" ? snapshot : item.category === "images" && useFallback ? src : "";
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div
+        ref={tileRef}
+        role="button"
+        tabIndex={0}
+        aria-pressed={isSelected}
+        aria-label={`${item.category === "audio" ? (audioPlaying ? "Pause" : "Play") : clickAction === "preview" ? "Preview" : "Send live"} ${item.name}`}
+        title={`${item.name} · ${item.category === "audio" ? "Click to play; right-click to edit" : `Click to ${clickAction === "preview" ? "preview" : "send live"}; right-click to edit`}`}
+        onClick={activate}
+        onPointerEnter={() => { if (item.category === "videos" && isManagedVideo(item.path)) warmPreparedVideo(item.path); }}
+        onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); activate(); } }}
+        onDoubleClick={() => { if (projectorMedia && clickAction === "preview") onSendMedia(projectorMedia); }}
+        onContextMenu={(event) => onContextMenu(event, item)}
+        style={{ display: "block", position: "relative", width: "100%", aspectRatio: "16 / 9", padding: 0, overflow: "hidden", border: isSelected ? "2px solid var(--color-primary)" : "1px solid var(--border-base)", borderRadius: "var(--radius-md)", background: "var(--bg-elevated)", cursor: "pointer", textAlign: "left", boxShadow: "var(--shadow-sm)" }}
+      >
+        {inView && imageSrc && item.category === "images" ? (
+          <ResilientImage src={imageSrc} sourcePath={item.path} alt="" loading="eager" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: settings?.opacity ?? 1, filter: filtersToCss(settings?.filters), transform: flipTransform(settings?.flipX, settings?.flipY) }} />
+        ) : null}
+        {inView && imageSrc && item.category === "videos" ? (
+          <img src={imageSrc} alt="" loading="lazy" onError={() => {
+            if (managedPoster !== null) setFailedPosterPath(item.path);
+            else if (typeof snapshot === "string") setThumbnail({ key: thumbnailKey, src: null });
+          }} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: settings?.opacity ?? 1, filter: filtersToCss(settings?.filters), transform: flipTransform(settings?.flipX, settings?.flipY) }} />
+        ) : null}
+        {inView && item.category === "videos" && managedPoster === null && useFallback && !videoFailed ? (
+          <video src={src} muted playsInline preload="metadata" onLoadedMetadata={(event) => { const video = event.currentTarget; try { video.currentTime = Math.min(0.2, video.duration / 2); } catch { /* Keep the first frame. */ } }} onError={() => setVideoFailed(true)} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: settings?.opacity ?? 1, filter: filtersToCss(settings?.filters), transform: flipTransform(settings?.flipX, settings?.flipY) }} />
+        ) : null}
+        {inView && posterFailed ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: "var(--fg-muted)", fontSize: 11 }}>Preview unavailable</span> : null}
+        {inView && item.category === "audio" && useFallback ? (
+          peaks.length > 0 ? <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", padding: "0 10px", background: "#181322" }}><WaveformCanvas peaks={peaks} duration={duration} height={64} barColor="var(--color-primary)" progressColor="var(--color-primary)" /></div> : <span aria-hidden="true" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: "var(--fg-muted)", fontSize: 28 }}>♪</span>
+        ) : null}
+        {videoFailed ? <span aria-hidden="true" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: "var(--fg-muted)", fontSize: 26 }}>▣</span> : null}
+        <span style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "16px 8px 6px", background: "linear-gradient(transparent, rgba(0,0,0,.78))", color: "#fff", fontFamily: "var(--font-sans)", fontSize: 11, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", pointerEvents: "none" }}>{item.name}</span>
+      </div>
+      {item.category === "audio" ? <audio ref={audioRef} src={src} preload="none" onEnded={() => setAudioPlaying(false)} onTimeUpdate={(event) => { const end = item.audioSettings?.trimEnd; if (end != null && event.currentTarget.currentTime >= end) { event.currentTarget.pause(); setAudioPlaying(false); } }} /> : null}
+    </div>
+  );
+});
 
 // ─── Templates tab ────────────────────────────────────────────────────────────
 
@@ -2646,7 +3095,7 @@ const TemplateCard = memo(function TemplateCard({
         <span title={template.name} style={{ color: "var(--fg-base)", fontSize: "13px", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{template.name}</span>
         <div style={{ display: "flex", minHeight: "16px", alignItems: "center" }}>
           <span style={{ color: "var(--fg-base)", fontSize: "10px", fontFamily: "var(--font-mono)", fontWeight: 700, letterSpacing: "0.05em", whiteSpace: "nowrap" }}>
-            {isDefault ? "DEFAULT · " : ""}{template.layout === "lower-third" ? "LOWER THIRD" : "WIDESCREEN"}
+            {isDefault ? "DEFAULT · " : ""}{template.layout === "lower-third" ? "LOWER THIRD" : template.layout === "split-screen" ? "SPLIT SCREEN" : "WIDESCREEN"}
           </span>
         </div>
         <span style={{ color: "var(--fg-muted)", fontSize: "11px", lineHeight: 1.35 }}>{template.subtitle}</span>
@@ -2894,7 +3343,7 @@ function TemplatesTab() {
         >
           {([
             { id: "edit", label: "Edit" },
-            { id: "makeDefault", label: `Make default ${templateCategoryLabel(menuTemplate.category)} ${menuTemplate.layout === "lower-third" ? "Lower Third" : "Widescreen"} theme` },
+            { id: "makeDefault", label: `Make default ${templateCategoryLabel(menuTemplate.category)} ${menuTemplate.layout === "lower-third" ? "Lower Third" : menuTemplate.layout === "split-screen" ? "Split screen" : "Widescreen"} theme` },
             { id: "rename", label: "Rename" },
             { id: "delete", label: "Delete" },
             { id: "duplicate", label: "Duplicate" },
@@ -3063,6 +3512,7 @@ const TABS: { id: LibraryTab; label: string }[] = [
   { id: "scriptures", label: "Scriptures" },
   { id: "songs", label: "Songs" },
   { id: "media", label: "Media" },
+  { id: "overlays", label: "Overlays" },
   { id: "templates", label: "Templates" },
 ];
 
@@ -3075,22 +3525,40 @@ export function LocalLibraryPanel({
   onActiveTabChange,
   previewReference,
   liveReference,
+  previewMedia,
+  liveMedia,
   onPreviewSlide,
   onSendLive,
-  onAddToSchedule,
+  onSelectedScriptureChange,
   onCreateCue,
   onNavigationHandlerChange,
+  onPreviewMedia,
+  onSendMedia,
 }: LocalLibraryPanelProps) {
-  const searchableProps = { previewReference, liveReference, onPreviewSlide, onSendLive, onAddToSchedule, onCreateCue, searchQuery, onNavigationHandlerChange };
+  const searchableProps = { previewReference, liveReference, onPreviewSlide, onSendLive, onSelectedScriptureChange, onCreateCue, searchQuery };
+  const navigationHandlerFor = useCallback((tab: LibraryTab) => (handler: LibraryNavigationHandler | null) => {
+    if (activeTab === tab) onNavigationHandlerChange?.(handler);
+  }, [activeTab, onNavigationHandlerChange]);
   const previousTabRef = useRef(activeTab);
   const [tabDirection, setTabDirection] = useState<"forward" | "backward">("forward");
   const [templatesMounted, setTemplatesMounted] = useState(activeTab === "templates");
+  const [mountedTabs, setMountedTabs] = useState<Set<LibraryTab>>(() => new Set([activeTab]));
+  const [songSlideClickAction, setSongSlideClickAction] = useState<"preview" | "live">("live");
+  const [mediaClickAction, setMediaClickAction] = useState<"preview" | "live">("live");
 
   useLayoutEffect(() => {
     const previousIndex = TABS.findIndex((tab) => tab.id === previousTabRef.current);
     const activeIndex = TABS.findIndex((tab) => tab.id === activeTab);
     setTabDirection(activeIndex >= previousIndex ? "forward" : "backward");
     previousTabRef.current = activeTab;
+  }, [activeTab]);
+
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) setMountedTabs((current) => current.has(activeTab) ? current : new Set(current).add(activeTab));
+    });
+    return () => { cancelled = true; };
   }, [activeTab]);
 
   return (
@@ -3124,6 +3592,7 @@ export function LocalLibraryPanel({
                 if (tab.id === "templates") {
                   setTemplatesMounted(true);
                 }
+                setMountedTabs((current) => current.has(tab.id) ? current : new Set(current).add(tab.id));
                 onActiveTabChange(tab.id);
               }}
               style={{
@@ -3186,13 +3655,24 @@ export function LocalLibraryPanel({
             <TemplatesTab />
           </div>
         ) : null}
-        {activeTab !== "templates" ? (
-          <div key={activeTab} className={`library-tab-slide library-tab-slide--${tabDirection}`}>
-            {activeTab === "scriptures" && <ScripturesTab {...searchableProps} searchMode={searchMode} />}
-            {activeTab === "songs" && <SongsTab {...searchableProps} />}
-            {activeTab === "media" && <MediaTab />}
-          </div>
-        ) : null}
+        {(["scriptures", "songs", "media", "overlays"] as const).map((tab) => {
+          if (!mountedTabs.has(tab)) return null;
+          const isActive = activeTab === tab;
+          return (
+            <div
+              key={tab}
+              data-library-tab={tab}
+              className={isActive ? `library-tab-slide library-tab-slide--${tabDirection}` : undefined}
+              style={{ display: isActive ? "block" : "none", height: "100%" }}
+              aria-hidden={!isActive}
+            >
+              {tab === "scriptures" && <ScripturesTab {...searchableProps} isActive={isActive} searchMode={searchMode} onNavigationHandlerChange={navigationHandlerFor("scriptures")} />}
+              {tab === "songs" && <SongsTab {...searchableProps} isActive={isActive} onNavigationHandlerChange={navigationHandlerFor("songs")} slideClickAction={songSlideClickAction} onSlideClickActionChange={setSongSlideClickAction} />}
+              {tab === "media" && <MediaTab onPreviewMedia={onPreviewMedia} onSendMedia={onSendMedia} clickAction={mediaClickAction} onClickActionChange={setMediaClickAction} previewMedia={previewMedia} liveMedia={liveMedia} />}
+              {tab === "overlays" && <OverlaysTab />}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

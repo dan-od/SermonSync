@@ -45,6 +45,8 @@ declare module "fabric" {
     scrollGap?: number;
     /** Script formatting applied to the whole textbox when no range is highlighted. */
     studioScript?: "none" | "superscript" | "subscript";
+    /** Last text case transform applied in the studio inspector. */
+    studioTextCase?: "none" | "uppercase" | "lowercase" | "sentence" | "title";
     /** Shape media-fill presentation settings. The image itself is stored in Fabric's Pattern fill. */
     studioShapeFillFit?: "cover" | "contain" | "tile";
     studioShapeFillScale?: number;
@@ -77,6 +79,7 @@ declare module "fabric" {
     scrollDuration?: number;
     scrollGap?: number;
     studioScript?: "none" | "superscript" | "subscript";
+    studioTextCase?: "none" | "uppercase" | "lowercase" | "sentence" | "title";
     studioShapeFillFit?: "cover" | "contain" | "tile";
     studioShapeFillScale?: number;
     studioShapeFillX?: number;
@@ -100,7 +103,7 @@ export function configureFabricDefaults(): void {
   if (configured) return;
   configured = true;
 
-  FabricObject.customProperties = ["studioId", "studioRole", "studioName", "studioLocked", "studioShapeKind", "polygonSides", "starPoints", "starInnerRadius", "verticalAlign", "studioBoxHeight", "autoSize", "studioScript", "lineBackgroundColor", "cornerRadius", "boxBorderColor", "boxBorderWidth", "lineSpacing", "scrollDuration", "scrollGap", "studioShapeFillFit", "studioShapeFillScale", "studioShapeFillX", "studioShapeFillY", "studioShapeFillOpacity", "studioShapeFillColor", "studioShapeFillMediaType", "studioShapeFillMediaSource", "studioIsMediaAddon"];
+  FabricObject.customProperties = ["studioId", "studioRole", "studioName", "studioLocked", "studioShapeKind", "polygonSides", "starPoints", "starInnerRadius", "verticalAlign", "studioBoxHeight", "autoSize", "studioScript", "studioTextCase", "lineBackgroundColor", "cornerRadius", "boxBorderColor", "boxBorderWidth", "lineSpacing", "scrollDuration", "scrollGap", "studioShapeFillFit", "studioShapeFillScale", "studioShapeFillX", "studioShapeFillY", "studioShapeFillOpacity", "studioShapeFillColor", "studioShapeFillMediaType", "studioShapeFillMediaSource", "studioIsMediaAddon"];
   // verticalAlign changes the pixels produced by Textbox#_renderTextCommon;
   // register it so Fabric invalidates the object cache when it changes.
   Textbox.cacheProperties = [...Textbox.cacheProperties, "verticalAlign", "cornerRadius"];

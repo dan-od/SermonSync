@@ -6,7 +6,6 @@ interface StudioToolbarProps {
   onAddText: () => void;
   onAddShape: (kind: StudioShapeKind) => void;
   onAddMedia: () => void;
-  onAddCamera: () => void;
 }
 
 const SHAPE_GROUPS: Array<{ label: string; options: Array<{ kind: StudioShapeKind; label: string }> }> = [
@@ -15,7 +14,7 @@ const SHAPE_GROUPS: Array<{ label: string; options: Array<{ kind: StudioShapeKin
   { label: "Decorative", options: [{ kind: "polygon", label: "Polygon" }, { kind: "star", label: "Star" }] },
 ];
 
-export function StudioToolbar({ onAddText, onAddShape, onAddMedia, onAddCamera }: StudioToolbarProps) {
+export function StudioToolbar({ onAddText, onAddShape, onAddMedia }: StudioToolbarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [shapesOpen, setShapesOpen] = useState(false);
   const [hoveredAddon, setHoveredAddon] = useState<string | null>(null);
@@ -86,21 +85,6 @@ export function StudioToolbar({ onAddText, onAddShape, onAddMedia, onAddCamera }
             }}
           >
             Media
-          </button>
-          <button
-            type="button"
-            style={menuItemStyle(hoveredAddon === "camera")}
-            onMouseEnter={() => {
-              setHoveredAddon("camera");
-              setShapesOpen(false);
-              setHoveredShapeGroup(null);
-            }}
-            onClick={() => {
-              onAddCamera();
-              closeMenus();
-            }}
-          >
-            Camera
           </button>
           {shapesOpen ? (
             <div role="menu" aria-label="Shape categories" style={sideMenuStyle}>
