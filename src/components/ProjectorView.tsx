@@ -1,23 +1,35 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { managedVideoUrl } from "../lib/videoImport";
 
 import { resolveRichTextTokens } from "../lib/richText";
+import { isVideoDataUrl } from "../lib/media";
 import { projectionScene } from "../lib/projectionScene";
 import { useTemplateStore } from "../stores/templateStore";
 import { useProjectorStore } from "../stores/projectorStore";
+import { CameraViewport } from "./CameraViewport";
+import { ResilientImage } from "./ResilientImage";
 import { ResilientVideo } from "./ResilientVideo";
+import { OverlayVisual } from "./Overlays/OverlayVisual";
+import type { ActiveOverlay } from "../types/overlays";
 import type { TemplateLayer, TemplateScene, TemplateTextScript } from "../types/templates";
-import type { OverlayMode, ProjectorSlide, TransitionCategory, VerseTheme } from "../types/state";
+import type { LogoConfig, OverlayMode, ProjectorMedia, ProjectorPlaybackState, ProjectorSlide, TransitionCategory, TransitionEasing, TransitionsConfig, VerseTheme } from "../types/state";
 
 const OVERLAY_WIDTH = 1920;
 const OVERLAY_HEIGHT = 1080;
 const VIEWPORT_SAFE_INSET = 2;
+const autoFitSizeCache = new WeakMap<Extract<TemplateLayer, { type: "text" }>, Map<string, number>>();
+
+function cssEasingFor(easing: TransitionEasing | undefined): string {
+  return easing === "spring" ? "cubic-bezier(0.34, 1.56, 0.64, 1)" : (easing ?? "ease");
+}
 
 function referenceLabel(slide: ProjectorSlide) {
   return `${slide.reference.book} ${slide.reference.chapter}:${slide.reference.verse}`;
 }
 
 type LayerAnimField = "bookChapter" | "verse" | "version" | "text";
-type LayerAnimKeys = Record<LayerAnimField, number>;
+type LayerAnimKeys = Record<LayerAnimField, string>;
 
 // Maps each dynamic token to the slide field it actually depends on, so a layer only
 // replays its entrance animation when that specific field changes (e.g. a verse-only
@@ -45,7 +57,23 @@ function layerAnimationKeyFor(dynamicTokens: string[], keys: LayerAnimKeys) {
     }
   });
   const activeFields = hasUnknownToken ? (Object.keys(keys) as LayerAnimField[]) : Array.from(fields);
-  return activeFields.map((field) => `${field}:${keys[field]}`).join("-");
+  return JSON.stringify(activeFields.map((field) => [field, keys[field]]));
+}
+
+/** An entrance runs once for its mounted content, even if settings or other views rerender. */
+function OneShotTransition({ animationStyle, style, children }: { animationStyle?: CSSProperties; style?: CSSProperties; children: ReactNode }) {
+  const [initialAnimationStyle] = useState(animationStyle);
+  const [finished, setFinished] = useState(false);
+  return (
+    <div
+      style={{ ...style, ...initialAnimationStyle, ...(finished ? { animation: "none", filter: "none", willChange: "auto" } : null) }}
+      onAnimationEnd={(event) => {
+        if (event.target === event.currentTarget) setFinished(true);
+      }}
+    >
+      {children}
+    </div>
+  );
 }
 
 function removeOuterQuotes(text: string) {
@@ -142,6 +170,12 @@ function AutoFitTemplateText({ layer, text }: { layer: Extract<TemplateLayer, { 
     if (!host) return;
     const contentWidth = Math.max(1, host.clientWidth - 16);
     const contentHeight = Math.max(1, host.clientHeight - 16);
+    const cacheKey = `${contentWidth}:${contentHeight}:${text}`;
+    const cachedSize = autoFitSizeCache.get(layer)?.get(cacheKey);
+    if (cachedSize !== undefined) {
+      setFontSize(cachedSize);
+      return;
+    }
     const probes: HTMLDivElement[] = [];
 
     const createProbe = (width: string) => {
@@ -192,17 +226,26 @@ function AutoFitTemplateText({ layer, text }: { layer: Extract<TemplateLayer, { 
     // the template's intended typography.
     let high = Math.max(6, layer.fontSize);
 
-    let best = low;
-    for (let iteration = 0; iteration < 20; iteration += 1) {
-      const candidate = (low + high) / 2;
-      if (fits(candidate)) {
-        best = candidate;
-        low = candidate;
-      } else {
-        high = candidate;
+    let best = high;
+    // Most authored text already fits at its design size. Avoid a binary
+    // search (and its forced layouts) unless this particular slide overflows.
+    if (!fits(high)) {
+      best = low;
+      for (let iteration = 0; iteration < 10 && high - low > 0.25; iteration += 1) {
+        const candidate = (low + high) / 2;
+        if (fits(candidate)) {
+          best = candidate;
+          low = candidate;
+        } else {
+          high = candidate;
+        }
       }
     }
     const nextFontSize = Math.max(6, Math.min(512, Math.round(best * 100) / 100));
+    let sizes = autoFitSizeCache.get(layer);
+    if (!sizes) { sizes = new Map(); autoFitSizeCache.set(layer, sizes); }
+    if (sizes.size >= 24) sizes.delete(sizes.keys().next().value ?? "");
+    sizes.set(cacheKey, nextFontSize);
     setFontSize(nextFontSize);
 
     return () => probes.forEach((probe) => probe.remove());
@@ -225,11 +268,12 @@ function AutoFitTemplateText({ layer, text }: { layer: Extract<TemplateLayer, { 
     }
 
     const correction = Math.max(0.5, Math.min(0.98, availableHeight / requiredHeight));
-    setFontSize((current) => {
-      const corrected = Math.max(6, Math.round(current * correction * 100) / 100);
-      return corrected < current ? corrected : current;
-    });
-  }, [fontSize, text]);
+    const corrected = Math.max(6, Math.round(fontSize * correction * 100) / 100);
+    if (corrected < fontSize) {
+      autoFitSizeCache.get(layer)?.set(`${Math.max(1, host.clientWidth - 16)}:${Math.max(1, host.clientHeight - 16)}:${text}`, corrected);
+      setFontSize(corrected);
+    }
+  }, [fontSize, layer, text]);
 
   const contentStyle: CSSProperties = {
     display: "block",
@@ -360,7 +404,7 @@ function renderTemplateLayer(layer: TemplateLayer, text: string, isThumbnail = f
               : "2,50 98,50";
       return (
         <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={sharedStyle}>
-          {layer.shapeKind === "line" ? <polyline points={points} fill="none" stroke={layer.borderColor || layer.fill || "#ffffff"} strokeWidth={Math.max(0.5, layer.borderWidth)} strokeDasharray={strokeDasharray} strokeLinecap={layer.borderLineCap ?? "round"} strokeLinejoin={layer.borderLineJoin ?? "round"} vectorEffect="non-scaling-stroke" /> : <polygon points={points} fill={layer.fill || "transparent"} stroke={hasOutline ? layer.borderColor : "none"} strokeWidth={hasOutline ? Math.max(0.5, layer.borderWidth) : 0} strokeDasharray={strokeDasharray} strokeLinejoin={layer.borderLineJoin ?? "round"} vectorEffect="non-scaling-stroke" />}
+          {layer.shapeKind === "line" ? <polyline points={points} fill="none" stroke={layer.borderColor || layer.fill || "none"} strokeWidth={Math.max(0.5, layer.borderWidth)} strokeDasharray={strokeDasharray} strokeLinecap={layer.borderLineCap ?? "round"} strokeLinejoin={layer.borderLineJoin ?? "round"} vectorEffect="non-scaling-stroke" /> : <polygon points={points} fill={layer.fill || "transparent"} stroke={hasOutline ? layer.borderColor : "none"} strokeWidth={hasOutline ? Math.max(0.5, layer.borderWidth) : 0} strokeDasharray={strokeDasharray} strokeLinejoin={layer.borderLineJoin ?? "round"} vectorEffect="non-scaling-stroke" />}
         </svg>
       );
     }
@@ -399,8 +443,13 @@ export const TemplateSceneOverlay = memo(function TemplateSceneOverlay({
   animationStyle,
   animateDynamicLayers = true,
   videoPlayback,
+  cameraPaused = false,
   hideDynamicLayers = false,
+  clearTransition,
   isThumbnail = false,
+  onBackgroundReady,
+  backgroundVisible = true,
+  backgroundOnly = false,
 }: {
   scene: TemplateScene;
   slide: ProjectorSlide;
@@ -411,38 +460,35 @@ export const TemplateSceneOverlay = memo(function TemplateSceneOverlay({
   videoPlayback?: {
     playing: boolean;
     loop: boolean;
-    onVideoElementChange: (video: HTMLVideoElement | null) => void;
+    onVideoElementChange: (video: HTMLVideoElement | null, removedVideo?: HTMLVideoElement) => void;
   };
+  cameraPaused?: boolean;
   /** Leaves static canvas elements visible while suppressing dynamic slide layers. */
   hideDynamicLayers?: boolean;
+  /** Fade timing for dynamic layers appearing/disappearing under hideDynamicLayers (the "Clear" override). */
+  clearTransition?: { durationMs: number; easing: TransitionEasing };
   /** When true, renders a static snapshot of the template (paused video at frame 0, no loop playback, no dynamic text scrolling). */
   isThumbnail?: boolean;
+  onBackgroundReady?: () => void;
+  backgroundVisible?: boolean;
+  /** A preparing scene only needs its background decoded; text mounts on reveal. */
+  backgroundOnly?: boolean;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const ordered = useMemo(() => [...scene.layers].sort((a, b) => a.zIndex - b.zIndex), [scene.layers]);
   const media = scene.backgroundMedia;
 
-  const layerSignature = useMemo(() => ({
+  useEffect(() => {
+    if (!media || (media.type !== "camera" && !media.src)) onBackgroundReady?.();
+  }, [media, onBackgroundReady]);
+
+  const layerAnimKeys: LayerAnimKeys = {
     bookChapter: `${slide.reference.book}-${slide.reference.chapter}`,
     verse: String(slide.reference.verse),
     version: slide.version,
     text: slide.text,
-  }), [slide]);
-  const prevLayerSignatureRef = useRef(layerSignature);
-  const [layerAnimKeys, setLayerAnimKeys] = useState<LayerAnimKeys>({ bookChapter: 0, verse: 0, version: 0, text: 0 });
-
-  useEffect(() => {
-    const prev = prevLayerSignatureRef.current;
-    prevLayerSignatureRef.current = layerSignature;
-    if (prev === layerSignature) return;
-    setLayerAnimKeys((current) => ({
-      bookChapter: prev.bookChapter !== layerSignature.bookChapter ? current.bookChapter + 1 : current.bookChapter,
-      verse: prev.verse !== layerSignature.verse ? current.verse + 1 : current.verse,
-      version: prev.version !== layerSignature.version ? current.version + 1 : current.version,
-      text: prev.text !== layerSignature.text ? current.text + 1 : current.text,
-    }));
-  }, [layerSignature]);
+  };
 
   useEffect(() => {
     if (!fitToContainer) return;
@@ -472,7 +518,7 @@ export const TemplateSceneOverlay = memo(function TemplateSceneOverlay({
 
   const sceneContent = (
     <div style={sceneStyle}>
-      {media && typeof media.src === "string" && media.src.length > 0 ? (
+      {media && (media.type === "camera" || (typeof media.src === "string" && media.src.length > 0)) ? (
         <div
           style={{
             position: "absolute",
@@ -485,7 +531,9 @@ export const TemplateSceneOverlay = memo(function TemplateSceneOverlay({
             overflow: "hidden",
           }}
         >
-          {media.type === "video" ? (
+          {media.type === "camera" ? (
+            <CameraViewport media={media} thumbnail={isThumbnail} paused={cameraPaused} onReady={onBackgroundReady} onError={onBackgroundReady ? () => onBackgroundReady() : undefined} />
+          ) : media.type === "video" ? (
             isThumbnail ? (
               media.poster ? (
                 <img
@@ -498,30 +546,33 @@ export const TemplateSceneOverlay = memo(function TemplateSceneOverlay({
               ) : null
             ) : (
               <ResilientVideo
+                key={media.src}
                 media={media}
                 style={{ width: "100%", height: "100%", objectFit: media.fit, opacity: media.opacity, mixBlendMode: media.blendMode as CSSProperties["mixBlendMode"], transform: `scale(${media.flipX ? -1 : 1}, ${media.flipY ? -1 : 1})`, filter: `hue-rotate(${media.hueRotate ?? 0}deg) invert(${media.invert ?? 0}%) blur(${media.blur ?? 0}px) grayscale(${media.grayscale ?? 0}%) sepia(${media.sepia ?? 0}%) brightness(${media.brightness ?? 100}%) contrast(${media.contrast ?? 100}%) saturate(${media.saturate ?? 100}%)`, clipPath: `inset(${media.cropTop ?? 0}% ${media.cropRight ?? 0}% ${media.cropBottom ?? 0}% ${media.cropLeft ?? 0}%)` }}
                 autoPlay={videoPlayback?.playing ?? true}
                 playing={isThumbnail ? false : videoPlayback?.playing}
                 loop={isThumbnail ? false : videoPlayback?.loop}
                 onVideoElementChange={videoPlayback?.onVideoElementChange}
+                onReady={onBackgroundReady}
+                onFailure={onBackgroundReady}
+                presentationVisible={backgroundVisible}
+                preload="auto"
               />
             )
           ) : (
-            <img src={media.src} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} style={{ width: "100%", height: "100%", objectFit: media.fit, opacity: media.opacity, mixBlendMode: media.blendMode as CSSProperties["mixBlendMode"], transform: `scale(${media.flipX ? -1 : 1}, ${media.flipY ? -1 : 1})`, filter: `hue-rotate(${media.hueRotate ?? 0}deg) invert(${media.invert ?? 0}%) blur(${media.blur ?? 0}px) grayscale(${media.grayscale ?? 0}%) sepia(${media.sepia ?? 0}%) brightness(${media.brightness ?? 100}%) contrast(${media.contrast ?? 100}%) saturate(${media.saturate ?? 100}%)`, clipPath: `inset(${media.cropTop ?? 0}% ${media.cropRight ?? 0}% ${media.cropBottom ?? 0}% ${media.cropLeft ?? 0}%)` }} />
+            <img src={media.src} alt="" loading={isThumbnail ? "lazy" : "eager"} onLoad={onBackgroundReady} onError={(event) => { event.currentTarget.style.display = "none"; onBackgroundReady?.(); }} style={{ width: "100%", height: "100%", objectFit: media.fit, opacity: media.opacity, mixBlendMode: media.blendMode as CSSProperties["mixBlendMode"], transform: `scale(${media.flipX ? -1 : 1}, ${media.flipY ? -1 : 1})`, filter: `hue-rotate(${media.hueRotate ?? 0}deg) invert(${media.invert ?? 0}%) blur(${media.blur ?? 0}px) grayscale(${media.grayscale ?? 0}%) sepia(${media.sepia ?? 0}%) brightness(${media.brightness ?? 100}%) contrast(${media.contrast ?? 100}%) saturate(${media.saturate ?? 100}%)`, clipPath: `inset(${media.cropTop ?? 0}% ${media.cropRight ?? 0}% ${media.cropBottom ?? 0}% ${media.cropLeft ?? 0}%)` }} />
           )}
         </div>
       ) : null}
 
       <div style={{ width: "100%", height: "100%" }}>
-        {ordered.map((layer) => {
+        {!backgroundOnly && ordered.map((layer) => {
           if (!layer.visible) {
             return null;
           }
           const dynamicTokens = layer.type === "text" ? layer.content.match(/\{(?:scripture_|song_)[^}]+\}/g) ?? [] : [];
           const isDynamicLayer = dynamicTokens.length > 0;
-          if (hideDynamicLayers && isDynamicLayer) {
-            return null;
-          }
+          const clearHidden = hideDynamicLayers && isDynamicLayer;
           const resolved = layer.type === "text" ? resolveLayerText(layer.content, slide, category, layer.scriptStyles, layer.textBackgroundStyles) : "";
           // A song title is song-scoped, not slide-scoped. Keep it dynamic so
           // clear can remove it, but do not restart its animation on every
@@ -530,6 +581,11 @@ export const TemplateSceneOverlay = memo(function TemplateSceneOverlay({
           const isSlideDynamicLayer = dynamicTokens.some((token) => token !== "{song_title}");
           const isDynamicText = animateDynamicLayers && !isThumbnail && isSlideDynamicLayer;
           const layerAnimationKey = isDynamicText ? layerAnimationKeyFor(dynamicTokens, layerAnimKeys) : undefined;
+          const layerContent = isDynamicText ? (
+            <OneShotTransition key={layerAnimationKey} style={{ width: "100%", height: "100%" }} animationStyle={animationStyle}>
+              {renderTemplateLayer(layer, resolved, isThumbnail)}
+            </OneShotTransition>
+          ) : renderTemplateLayer(layer, resolved, isThumbnail);
           return (
             <div
               key={layer.id}
@@ -545,11 +601,19 @@ export const TemplateSceneOverlay = memo(function TemplateSceneOverlay({
                 zIndex: layer.zIndex,
               }}
             >
-              {isDynamicText ? (
-                <div key={layerAnimationKey} style={{ width: "100%", height: "100%", ...animationStyle }}>
-                  {renderTemplateLayer(layer, resolved, isThumbnail)}
+              {isDynamicLayer ? (
+                // Kept mounted and cross-faded (rather than unmounted) so the "Clear" override transitions in and out smoothly.
+                <div
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    opacity: clearHidden ? 0 : 1,
+                    transition: `opacity ${(clearTransition?.durationMs ?? 350) / 1000}s ${cssEasingFor(clearTransition?.easing)}`,
+                  }}
+                >
+                  {layerContent}
                 </div>
-              ) : renderTemplateLayer(layer, resolved, isThumbnail)}
+              ) : layerContent}
             </div>
           );
         })}
@@ -592,28 +656,251 @@ export const TemplateSceneOverlay = memo(function TemplateSceneOverlay({
   );
 });
 
+interface PreparedScene {
+  scene: TemplateScene;
+  slide: ProjectorSlide;
+  category: "scriptures" | "songs";
+  backgroundKey: string;
+}
+
+function sceneBackgroundKey(scene: TemplateScene): string {
+  const media = scene.backgroundMedia;
+  if (!media) return "static";
+  if (media.type === "camera") {
+    return `camera:${media.cameraSourceType}:${media.cameraDeviceId}:${media.cameraLabel}:${media.cameraUrl}`;
+  }
+  return `${media.type}:${media.src}`;
+}
+
+/** Keep the complete outgoing slide visible while the next canvas background gets its first frame. */
+function PreparedSceneHandoff({
+  scene, slide, category, hideDynamicLayers, clearTransition, animateDynamicLayers,
+  videoPlayback, cameraPaused, animationStyle,
+}: {
+  scene: TemplateScene | null;
+  slide: ProjectorSlide | null;
+  category: "scriptures" | "songs";
+  hideDynamicLayers: boolean;
+  clearTransition?: { durationMs: number; easing: TransitionEasing };
+  animateDynamicLayers: boolean;
+  videoPlayback: { playing: boolean; loop: boolean; onVideoElementChange: (video: HTMLVideoElement | null, removedVideo?: HTMLVideoElement) => void };
+  cameraPaused: boolean;
+  animationStyle?: CSSProperties;
+}) {
+  const target = useMemo(() => scene && slide ? { scene, slide, category, backgroundKey: sceneBackgroundKey(scene) } : null, [scene, slide, category]);
+  const [displayed, setDisplayed] = useState<PreparedScene | null>(() => target?.backgroundKey === "static" ? target : null);
+  const [outgoing, setOutgoing] = useState<PreparedScene | null>(null);
+  const [previousTarget, setPreviousTarget] = useState(target);
+  if (target !== previousTarget) {
+    setPreviousTarget(target);
+    // A new choice supersedes the fading scene from the previous handoff.
+    // Keep at most the current player and one incoming player alive.
+    if (outgoing) setOutgoing(null);
+    if (!target) {
+      setDisplayed(null);
+      setOutgoing(null);
+    } else if (displayed?.backgroundKey === target.backgroundKey) {
+      setDisplayed(target);
+    }
+  }
+  const shown = target && displayed?.backgroundKey === target.backgroundKey ? target : displayed;
+  const pending = target && shown?.backgroundKey !== target.backgroundKey ? target : null;
+
+  useEffect(() => {
+    if (!outgoing) return;
+    const timeout = window.setTimeout(() => setOutgoing(null), 180);
+    return () => window.clearTimeout(timeout);
+  }, [outgoing]);
+
+  const reveal = useCallback(() => {
+    if (!pending) return;
+    if (shown && shown.backgroundKey !== pending.backgroundKey) setOutgoing(shown);
+    setDisplayed(pending);
+  }, [pending, shown]);
+
+  useEffect(() => {
+    if (!pending) return;
+    // A camera or WebKit media load can stall without an error event. A scene
+    // switch must never leave the external display on the previous layout.
+    const timeout = window.setTimeout(reveal, pending.scene.backgroundMedia?.type === "camera" ? 2500 : 6000);
+    return () => window.clearTimeout(timeout);
+  }, [pending, reveal]);
+
+  if (!target) return null;
+  const renderScene = (entry: PreparedScene, ready?: () => void, backgroundOnly = false) => (
+    <TemplateSceneOverlay
+      scene={entry.scene}
+      slide={entry.slide}
+      category={entry.category}
+      hideDynamicLayers={hideDynamicLayers}
+      clearTransition={clearTransition}
+      animateDynamicLayers={animateDynamicLayers}
+      videoPlayback={videoPlayback}
+      cameraPaused={cameraPaused}
+      animationStyle={animationStyle}
+      onBackgroundReady={ready}
+      backgroundVisible={!backgroundOnly}
+      backgroundOnly={backgroundOnly}
+    />
+  );
+
+  return (
+    <div style={{ position: "relative", width: "100%", height: "100%" }}>
+      {shown ? <div key={shown.backgroundKey} data-projector-scene="visible" style={{ position: "absolute", inset: 0 }}>{renderScene(shown)}</div> : null}
+      {pending ? <div key={pending.backgroundKey} data-projector-scene="preparing" style={{ position: "absolute", inset: 0, opacity: 0.001, pointerEvents: "none" }}>{renderScene(pending, reveal, true)}</div> : null}
+      {outgoing && outgoing.backgroundKey !== shown?.backgroundKey && outgoing.backgroundKey !== pending?.backgroundKey ? <div key={outgoing.backgroundKey} data-projector-scene="outgoing" style={{ position: "absolute", inset: 0, pointerEvents: "none", animation: "projFadeOut 180ms ease-out forwards" }}>{renderScene(outgoing)}</div> : null}
+    </div>
+  );
+}
+
+interface PreparedMedia {
+  media: ProjectorMedia;
+  source: string;
+  key: string;
+}
+
+function PreparedMediaLayer({ entry, visible, preparing, outgoing, playing, loop, onReady, onVideoElementChange }: {
+  entry: PreparedMedia;
+  visible: boolean;
+  preparing: boolean;
+  outgoing: boolean;
+  playing: boolean;
+  loop: boolean;
+  onReady: () => void;
+  onVideoElementChange: (video: HTMLVideoElement | null, removedVideo?: HTMLVideoElement) => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const visibleRef = useRef(visible);
+  useLayoutEffect(() => { visibleRef.current = visible; }, [visible]);
+  const captureVideo = useCallback((video: HTMLVideoElement | null, removedVideo?: HTMLVideoElement) => {
+    if (!video && removedVideo && videoRef.current !== removedVideo) return;
+    videoRef.current = video;
+    if (visibleRef.current) onVideoElementChange(video, removedVideo);
+  }, [onVideoElementChange]);
+
+  useLayoutEffect(() => {
+    if (visible && entry.media.category === "videos") onVideoElementChange(videoRef.current);
+  }, [entry.media.category, onVideoElementChange, visible]);
+
+  return (
+    <div
+      data-projector-media-layer={preparing ? "preparing" : outgoing ? "outgoing" : "visible"}
+      data-media-path={entry.media.path}
+      style={{ position: "absolute", inset: 0, zIndex: preparing ? 0 : outgoing ? 0 : 1, opacity: preparing ? 0.001 : 1, pointerEvents: "none" }}
+    >
+      {entry.media.category === "videos" ? (
+        <ResilientVideo
+          media={{ type: "video", src: entry.source, fit: entry.media.fit, loop: true, x: 0, y: 0, width: 100, height: 100, opacity: entry.media.opacity, muted: true, speed: 1 }}
+          sourcePath={entry.media.path}
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: entry.media.fit, opacity: entry.media.opacity }}
+          autoPlay
+          playing={playing}
+          loop={loop}
+          preload="auto"
+          onReady={preparing ? onReady : undefined}
+          presentationVisible={visible}
+          onVideoElementChange={captureVideo}
+        />
+      ) : (
+        <ResilientImage src={entry.source} sourcePath={entry.media.path} alt={entry.media.name} onLoad={preparing ? onReady : undefined} onUnavailable={preparing ? onReady : undefined} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: entry.media.fit, opacity: entry.media.opacity }} />
+      )}
+    </div>
+  );
+}
+
+/** Decode the incoming media behind the current frame, then reveal it. */
+function PreparedMediaHandoff({ media, source, hidden, clearTransition, playing, loop, onVideoElementChange }: {
+  media: ProjectorMedia;
+  source: string;
+  hidden: boolean;
+  clearTransition?: { durationMs: number; easing: TransitionEasing };
+  playing: boolean;
+  loop: boolean;
+  onVideoElementChange: (video: HTMLVideoElement | null, removedVideo?: HTMLVideoElement) => void;
+}) {
+  const target = useMemo<PreparedMedia>(() => ({ media, source, key: `${media.category}:${source}` }), [media, source]);
+  const [displayed, setDisplayed] = useState<PreparedMedia | null>(null);
+  const [outgoing, setOutgoing] = useState<PreparedMedia | null>(null);
+  const shown = displayed?.key === target.key ? target : displayed;
+  const pending = shown?.key === target.key ? null : target;
+
+  const reveal = useCallback(() => {
+    if (!pending) return;
+    setOutgoing(shown);
+    setDisplayed(pending);
+  }, [pending, shown]);
+
+  useEffect(() => {
+    if (!outgoing) return;
+    const timeout = window.setTimeout(() => setOutgoing(null), 180);
+    return () => window.clearTimeout(timeout);
+  }, [outgoing]);
+
+  const entries = [outgoing, shown, pending].filter((entry, index, all): entry is PreparedMedia =>
+    entry !== null && all.findIndex((candidate) => candidate?.key === entry.key) === index,
+  );
+
+  return (
+    <div data-projector-media="" aria-hidden={hidden} style={{ position: "absolute", inset: 0, opacity: hidden ? 0 : 1, transition: `opacity ${(clearTransition?.durationMs ?? 350) / 1000}s ${cssEasingFor(clearTransition?.easing)}` }}>
+      {entries.map((entry) => (
+        <PreparedMediaLayer
+          key={entry.key}
+          entry={entry}
+          visible={entry.key === shown?.key && entry.key !== pending?.key}
+          preparing={entry.key === pending?.key}
+          outgoing={entry.key === outgoing?.key}
+          playing={playing}
+          loop={loop}
+          onReady={reveal}
+          onVideoElementChange={onVideoElementChange}
+        />
+      ))}
+    </div>
+  );
+}
+
 interface ProjectorViewProps {
   title: string;
   slide: ProjectorSlide | null;
+  media?: ProjectorMedia | null;
+  overlays?: ActiveOverlay[];
   feedOverride: "live" | "logo" | "black" | "clear";
   overlayMode: OverlayMode;
   theme: VerseTheme;
   isLive: boolean;
   fontSizePx: number;
+  chrome?: boolean;
+  transitions?: TransitionsConfig;
+  logo?: LogoConfig;
+  playback?: ProjectorPlaybackState;
+  onPlaybackChange?: (patch: Partial<Pick<ProjectorPlaybackState, "playing" | "looping">>) => void;
+  onSeek?: (time: number) => void;
 }
 
-export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive, fontSizePx }: ProjectorViewProps) {
+export function ProjectorView({ title, slide, media = null, overlays = [], feedOverride, overlayMode, isLive, fontSizePx, chrome = true, transitions: transitionsOverride, logo: logoOverride, playback, onPlaybackChange, onSeek }: ProjectorViewProps) {
+  const activeOverlay = overlays.at(-1) ?? null;
   const stageRef = useRef<HTMLDivElement>(null);
   const backgroundVideoRef = useRef<HTMLVideoElement | null>(null);
+  const logoVideoRef = useRef<HTMLVideoElement | null>(null);
+  const mediaVideoRef = useRef<HTMLVideoElement | null>(null);
+  const playbackRef = useRef(playback);
+  useEffect(() => { playbackRef.current = playback; }, [playback]);
   const [viewportSize, setViewportSize] = useState({ width: OVERLAY_WIDTH, height: OVERLAY_HEIGHT });
   const [backgroundVideo, setBackgroundVideo] = useState<HTMLVideoElement | null>(null);
   const [isBackgroundVideoPlaying, setIsBackgroundVideoPlaying] = useState(true);
   const [isBackgroundVideoLooping, setIsBackgroundVideoLooping] = useState(true);
+  const [logoVideo, setLogoVideo] = useState<HTMLVideoElement | null>(null);
+  const [isLogoVideoPlaying, setIsLogoVideoPlaying] = useState(true);
+  const [isLogoVideoLooping, setIsLogoVideoLooping] = useState(true);
+  const [mediaVideo, setMediaVideo] = useState<HTMLVideoElement | null>(null);
+  const [isMediaVideoPlaying, setIsMediaVideoPlaying] = useState(true);
+  const [isMediaVideoLooping, setIsMediaVideoLooping] = useState(true);
+  const [isCameraPreviewPaused, setIsCameraPreviewPaused] = useState(false);
   const [videoProgress, setVideoProgress] = useState(0);
   const [videoDuration, setVideoDuration] = useState(0);
-  const [outgoingLayoutScene, setOutgoingLayoutScene] = useState<{ scene: TemplateScene; category: "scriptures" | "songs"; slide: ProjectorSlide; key: number } | null>(null);
   const templates = useTemplateStore((s) => s.templates);
   const defaults = useTemplateStore((s) => s.defaults);
+  const templatesInitialized = useTemplateStore((s) => s.initialized);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -628,21 +915,21 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
       const overlayRatio = OVERLAY_WIDTH / OVERLAY_HEIGHT;
 
       if (usableWidth <= 0 || usableHeight <= 0) {
-        setViewportSize({ width: OVERLAY_WIDTH, height: OVERLAY_HEIGHT });
+        setViewportSize((current) => (
+          current.width === OVERLAY_WIDTH && current.height === OVERLAY_HEIGHT
+            ? current
+            : { width: OVERLAY_WIDTH, height: OVERLAY_HEIGHT }
+        ));
         return;
       }
 
       const stageRatio = usableWidth / usableHeight;
-
-      if (stageRatio > overlayRatio) {
-        const nextHeight = usableHeight;
-        const nextWidth = nextHeight * overlayRatio;
-        setViewportSize({ width: nextWidth, height: nextHeight });
-      } else {
-        const nextWidth = usableWidth;
-        const nextHeight = nextWidth / overlayRatio;
-        setViewportSize({ width: nextWidth, height: nextHeight });
-      }
+      const nextSize = stageRatio > overlayRatio
+        ? { width: usableHeight * overlayRatio, height: usableHeight }
+        : { width: usableWidth, height: usableWidth / overlayRatio };
+      setViewportSize((current) => (
+        current.width === nextSize.width && current.height === nextSize.height ? current : nextSize
+      ));
     };
 
     updateScale();
@@ -658,6 +945,14 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
   const isClearOverride = feedOverride === "clear";
   const isLogoOverride = feedOverride === "logo";
   const showSlide = feedOverride === "live";
+  const mediaSource = useMemo(() => {
+    if (!media) return "";
+    try {
+      return managedVideoUrl(media.path) ?? convertFileSrc(media.path);
+    } catch {
+      return "";
+    }
+  }, [media]);
   const templateCategory = useMemo(() => (slide ? inferSlideCategory(slide) : null), [slide]);
   const activeTemplate = useMemo(() => {
     if (!templateCategory) {
@@ -670,13 +965,35 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
     return templates.find((entry) => entry.id === templateId && entry.category === templateCategory && entry.layout === overlayMode) ?? null;
   }, [defaults, overlayMode, templateCategory, templates]);
   const activeProjectionScene = useMemo(() => (activeTemplate ? projectionScene(activeTemplate) : null), [activeTemplate]);
-  const activeProjectionSceneRef = useRef(activeProjectionScene);
-  const templateCategoryRef = useRef(templateCategory);
-  const slideRef = useRef(slide);
-  const hasBackgroundVideo = activeProjectionScene?.backgroundMedia?.type === "video" && showSlide;
+  const storeLogo = useProjectorStore((s) => s.logo);
+  const logo = logoOverride ?? storeLogo;
+  const hasBackgroundVideo = activeProjectionScene?.backgroundMedia?.type === "video" && showSlide && !media && Boolean(slide);
+  const hasCameraPreview = chrome && !isLive && !media && Boolean(slide) && showSlide && activeProjectionScene?.backgroundMedia?.type === "camera";
+  const hasLogoVideo = isLogoOverride && isVideoDataUrl(logo.src);
+  const hasMediaVideo = media?.category === "videos" && Boolean(mediaSource);
+  // Only one of the background/logo/media videos is ever the active foreground
+  // layer, so they share one progress bar and one set of controls.
+  const hasVideoControl = chrome && (hasLogoVideo || hasBackgroundVideo || hasMediaVideo);
+  const controlVideo = hasLogoVideo ? logoVideo : hasBackgroundVideo ? backgroundVideo : hasMediaVideo ? mediaVideo : null;
+  const controlVideoRef = hasLogoVideo ? logoVideoRef : hasBackgroundVideo ? backgroundVideoRef : mediaVideoRef;
+  const isControlVideoPlaying = hasLogoVideo ? isLogoVideoPlaying : hasBackgroundVideo ? isBackgroundVideoPlaying : isMediaVideoPlaying;
+  const isControlVideoLooping = hasLogoVideo ? isLogoVideoLooping : hasBackgroundVideo ? isBackgroundVideoLooping : isMediaVideoLooping;
+  const setControlVideoPlaying = hasLogoVideo ? setIsLogoVideoPlaying : hasBackgroundVideo ? setIsBackgroundVideoPlaying : setIsMediaVideoPlaying;
+  const setControlVideoLooping = hasLogoVideo ? setIsLogoVideoLooping : hasBackgroundVideo ? setIsBackgroundVideoLooping : setIsMediaVideoLooping;
+  const controlPlaying = playback?.playing ?? isControlVideoPlaying;
+  const controlLooping = playback?.looping ?? isControlVideoLooping;
 
   useEffect(() => {
-    const video = backgroundVideo;
+    if (playback?.seekTime == null) return;
+    const video = controlVideoRef.current;
+    if (video) {
+      try { video.currentTime = playback.seekTime; } catch { /* The source may still be loading. */ }
+    }
+  }, [playback?.seekRevision, playback?.seekTime, controlVideoRef]);
+
+  useEffect(() => {
+    if (!chrome) return;
+    const video = controlVideo;
     if (!video) return;
     const syncProgress = () => {
       setVideoProgress(Number.isFinite(video.currentTime) ? video.currentTime : 0);
@@ -691,10 +1008,15 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
       video.removeEventListener("durationchange", syncProgress);
       video.removeEventListener("timeupdate", syncProgress);
     };
-  }, [backgroundVideo]);
+  }, [controlVideo, chrome]);
 
-  const updateBackgroundVideoElement = (video: HTMLVideoElement | null) => {
+  const updateBackgroundVideoElement = useCallback((video: HTMLVideoElement | null, removedVideo?: HTMLVideoElement) => {
+    if (!video && removedVideo && backgroundVideoRef.current !== removedVideo) return;
     backgroundVideoRef.current = video;
+    if (video && playbackRef.current?.seekTime != null) {
+      try { video.currentTime = playbackRef.current.seekTime; } catch { /* The source may still be loading. */ }
+    }
+    if (!chrome) return;
     setBackgroundVideo(video);
     if (!video) {
       setVideoProgress(0);
@@ -703,9 +1025,49 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
     }
     setVideoProgress(Number.isFinite(video.currentTime) ? video.currentTime : 0);
     setVideoDuration(Number.isFinite(video.duration) ? video.duration : 0);
-  };
+  }, [chrome]);
 
-  const transitions = useProjectorStore((s) => s.transitions);
+  const updateLogoVideoElement = useCallback((video: HTMLVideoElement | null) => {
+    logoVideoRef.current = video;
+    if (video && playbackRef.current?.seekTime != null) {
+      try { video.currentTime = playbackRef.current.seekTime; } catch { /* The source may still be loading. */ }
+    }
+    if (!chrome) return;
+    setLogoVideo(video);
+    if (!video) {
+      setVideoProgress(0);
+      setVideoDuration(0);
+      return;
+    }
+    setVideoProgress(Number.isFinite(video.currentTime) ? video.currentTime : 0);
+    setVideoDuration(Number.isFinite(video.duration) ? video.duration : 0);
+  }, [chrome]);
+
+  const updateMediaVideoElement = useCallback((video: HTMLVideoElement | null, removedVideo?: HTMLVideoElement) => {
+    if (!video && removedVideo && mediaVideoRef.current !== removedVideo) return;
+    mediaVideoRef.current = video;
+    if (video && playbackRef.current?.seekTime != null) {
+      try { video.currentTime = playbackRef.current.seekTime; } catch { /* The source may still be loading. */ }
+    }
+    if (!chrome) return;
+    setMediaVideo(video);
+    if (!video) {
+      setVideoProgress(0);
+      setVideoDuration(0);
+      return;
+    }
+    setVideoProgress(Number.isFinite(video.currentTime) ? video.currentTime : 0);
+    setVideoDuration(Number.isFinite(video.duration) ? video.duration : 0);
+  }, [chrome]);
+
+  const videoPlayback = useMemo(() => ({
+    playing: playback?.playing ?? isBackgroundVideoPlaying,
+    loop: playback?.looping ?? isBackgroundVideoLooping,
+    onVideoElementChange: updateBackgroundVideoElement,
+  }), [isBackgroundVideoLooping, isBackgroundVideoPlaying, playback?.looping, playback?.playing, updateBackgroundVideoElement]);
+
+  const storeTransitions = useProjectorStore((s) => s.transitions);
+  const transitions = transitionsOverride ?? storeTransitions;
   const activeCategory: TransitionCategory = isBlackOverride
     ? "black"
     : isClearOverride
@@ -714,30 +1076,25 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
     ? "logo"
     : (templateCategory ?? "scriptures");
 
-  const contentKey = `${feedOverride}-${slide?.reference?.book ?? ""}-${slide?.reference?.chapter ?? ""}-${slide?.reference?.verse ?? ""}-${slide?.text ?? ""}-${overlayMode}`;
+  const contentKey = `${feedOverride}-${slide?.reference?.book ?? ""}-${slide?.reference?.chapter ?? ""}-${slide?.reference?.verse ?? ""}-${slide?.version ?? ""}-${slide?.text ?? ""}-${overlayMode}`;
 
-  const [animKey, setAnimKey] = useState(0);
-  const [transitionCategory, setTransitionCategory] = useState<TransitionCategory>(activeCategory);
-  const prevContentKeyRef = useRef(contentKey);
-  const prevOverlayModeRef = useRef(overlayMode);
-
-  useEffect(() => {
-    if (prevContentKeyRef.current !== contentKey) {
-      prevContentKeyRef.current = contentKey;
-      const layoutChanged = prevOverlayModeRef.current !== overlayMode;
-      prevOverlayModeRef.current = overlayMode;
-      setTransitionCategory(layoutChanged ? "layout" : activeCategory);
-      if (layoutChanged && activeProjectionSceneRef.current && templateCategoryRef.current && slideRef.current) {
-        setOutgoingLayoutScene({ scene: activeProjectionSceneRef.current, category: templateCategoryRef.current, slide: slideRef.current, key: animKey + 1 });
-      } else {
-        setOutgoingLayoutScene(null);
-      }
-      setAnimKey((k) => k + 1);
-    }
-    activeProjectionSceneRef.current = activeProjectionScene;
-    templateCategoryRef.current = templateCategory;
-    slideRef.current = slide;
-  }, [activeCategory, activeProjectionScene, animKey, contentKey, overlayMode, slide, templateCategory]);
+  const [transitionFrame, setTransitionFrame] = useState<{ contentKey: string; overlayMode: OverlayMode; category: TransitionCategory; key: number }>(() => ({
+    contentKey, overlayMode, category: activeCategory, key: 0,
+  }));
+  let currentFrame = transitionFrame;
+  if (transitionFrame.contentKey !== contentKey) {
+    currentFrame = {
+      contentKey,
+      overlayMode,
+      category: transitionFrame.overlayMode !== overlayMode ? "layout" : activeCategory,
+      key: transitionFrame.key + 1,
+    };
+    // Update before commit so a new verse never briefly renders with the
+    // previous transition and then starts its entrance a second time.
+    setTransitionFrame(currentFrame);
+  }
+  const animKey = currentFrame.key;
+  const transitionCategory = currentFrame.category;
 
   const transitionSetting = transitions?.[transitionCategory];
   const isScreenLayoutTransition = transitionCategory === "layout";
@@ -760,15 +1117,15 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
       case "slide-left":
       case "push-left":
       case "wipe-left":
-        return "projSlideLeft";
+        return transitionSetting.crossfade ? "projSlideLeftCrossfade" : "projSlideLeft";
       case "slide-right":
       case "push-right":
       case "wipe-right":
-        return "projSlideRight";
+        return transitionSetting.crossfade ? "projSlideRightCrossfade" : "projSlideRight";
       case "slide-up":
-        return "projSlideUp";
+        return transitionSetting.crossfade ? "projSlideUpCrossfade" : "projSlideUp";
       case "slide-down":
-        return "projSlideDown";
+        return transitionSetting.crossfade ? "projSlideDownCrossfade" : "projSlideDown";
       case "push-up-crossfade":
         return "projPushUpCrossfade";
       case "zoom-in":
@@ -782,6 +1139,14 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
 
   const animName = getAnimationName();
   const animationString = animName !== "none" ? `${animName} ${durationSec}s ${cssEasing} forwards` : "none";
+  const dynamicLayerAnimationStyle = useMemo<CSSProperties>(() => ({
+    animation: isScreenLayoutTransition ? "none" : animationString,
+    filter: isScreenLayoutTransition ? "none" : filterBlur,
+    willChange: isScreenLayoutTransition ? "auto" : "transform, opacity",
+    WebkitBackfaceVisibility: "hidden",
+    backfaceVisibility: "hidden",
+    transformStyle: "preserve-3d",
+  }), [animationString, filterBlur, isScreenLayoutTransition]);
 
   return (
     <div
@@ -795,7 +1160,7 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
         background: "transparent",
       }}
     >
-      <div
+      {chrome ? <div
         style={{
           display: "flex",
           alignItems: "center",
@@ -810,52 +1175,6 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
           overflow: "hidden",
         }}
       >
-        <style>{`
-          @keyframes ssOnAirBlink {
-            0%, 100% {
-              opacity: 1;
-            }
-            50% {
-              opacity: 0.35;
-            }
-          }
-          @keyframes projFadeIn {
-            0% { opacity: 0; }
-            100% { opacity: 1; }
-          }
-          @keyframes projFadeOut {
-            0% { opacity: 1; }
-            100% { opacity: 0; }
-          }
-          @keyframes projSlideLeft {
-            0% { transform: translate3d(100%, 0, 0); opacity: ${transitionSetting?.crossfade ? 0.2 : 1}; }
-            100% { transform: translate3d(0, 0, 0); opacity: 1; }
-          }
-          @keyframes projSlideRight {
-            0% { transform: translate3d(-100%, 0, 0); opacity: ${transitionSetting?.crossfade ? 0.2 : 1}; }
-            100% { transform: translate3d(0, 0, 0); opacity: 1; }
-          }
-          @keyframes projSlideUp {
-            0% { transform: translate3d(0, 100%, 0); opacity: ${transitionSetting?.crossfade ? 0.2 : 1}; }
-            100% { transform: translate3d(0, 0, 0); opacity: 1; }
-          }
-          @keyframes projSlideDown {
-            0% { transform: translate3d(0, -100%, 0); opacity: ${transitionSetting?.crossfade ? 0.2 : 1}; }
-            100% { transform: translate3d(0, 0, 0); opacity: 1; }
-          }
-          @keyframes projPushUpCrossfade {
-            0% { transform: translate3d(0, 100%, 0); opacity: 0.2; }
-            100% { transform: translate3d(0, 0, 0); opacity: 1; }
-          }
-          @keyframes projZoomIn {
-            0% { transform: scale3d(0.65, 0.65, 1); opacity: 0; }
-            100% { transform: scale3d(1, 1, 1); opacity: 1; }
-          }
-          @keyframes projZoomOut {
-            0% { transform: scale3d(1.35, 1.35, 1); opacity: 0; }
-            100% { transform: scale3d(1, 1, 1); opacity: 1; }
-          }
-        `}</style>
         <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "var(--projector-status-idle)" }} />
           {title}
@@ -879,7 +1198,7 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
             )}
           </span>
         </span>
-      </div>
+      </div> : null}
       <div
         ref={stageRef}
         style={{
@@ -888,12 +1207,12 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          paddingLeft: `${VIEWPORT_SAFE_INSET}px`,
-          paddingRight: `${VIEWPORT_SAFE_INSET}px`,
-          paddingTop: `${VIEWPORT_SAFE_INSET}px`,
-          paddingBottom: `${VIEWPORT_SAFE_INSET}px`,
+          paddingLeft: chrome ? `${VIEWPORT_SAFE_INSET}px` : 0,
+          paddingRight: chrome ? `${VIEWPORT_SAFE_INSET}px` : 0,
+          paddingTop: chrome ? `${VIEWPORT_SAFE_INSET}px` : 0,
+          paddingBottom: chrome ? `${VIEWPORT_SAFE_INSET}px` : 0,
           overflow: "hidden",
-          background: "transparent",
+          background: chrome ? "transparent" : "#000000",
         }}
       >
         <div
@@ -901,8 +1220,8 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
             width: `${viewportSize.width}px`,
             height: `${viewportSize.height}px`,
             position: "relative",
-            borderRadius: "var(--radius-lg)",
-            background: isBlackOverride
+            borderRadius: chrome ? "var(--radius-lg)" : 0,
+            background: isBlackOverride || !chrome || (!slide && !media) || (isClearOverride && Boolean(media))
               ? "#000000"
               : "linear-gradient(180deg, rgba(16, 20, 44, 0.95), rgba(8, 9, 18, 1))",
             overflow: "hidden",
@@ -921,8 +1240,9 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
               overflow: "hidden",
             }}
           >
-            <div
-              key={activeProjectionScene && isScreenLayoutTransition ? animKey : activeProjectionScene ? undefined : animKey}
+            <OneShotTransition
+              key={media ? "media" : activeProjectionScene ? "template-scene" : animKey}
+              animationStyle={media || activeProjectionScene ? undefined : dynamicLayerAnimationStyle}
               style={{
                 width: "100%",
                 height: "100%",
@@ -932,41 +1252,98 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
                 justifyContent: "center",
                 padding: 0,
                 textAlign: "left",
-                animation: activeProjectionScene && !isScreenLayoutTransition ? "none" : animationString,
-                filter: activeProjectionScene && !isScreenLayoutTransition ? "none" : filterBlur,
-                willChange: activeProjectionScene && !isScreenLayoutTransition ? "auto" : "transform, opacity",
-                WebkitBackfaceVisibility: "hidden",
-                backfaceVisibility: "hidden",
-                transformStyle: "preserve-3d",
               }}
             >
-            {outgoingLayoutScene && isScreenLayoutTransition ? (
-              <div
-                key={`outgoing-layout-${outgoingLayoutScene.key}`}
-                style={{ position: "absolute", inset: 0, animation: `projFadeOut ${durationSec}s ${cssEasing} forwards`, filter: filterBlur, willChange: "opacity" }}
-                onAnimationEnd={() => setOutgoingLayoutScene(null)}
-              >
-                <TemplateSceneOverlay scene={outgoingLayoutScene.scene} slide={outgoingLayoutScene.slide} category={outgoingLayoutScene.category} animateDynamicLayers={false} />
-              </div>
-            ) : null}
-            {activeProjectionScene && ((showSlide && slide) || (isClearOverride && slide)) ? (
-              <TemplateSceneOverlay
+            {activeProjectionScene && slide && !media ? (
+              <PreparedSceneHandoff
                 scene={activeProjectionScene}
                 slide={slide}
                 category={templateCategory ?? "scriptures"}
                 hideDynamicLayers={isClearOverride}
+                clearTransition={transitions?.clear}
                 animateDynamicLayers={!isScreenLayoutTransition}
-                videoPlayback={{ playing: isBackgroundVideoPlaying, loop: isBackgroundVideoLooping, onVideoElementChange: updateBackgroundVideoElement }}
-                animationStyle={{
-                  animation: isScreenLayoutTransition ? "none" : animationString,
-                  filter: isScreenLayoutTransition ? "none" : filterBlur,
-                  willChange: isScreenLayoutTransition ? "auto" : "transform, opacity",
-                  WebkitBackfaceVisibility: "hidden",
-                  backfaceVisibility: "hidden",
-                  transformStyle: "preserve-3d",
-                }}
+                videoPlayback={videoPlayback}
+                cameraPaused={hasCameraPreview && isCameraPreviewPaused}
+                animationStyle={dynamicLayerAnimationStyle}
               />
-            ) : isLogoOverride ? (
+            ) : null}
+            {templatesInitialized && slide && showSlide && !media && !activeProjectionScene ? (
+              <div data-projector-template-fallback="" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", padding: "8%", color: "#fff", background: "#000", textAlign: "center", fontFamily: "Inter, system-ui, sans-serif" }}>
+                <div><div style={{ fontSize: 54, fontWeight: 700, lineHeight: 1.2, whiteSpace: "pre-wrap" }}>{slide.text}</div><div style={{ marginTop: 28, fontSize: 27 }}>{referenceLabel(slide)}</div></div>
+              </div>
+            ) : null}
+            {media && mediaSource ? (
+              <PreparedMediaHandoff
+                media={media}
+                source={mediaSource}
+                hidden={isClearOverride}
+                clearTransition={transitions?.clear}
+                playing={playback?.playing ?? isMediaVideoPlaying}
+                loop={playback?.looping ?? isMediaVideoLooping}
+                onVideoElementChange={updateMediaVideoElement}
+              />
+            ) : null}
+            </OneShotTransition>
+            {activeOverlay ? (
+              <div
+                data-projector-overlays=""
+                aria-hidden={isClearOverride}
+                style={{ position: "absolute", inset: 0, opacity: isClearOverride ? 0 : 1, transition: `opacity ${(transitions?.clear?.durationMs ?? 350) / 1000}s ${cssEasingFor(transitions?.clear?.easing)}`, pointerEvents: "none" }}
+              >
+                <OverlayVisual key={activeOverlay.definition.id} overlay={activeOverlay.definition} startedAt={activeOverlay.startedAt} />
+              </div>
+            ) : null}
+          </div>
+          <div
+            aria-label="Black live feed overlay"
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 1,
+              background: "rgb(0, 0, 0)",
+              opacity: isBlackOverride ? 1 : 0,
+              transition: `opacity ${(transitions?.black?.durationMs ?? 350) / 1000}s ${cssEasingFor(transitions?.black?.easing)}`,
+              pointerEvents: "none",
+            }}
+          />
+          <div
+            aria-label="Logo live feed overlay"
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 1,
+              background: "#000000",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              opacity: isLogoOverride ? 1 : 0,
+              transition: `opacity ${(transitions?.logo?.durationMs ?? 350) / 1000}s ${cssEasingFor(transitions?.logo?.easing)}`,
+              pointerEvents: "none",
+            }}
+          >
+            {logo.src ? (
+              isVideoDataUrl(logo.src) ? (
+                <ResilientVideo
+                  media={{ type: "video", src: logo.src, fit: logo.fit === "stretch" ? "fill" : "contain", loop: true, x: 0, y: 0, width: 100, height: 100, opacity: 1, muted: true, speed: 1 }}
+                  style={{ objectFit: logo.fit === "stretch" ? "fill" : "contain" }}
+                  autoPlay
+                  preload="auto"
+                  playing={playback?.playing ?? isLogoVideoPlaying}
+                  loop={playback?.looping ?? isLogoVideoLooping}
+                  onVideoElementChange={updateLogoVideoElement}
+                />
+              ) : (
+                <img
+                  src={logo.src}
+                  alt="Church logo"
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: logo.fit === "stretch" ? "fill" : "contain",
+                  }}
+                />
+              )
+            ) : (
               <div
                 style={{
                   color: "#e7eeff",
@@ -978,61 +1355,54 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
               >
                 LOGO OVERLAY
               </div>
-            ) : null}
-            </div>
+            )}
           </div>
-          {isBlackOverride && (
-            <div
-              aria-label="Black live feed overlay"
-              style={{
-                position: "absolute",
-                inset: 0,
-                zIndex: 1,
-                background: "rgb(0, 0, 0)",
-              }}
-            />
-          )}
         </div>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: "8px", minHeight: "28px", padding: "6px 4px 0", color: "var(--fg-muted)", fontFamily: "var(--font-mono)", fontSize: "10px" }}>
+      {chrome ? <div style={{ display: "flex", alignItems: "center", gap: "8px", minHeight: "28px", padding: "6px 4px 0", color: "var(--fg-muted)", fontFamily: "var(--font-mono)", fontSize: "10px" }}>
         <button
           type="button"
-          onClick={() => setIsBackgroundVideoPlaying((current) => !current)}
-          disabled={!hasBackgroundVideo}
-          aria-label={isBackgroundVideoPlaying ? `Pause ${title} background video` : `Play ${title} background video`}
-          title={isBackgroundVideoPlaying ? "Pause background video" : "Play background video"}
-          style={{ width: "24px", height: "22px", border: "none", borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", color: "var(--fg-base)", cursor: hasBackgroundVideo ? "pointer" : "not-allowed", opacity: hasBackgroundVideo ? 1 : 0.42, fontSize: "12px", lineHeight: 1 }}
+          onClick={() => {
+            if (hasCameraPreview) setIsCameraPreviewPaused((current) => !current);
+            else if (onPlaybackChange) onPlaybackChange({ playing: !controlPlaying });
+            else setControlVideoPlaying((current) => !current);
+          }}
+          disabled={!hasVideoControl && !hasCameraPreview}
+          aria-label={hasCameraPreview ? `${isCameraPreviewPaused ? "Resume" : "Pause"} ${title} camera` : controlPlaying ? `Pause ${title} video` : `Play ${title} video`}
+          title={hasCameraPreview ? (isCameraPreviewPaused ? "Resume camera preview" : "Pause camera preview") : controlPlaying ? "Pause video" : "Play video"}
+          style={{ width: "24px", height: "22px", border: "none", borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", color: "var(--fg-base)", cursor: hasVideoControl || hasCameraPreview ? "pointer" : "not-allowed", opacity: hasVideoControl || hasCameraPreview ? 1 : 0.42, fontSize: "12px", lineHeight: 1 }}
         >
-          {isBackgroundVideoPlaying ? "Ⅱ" : "▶"}
+          {(hasCameraPreview ? !isCameraPreviewPaused : controlPlaying) ? "Ⅱ" : "▶"}
         </button>
-        <input
+        {hasCameraPreview ? <span aria-label="Live camera has no seekable timeline" style={{ flex: 1, minWidth: 0, textAlign: "center", letterSpacing: "0.08em" }}>{isCameraPreviewPaused ? "CAMERA PREVIEW PAUSED" : "LIVE CAMERA"}</span> : <input
           type="range"
           min={0}
           max={videoDuration || 1}
           step="0.01"
           value={Math.min(videoProgress, videoDuration || 1)}
-          disabled={!hasBackgroundVideo || videoDuration <= 0}
+          disabled={!hasVideoControl || videoDuration <= 0}
           onChange={(event) => {
             const time = Number(event.target.value);
-            const video = backgroundVideoRef.current;
+            const video = controlVideoRef.current;
             if (video && Number.isFinite(time)) video.currentTime = time;
             setVideoProgress(time);
+            onSeek?.(time);
           }}
-          aria-label={`${title} background video progress`}
-          style={{ flex: 1, minWidth: 0, accentColor: "var(--color-primary)", cursor: hasBackgroundVideo ? "pointer" : "not-allowed", opacity: hasBackgroundVideo ? 1 : 0.42 }}
-        />
+          aria-label={`${title} video progress`}
+          style={{ flex: 1, minWidth: 0, accentColor: "var(--color-primary)", cursor: hasVideoControl ? "pointer" : "not-allowed", opacity: hasVideoControl ? 1 : 0.42 }}
+        />}
         <button
           type="button"
-          onClick={() => setIsBackgroundVideoLooping((current) => !current)}
-          disabled={!hasBackgroundVideo}
-          aria-pressed={isBackgroundVideoLooping}
-          aria-label={`${isBackgroundVideoLooping ? "Disable" : "Enable"} loop for ${title} background video`}
-          title={isBackgroundVideoLooping ? "Loop on" : "Loop off"}
-          style={{ width: "24px", height: "22px", border: "none", borderRadius: "var(--radius-sm)", background: isBackgroundVideoLooping ? "var(--color-primary-muted)" : "var(--bg-elevated)", color: isBackgroundVideoLooping ? "var(--color-primary)" : "var(--fg-muted)", cursor: hasBackgroundVideo ? "pointer" : "not-allowed", opacity: hasBackgroundVideo ? 1 : 0.42, fontSize: "15px", lineHeight: 1 }}
+          onClick={() => onPlaybackChange ? onPlaybackChange({ looping: !controlLooping }) : setControlVideoLooping((current) => !current)}
+          disabled={!hasVideoControl || hasCameraPreview}
+          aria-pressed={controlLooping}
+          aria-label={`${controlLooping ? "Disable" : "Enable"} loop for ${title} video`}
+          title={controlLooping ? "Loop on" : "Loop off"}
+          style={{ width: "24px", height: "22px", border: "none", borderRadius: "var(--radius-sm)", background: controlLooping ? "var(--color-primary-muted)" : "var(--bg-elevated)", color: controlLooping ? "var(--color-primary)" : "var(--fg-muted)", cursor: hasVideoControl ? "pointer" : "not-allowed", opacity: hasVideoControl ? 1 : 0.42, fontSize: "15px", lineHeight: 1 }}
         >
           ↻
         </button>
-      </div>
+      </div> : null}
     </div>
   );
 }

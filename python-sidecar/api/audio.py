@@ -9,6 +9,7 @@ from engine.audio import devices, vad
 from engine.audio.capture import capture_manager
 from engine.audio.devices import AudioBackendError
 from engine.audio.state import audio_state
+from engine.config.store import get_store
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -101,6 +102,7 @@ def set_vad_sensitivity(req: VadSensitivityRequest) -> dict:
     """Set VAD sensitivity (0.0 = strict, 1.0 = very sensitive)."""
     vad.set_sensitivity(req.sensitivity)
     audio_state.vad_sensitivity = req.sensitivity
+    get_store().set_setting("vad_sensitivity", req.sensitivity)
     return {
         "sensitivity": req.sensitivity,
         "threshold": round(vad.get_detector().threshold, 4),

@@ -35,8 +35,40 @@ body {
   color-scheme: dark;
 }
 
+/* Apply a theme in one paint instead of transitioning each surface separately. */
+:root.theme-switching *,
+:root.theme-switching *::before,
+:root.theme-switching *::after {
+  transition: none !important;
+}
+
 * {
   box-sizing: border-box;
+}
+
+/* Studio surfaces use spacing and contrast to define their controls. Keep
+   browser and component borders from adding a second outline around fields. */
+.studio-modal {
+  border: none !important;
+}
+
+.studio-modal input,
+.studio-modal select,
+.studio-modal textarea {
+  border: none !important;
+  outline: none !important;
+}
+
+/* Keep the scrollbar track outside the control content. This matters most on
+   narrow inspectors where range thumbs otherwise sit under the hover track. */
+.studio-scroll-pane {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  padding-right: 22px !important;
+}
+
+.studio-scroll-pane::-webkit-scrollbar {
+  width: 7px;
 }
 
 ::selection {
@@ -47,6 +79,83 @@ body {
   0%, 100% { border-bottom-color: var(--color-error); }
   25%, 75% { border-bottom-color: var(--color-primary); }
   50% { border-bottom-color: var(--color-error); }
+}
+
+/* Stable projector keyframes: redefining these in each view restarts completed
+   animations when a preview or transition setting changes. */
+@keyframes ssOnAirBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@keyframes ssOverlayTimerBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.2; }
+}
+
+@keyframes projFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes projFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes projSlideLeft {
+  from { transform: translate3d(100%, 0, 0); opacity: 1; }
+  to { transform: translate3d(0, 0, 0); opacity: 1; }
+}
+
+@keyframes projSlideLeftCrossfade {
+  from { transform: translate3d(100%, 0, 0); opacity: 0.2; }
+  to { transform: translate3d(0, 0, 0); opacity: 1; }
+}
+
+@keyframes projSlideRight {
+  from { transform: translate3d(-100%, 0, 0); opacity: 1; }
+  to { transform: translate3d(0, 0, 0); opacity: 1; }
+}
+
+@keyframes projSlideRightCrossfade {
+  from { transform: translate3d(-100%, 0, 0); opacity: 0.2; }
+  to { transform: translate3d(0, 0, 0); opacity: 1; }
+}
+
+@keyframes projSlideUp {
+  from { transform: translate3d(0, 100%, 0); opacity: 1; }
+  to { transform: translate3d(0, 0, 0); opacity: 1; }
+}
+
+@keyframes projSlideUpCrossfade {
+  from { transform: translate3d(0, 100%, 0); opacity: 0.2; }
+  to { transform: translate3d(0, 0, 0); opacity: 1; }
+}
+
+@keyframes projSlideDown {
+  from { transform: translate3d(0, -100%, 0); opacity: 1; }
+  to { transform: translate3d(0, 0, 0); opacity: 1; }
+}
+
+@keyframes projSlideDownCrossfade {
+  from { transform: translate3d(0, -100%, 0); opacity: 0.2; }
+  to { transform: translate3d(0, 0, 0); opacity: 1; }
+}
+
+@keyframes projPushUpCrossfade {
+  from { transform: translate3d(0, 100%, 0); opacity: 0.2; }
+  to { transform: translate3d(0, 0, 0); opacity: 1; }
+}
+
+@keyframes projZoomIn {
+  from { transform: scale3d(0.65, 0.65, 1); opacity: 0; }
+  to { transform: scale3d(1, 1, 1); opacity: 1; }
+}
+
+@keyframes projZoomOut {
+  from { transform: scale3d(1.35, 1.35, 1); opacity: 0; }
+  to { transform: scale3d(1, 1, 1); opacity: 1; }
 }
 
 /* Shared custom scrollbar for scrollable panes. */

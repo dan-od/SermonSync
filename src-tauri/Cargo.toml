@@ -28,6 +28,18 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 tauri-plugin-dialog = "2"
 tokio = { version = "1", features = ["time"] }
 keyring = { version = "3", features = ["linux-native-sync-persistent"] }
+display-info = "0.5.9"
+sha2 = "0.10"
+# GTK is used on Linux to request fullscreen on a specific monitor. Wayland
+# compositors intentionally ignore client-side window coordinates.
+# webkit2gtk is used to auto-grant getUserMedia camera/mic permission requests:
+# WebKitGTK denies them by default, which silently breaks navigator.mediaDevices
+# for wired/USB (v4l2loopback, DroidCam/OBS virtual cams) in the webview.
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18.2"
+webkit2gtk = "2.0"
+glib = "0.18"
+
 # Unix signal support, used to force-kill the Python sidecar on app exit.
 # std::process::Child::kill() relies on the child exiting and being reaped,
 # which leaves uvicorn running as an orphan; a real SIGKILL does not.
