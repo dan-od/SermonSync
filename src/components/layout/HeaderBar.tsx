@@ -3,12 +3,12 @@ import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { MAC_TRAFFIC_LIGHT_INSET, USE_NATIVE_WINDOW_CONTROLS, isMacOS } from "../../lib/platform";
 import type { OverlayMode, SessionStatus, UiTheme } from "../../types/state";
+import { useProjectorStore } from "../../stores/projectorStore";
 import { Dropdown } from "../Settings/primitives";
 
 export interface HeaderBarProps {
   activeTab: "suggestions" | "bible" | "notes" | "database" | "summary";
   onTabChange: (tab: "suggestions" | "bible" | "notes" | "database" | "summary") => void;
-  overlayMode: OverlayMode;
   onOverlayModeChange: (mode: OverlayMode) => void;
   feedOverride: "live" | "logo" | "black" | "clear";
   onFeedOverrideChange: (mode: "live" | "logo" | "black" | "clear") => void;
@@ -18,6 +18,7 @@ export interface HeaderBarProps {
   sessionElapsedSeconds: number;
   onSessionStart: () => void;
   onSessionEnd: () => void;
+  onSync?: () => void;
   onOpenSummary: () => void;
   onOpenSettings: () => void;
 }
@@ -31,7 +32,6 @@ function formatElapsed(seconds: number) {
 }
 
 export function HeaderBar({
-  overlayMode,
   onOverlayModeChange,
   feedOverride,
   onFeedOverrideChange,
@@ -41,9 +41,11 @@ export function HeaderBar({
   sessionElapsedSeconds,
   onSessionStart,
   onSessionEnd,
+  onSync,
   onOpenSummary,
   onOpenSettings,
 }: HeaderBarProps) {
+  const overlayMode = useProjectorStore((s) => s.overlayMode);
   const [isTauriWindow] = useState(() => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window);
   const [isMaximized, setIsMaximized] = useState(false);
   // The OS now draws the window controls (native decorations per-OS), so the
@@ -69,22 +71,17 @@ export function HeaderBar({
       }
     });
 
-    const unlistenPromise = appWindow.onResized(async () => {
-      try {
-        const value = await appWindow.isMaximized();
-        if (active) {
-          setIsMaximized(value);
-        }
-      } catch {
-        if (active) {
-          setIsMaximized(false);
-        }
-      }
-    });
+    const handleResize = () => {
+      if (!active || typeof screen === "undefined") return;
+      const widthMatches = Math.abs(window.outerWidth - screen.availWidth) <= 2;
+      const heightMatches = Math.abs(window.outerHeight - screen.availHeight) <= 2;
+      setIsMaximized(widthMatches && heightMatches);
+    };
+    window.addEventListener("resize", handleResize);
 
     return () => {
       active = false;
-      unlistenPromise.then((unlisten) => unlisten()).catch(() => undefined);
+      window.removeEventListener("resize", handleResize);
     };
   }, [isTauriWindow]);
 
@@ -275,8 +272,7 @@ export function HeaderBar({
   const handleToggleMaximize = async () => {
     try {
       await getCurrentWindow().toggleMaximize();
-      const value = await getCurrentWindow().isMaximized();
-      setIsMaximized(value);
+      setIsMaximized((value) => !value);
     } catch {
       // Ignore window API failures outside desktop runtime.
     }
@@ -384,6 +380,43 @@ export function HeaderBar({
         >
           SUMMARY
         </button>
+        <span style={{ width: "1px", height: "14px", background: "var(--border-base)", flexShrink: 0 }} />
+        <span
+          data-no-drag="true"
+          style={{
+            padding: "4px 7px",
+            borderRadius: "4px",
+            background: "var(--bg-elevated)",
+            color: "var(--fg-muted)",
+            fontFamily: "var(--font-mono)",
+            fontSize: "9px",
+            fontWeight: 700,
+            letterSpacing: "0.04em",
+            lineHeight: 1,
+          }}
+        >
+          OFFLINE MODE
+        </span>
+        <button
+          type="button"
+          data-no-drag="true"
+          onClick={() => onSync?.()}
+          style={{
+            border: "none",
+            borderRadius: "4px",
+            background: "var(--bg-elevated)",
+            color: "var(--fg-base)",
+            padding: "4px 8px",
+            fontFamily: "var(--font-mono)",
+            fontSize: "9px",
+            fontWeight: 700,
+            letterSpacing: "0.06em",
+            lineHeight: 1,
+            cursor: "pointer",
+          }}
+        >
+          SYNC
+        </button>
       </div>
 
       <div
@@ -420,6 +453,7 @@ export function HeaderBar({
             options={[
               { value: "widescreen", label: "Widescreen Slide" },
               { value: "lower-third", label: "Lower Third" },
+              { value: "split-screen", label: "Split screen" },
             ]}
             onChange={(val) => onOverlayModeChange(val as OverlayMode)}
             containerStyle={{ width: "auto" }}

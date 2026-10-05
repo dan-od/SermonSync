@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { AuthGate } from "./components/Auth/AuthGate";
 import type { BranchAccount } from "./components/Auth/types";
@@ -10,6 +10,8 @@ import type { BiblePassage, DbTable } from "./components/desktop/uiTypes";
 import { AppLayout } from "./components/layout/AppLayout";
 import type { LibraryNavigationHandler, LibraryTab, ScriptureSearchMode } from "./components/LocalLibraryPanel";
 import { getAudioDevices, getSidecarHttpBase, getSidecarStatus, lookupScriptureVerse, selectAudioDevice, setVadSensitivity, startAudioCapture, stopAudioCapture } from "./lib/sidecarClient";
+import { discoverDisplays, hideProjectorOutput, openProjectorOutput, publishProjectorSnapshot, startProjectorOutputBridge } from "./lib/projectorOutput";
+import { EMPTY_DISPLAY_STABILITY, observeConnectedDisplay } from "./lib/displayStability";
 import { knownScriptureBooks, matchScriptureReferenceIncremental, resolveScriptureSearch } from "./lib/scriptureSearch";
 import { startSidecarWsBridge } from "./lib/sidecarWs";
 import {
@@ -116,6 +118,7 @@ type LibraryScheduleItem = {
   id: string;
   kind: "scriptures" | "songs";
   value: string;
+  slide?: ProjectorSlide;
   /** present when this record represents a whole cued song sequence rather than a single slide */
   cueSlides?: { label: string; text: string }[];
 };
@@ -128,6 +131,7 @@ function LocalLibrarySearch({
   onSearchModeChange,
   scheduledItems,
   onAddToSchedule,
+  selectedScripture,
   onRemoveFromSchedule,
   onSchedulePreview,
   onScheduleLive,
@@ -140,6 +144,7 @@ function LocalLibrarySearch({
   onSearchModeChange: (mode: ScriptureSearchMode) => void;
   scheduledItems: LibraryScheduleItem[];
   onAddToSchedule: () => void;
+  selectedScripture: ProjectorSlide | null;
   onRemoveFromSchedule: (id: string) => void;
   onSchedulePreview: (item: LibraryScheduleItem) => void;
   onScheduleLive: (item: LibraryScheduleItem) => void;
@@ -147,7 +152,12 @@ function LocalLibrarySearch({
 }) {
   const canSearch = activeTab === "scriptures" || activeTab === "songs";
   const label = activeTab === "songs" ? "Search songs" : "Search scriptures";
-  const canAdd = canSearch && searchQuery.trim().length > 0;
+  const matchedReference = activeTab === "scriptures"
+    ? matchScriptureReferenceIncremental(searchQuery, knownScriptureBooks)
+    : null;
+  const canAdd = activeTab === "songs"
+    ? searchQuery.trim().length > 0
+    : activeTab === "scriptures" && (selectedScripture !== null || Boolean(matchedReference?.matchedBook && matchedReference.chapter != null && matchedReference.verse != null));
   const clickTimeoutRef = useRef<number | null>(null);
   const [hoveredScheduleId, setHoveredScheduleId] = useState<string | null>(null);
 
@@ -309,6 +319,8 @@ function LocalLibrarySearch({
             type="button"
             onClick={() => onAddToSchedule()}
             disabled={!canAdd}
+            title={activeTab === "scriptures" && !canAdd ? "Select a verse or enter a scripture reference" : "Add to schedule"}
+            aria-label="Add to schedule"
             style={{
               width: 34,
               height: 34,
@@ -475,11 +487,13 @@ function App() {
   const [librarySearchQuery, setLibrarySearchQuery] = useState("");
   const [librarySearchMode, setLibrarySearchMode] = useState<ScriptureSearchMode>("words");
   const [librarySchedule, setLibrarySchedule] = useState<LibraryScheduleItem[]>([]);
+  const [selectedScripture, setSelectedScripture] = useState<ProjectorSlide | null>(null);
   const [activeCue, setActiveCue] = useState<LibraryScheduleItem | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showLaunchScreen, setShowLaunchScreen] = useState(true);
   const [authenticatedBranch, setAuthenticatedBranch] = useState<BranchAccount | null>(null);
   const libraryNavigationRef = useRef<LibraryNavigationHandler | null>(null);
+  const displayStabilityRef = useRef(EMPTY_DISPLAY_STABILITY);
 
   const theme = useConfigStore((s) => s.theme);
   const setTheme = useConfigStore((s) => s.setTheme);
@@ -544,13 +558,141 @@ function App() {
 
   const previewSlide = useProjectorStore((s) => s.previewSlide);
   const liveSlide = useProjectorStore((s) => s.liveSlide);
-  const overlayMode = useProjectorStore((s) => s.overlayMode);
+  const previewMedia = useProjectorStore((s) => s.previewMedia);
+  const liveMedia = useProjectorStore((s) => s.liveMedia);
+  // The layout picker updates the projector views directly. Avoid rendering the
+  // entire library, search results, and timeline for every layout switch.
+  const inspectedOverlayMode = useProjectorStore((s) => workspaceTab === "database" ? s.overlayMode : null);
+  const overlayMode = inspectedOverlayMode ?? useProjectorStore.getState().overlayMode;
   const projectorTheme = useProjectorStore((s) => s.theme);
   const feedOverride = useProjectorStore((s) => s.feedOverride);
+  const outputStatus = useProjectorStore((s) => s.outputStatus);
   const setPreviewSlide = useProjectorStore((s) => s.setPreview);
+  const setPreviewMedia = useProjectorStore((s) => s.setPreviewMedia);
   const sendLiveSlide = useProjectorStore((s) => s.sendLive);
+  const sendLiveMedia = useProjectorStore((s) => s.sendLiveMedia);
   const setOverlayMode = useProjectorStore((s) => s.setOverlayMode);
   const setFeedOverride = useProjectorStore((s) => s.setFeedOverride);
+
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+
+    void startProjectorOutputBridge().then((cleanup) => {
+      if (disposed) cleanup();
+      else unlisten = cleanup;
+    });
+
+    const unsubscribe = useProjectorStore.subscribe((state, previous) => {
+      if (
+        state.liveSlide !== previous.liveSlide
+        || state.liveMedia !== previous.liveMedia
+        || state.activeOverlays !== previous.activeOverlays
+        || state.feedOverride !== previous.feedOverride
+        || state.overlayMode !== previous.overlayMode
+        || state.theme !== previous.theme
+        || state.transitions !== previous.transitions
+        || state.livePlayback !== previous.livePlayback
+      ) {
+        void publishProjectorSnapshot();
+      }
+    });
+
+    // Publish the current state once on startup as well. This covers an output
+    // window that reconnects while the state itself has not changed.
+    void publishProjectorSnapshot();
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (outputStatus === "ready" || outputStatus === "closed" || outputStatus === "error") {
+      displayStabilityRef.current = EMPTY_DISPLAY_STABILITY;
+    }
+    let disposed = false;
+    let refreshing = false;
+
+    const refreshDisplays = async () => {
+      if (refreshing) return;
+      refreshing = true;
+      try {
+        const displays = await discoverDisplays();
+        if (disposed) return;
+
+        const store = useProjectorStore.getState();
+        store.setAvailableDisplays(displays);
+        const selected = displays.find((display) => display.id === store.selectedDisplayId);
+        const fallback = displays.find((display) => display.isPrimary) ?? displays[0] ?? null;
+
+        if (!store.selectedDisplayId && fallback) {
+          let persistedId: string | null = null;
+          try {
+            const persisted = window.localStorage.getItem("sermonsync-settings-panel");
+            persistedId = persisted ? (JSON.parse(persisted) as { outputDisplayId?: string }).outputDisplayId ?? null : null;
+          } catch {
+            persistedId = null;
+          }
+          const persistedDisplay = persistedId ? displays.find((display) => display.id === persistedId) : null;
+          store.selectDisplay((persistedDisplay ?? fallback).id);
+        }
+
+        if (store.outputStatus === "connected") {
+          const fingerprint = selected ? `${selected.id}:${selected.x}:${selected.y}:${selected.width}:${selected.height}:${selected.scaleFactor}` : null;
+          const observation = observeConnectedDisplay(displayStabilityRef.current, fingerprint);
+          displayStabilityRef.current = observation.state;
+          if (observation.action === "disconnect") {
+            await hideProjectorOutput();
+            store.setOutputStatus("disconnected");
+          } else if (observation.action === "reposition" && selected) {
+            await openProjectorOutput(selected);
+          }
+        } else if (store.outputStatus === "disconnected" && selected) {
+          const fingerprint = `${selected.id}:${selected.x}:${selected.y}:${selected.width}:${selected.height}:${selected.scaleFactor}`;
+          displayStabilityRef.current = { ...EMPTY_DISPLAY_STABILITY, confirmedFingerprint: fingerprint };
+          await openProjectorOutput(selected);
+        }
+      } catch (error) {
+        console.warn("Could not refresh connected displays", error);
+        if (!disposed && useProjectorStore.getState().outputStatus !== "connected") {
+          useProjectorStore.getState().setOutputStatus("error");
+        }
+      } finally {
+        refreshing = false;
+      }
+    };
+
+    void refreshDisplays();
+
+    // A display that goes to sleep and wakes back up (or a monitor topology
+    // change while the app is unfocused/minimized) is otherwise only picked
+    // up again by the manual "Refresh displays" button. Re-check as soon as
+    // the app becomes visible/focused again so a reconnected HDMI output
+    // doesn't require that manual step.
+    const handleWake = () => void refreshDisplays();
+    document.addEventListener("visibilitychange", handleWake);
+    window.addEventListener("focus", handleWake);
+    const removeWakeListeners = () => {
+      document.removeEventListener("visibilitychange", handleWake);
+      window.removeEventListener("focus", handleWake);
+    };
+
+    if (outputStatus === "closed") {
+      return () => {
+        disposed = true;
+        removeWakeListeners();
+      };
+    }
+    const timer = window.setInterval(() => void refreshDisplays(), 5000);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+      removeWakeListeners();
+    };
+  }, [outputStatus]);
   const shortcuts = useShortcutStore((s) => s.shortcuts);
   const initializeTemplates = useTemplateStore((s) => s.initialize);
 
@@ -581,8 +723,32 @@ function App() {
   const sessionLatencyMs = useSessionStore((s) => s.lastLatencyMs);
   const sessionUptimeSeconds = useSessionStore((s) => s.uptimeSeconds);
 
+  // App uptime is a standalone concern — it must keep counting whether or not
+  // a session is live, same as the rest of the app's standalone output/display
+  // behavior. Ticks locally from launch instead of only from session-scoped state.
+  const [appLaunchTime] = useState(() => Date.now());
+  const [appUptimeSeconds, setAppUptimeSeconds] = useState(0);
+
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
+    const id = window.setInterval(() => {
+      setAppUptimeSeconds(Math.floor((Date.now() - appLaunchTime) / 1000));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [appLaunchTime]);
+
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    root.classList.add("theme-switching");
+    root.dataset.theme = theme;
+    let secondFrame = 0;
+    const firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => root.classList.remove("theme-switching"));
+    });
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(secondFrame);
+      root.classList.remove("theme-switching");
+    };
   }, [theme]);
 
   useEffect(() => {
@@ -609,19 +775,27 @@ function App() {
         try {
           const devicePayload = await getAudioDevices();
           if (cancelled) return;
+          const savedAudioSettings = useAudioStore.getState();
           setAvailableDevices(devicePayload.devices);
           const selected =
+            devicePayload.devices.find((d) => d.name === savedAudioSettings.preferredDeviceName) ??
             devicePayload.devices.find((d) => d.index === devicePayload.selected_index) ??
             devicePayload.devices.find((d) => /gk50 pro|usb audio/i.test(d.name)) ??
             devicePayload.devices.find((d) => d.isDefault) ??
             devicePayload.devices[0] ??
             null;
           if (selected) {
-            const selection = await selectAudioDevice({ index: selected.index, channels: 1 });
+            const restoredChannel = Math.min(Math.max(1, savedAudioSettings.preferredChannel), selected.channels);
+            await selectAudioDevice({ index: selected.index, channels: restoredChannel });
             if (cancelled) return;
-            setAudioDevice(selection.selected);
+            setAudioDevice(selected);
+            setAudioChannel(restoredChannel);
             useAudioStore.getState().setCapturing(false);
           }
+          // The detector is a separate process, so restore the persisted UI
+          // value whenever that process becomes ready after launch/restart.
+          await setVadSensitivity(useAudioStore.getState().vadSensitivity);
+          if (cancelled) return;
           useAudioStore.getState().clearAudioError();
           return;
         } catch (error: unknown) {
@@ -649,7 +823,7 @@ function App() {
       cancelled = true;
       stopBridge();
     };
-  }, [authenticatedBranch, setAudioDevice, setAudioStatus, setAvailableDevices]);
+  }, [authenticatedBranch, setAudioChannel, setAudioDevice, setAudioStatus, setAvailableDevices]);
 
   useEffect(() => {
     if (!authenticatedBranch || !inputDevice) {
@@ -790,6 +964,10 @@ function App() {
     setFeedOverride(mode);
   }, [setFeedOverride]);
 
+  const toggleFeedOverride = useCallback((mode: Exclude<typeof feedOverride, "live">) => {
+    setFeedOverride(feedOverride === mode ? "live" : mode);
+  }, [feedOverride, setFeedOverride]);
+
   const cycleLive = useCallback((direction: -1 | 1) => {
     if (!libraryNavigationRef.current) return;
     setPreviewSlide(null);
@@ -811,13 +989,13 @@ function App() {
           handleFeedOverrideChange("live");
           break;
         case "feed-logo":
-          handleFeedOverrideChange("logo");
+          toggleFeedOverride("logo");
           break;
         case "feed-black":
-          handleFeedOverrideChange("black");
+          toggleFeedOverride("black");
           break;
         case "feed-clear":
-          handleFeedOverrideChange("clear");
+          toggleFeedOverride("clear");
           break;
         case "layout-widescreen":
           setOverlayMode("widescreen");
@@ -831,6 +1009,21 @@ function App() {
         case "library-next":
           cycleLive(1);
           break;
+        case "library-tab-scriptures":
+          setLibraryTab("scriptures");
+          break;
+        case "library-tab-songs":
+          setLibraryTab("songs");
+          break;
+        case "library-tab-media":
+          setLibraryTab("media");
+          break;
+        case "library-tab-overlays":
+          setLibraryTab("overlays");
+          break;
+        case "library-tab-templates":
+          setLibraryTab("templates");
+          break;
         case "send-preview-live":
           if (previewSlide) sendLiveSlide(previewSlide);
           break;
@@ -842,15 +1035,16 @@ function App() {
 
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [cycleLive, handleFeedOverrideChange, isSettingsOpen, previewSlide, sendLiveSlide, setOverlayMode, shortcuts]);
+  }, [cycleLive, handleFeedOverrideChange, isSettingsOpen, previewSlide, sendLiveSlide, setOverlayMode, shortcuts, toggleFeedOverride]);
 
   const addLibraryScheduleItem = (slide?: ProjectorSlide) => {
-    if (slide) {
-      const kind = slide.version === "Lyrics" || slide.version === "SONG" ? "songs" : "scriptures";
-      const value = kind === "scriptures" ? `${slide.reference.book} ${slide.reference.chapter}:${slide.reference.verse}` : slide.text;
+    const selectedSlide = slide ?? (libraryTab === "scriptures" ? selectedScripture ?? undefined : undefined);
+    if (selectedSlide) {
+      const kind = selectedSlide.version === "Lyrics" || selectedSlide.version === "SONG" ? "songs" : "scriptures";
+      const value = kind === "scriptures" ? `${selectedSlide.reference.book} ${selectedSlide.reference.chapter}:${selectedSlide.reference.verse}` : selectedSlide.text;
       setLibrarySchedule((current) => current.some((item) => item.kind === kind && item.value.toLowerCase() === value.toLowerCase())
         ? current
-        : [...current, { id: `${kind}-${Date.now()}-${current.length}`, kind, value }]);
+        : [...current, { id: `${kind}-${Date.now()}-${current.length}`, kind, value, slide: selectedSlide }]);
       return;
     }
     const normalized = librarySearchQuery.trim();
@@ -873,6 +1067,7 @@ function App() {
         nextValue = wordsMatch?.value ?? normalized;
         resolved = Boolean(wordsMatch);
       }
+      if (!resolved) return;
     }
 
     setLibrarySchedule((current) => {
@@ -913,6 +1108,7 @@ function App() {
   };
 
   const toScheduledSlide = async (item: LibraryScheduleItem): Promise<ProjectorSlide> => {
+    if (item.slide) return item.slide;
     if (item.kind === "scriptures") {
       const exactPassage = passageLibrary.find((passage) => formatReference(passage).toLowerCase() === item.value.toLowerCase());
       if (exactPassage) {
@@ -1016,7 +1212,6 @@ function App() {
   const headerProps = {
     activeTab: workspaceTab,
     onTabChange: setWorkspaceTab,
-    overlayMode,
     onOverlayModeChange: setOverlayMode,
     feedOverride,
     onFeedOverrideChange: handleFeedOverrideChange,
@@ -1029,6 +1224,7 @@ function App() {
       sessionStart(config.unitId, config.unitName);
     },
     onSessionEnd: sessionEnd,
+    onSync: () => undefined,
     onOpenSummary: () => setIsSummaryOpen(true),
     onOpenSettings: () => setIsSettingsOpen(true),
   } as unknown as Parameters<typeof AppLayout>[0]["header"];
@@ -1036,15 +1232,11 @@ function App() {
   const projectorDeskProps = {
     previewSlide,
     liveSlide,
+    previewMedia,
+    liveMedia,
     feedOverride,
-    overlayMode,
     onOverlayModeChange: setOverlayMode,
     theme: projectorTheme,
-    onSendLive: () => {
-      if (previewSlide) {
-        sendLiveSlide(previewSlide);
-      }
-    },
     onPrevious: () => cycleLive(-1),
     onNext: () => cycleLive(1),
   };
@@ -1060,8 +1252,8 @@ function App() {
     void stopAudioCapture()
       .catch(() => undefined)
       .then(() => selectAudioDevice({ index: selected.index, channels: 1 }))
-      .then(async ({ selected: device }) => {
-        setAudioDevice(device);
+      .then(async () => {
+        setAudioDevice(selected);
         setAudioChannel(1);
         if (sessionStatus === "active") {
           const capture = await startAudioCapture();
@@ -1149,7 +1341,6 @@ function App() {
           audioError,
           onInputChannelChange: handleAudioChannelChange,
           isSessionLive: sessionStatus === "active",
-          onSync: () => undefined,
           vadPercent,
           onVadPercentChange: (percent) => {
             const nextSensitivity = Math.max(0, Math.min(1, percent / 100));
@@ -1162,7 +1353,7 @@ function App() {
           engineModelDegraded,
           locationLabel: "Foursquare Nigeria © 2026",
           latencyMs: sessionLatencyMs,
-          uptimeSeconds: sessionUptimeSeconds,
+          uptimeSeconds: Math.max(sessionUptimeSeconds, appUptimeSeconds),
           isSpeech,
           modelProvider: activeModelProvider,
         }}
@@ -1184,13 +1375,17 @@ function App() {
             <LocalLibraryPanel
               previewReference={previewReference}
               liveReference={liveReference}
+              previewMedia={previewMedia}
+              liveMedia={liveMedia}
               activeTab={libraryTab}
               searchQuery={librarySearchQuery}
               searchMode={librarySearchMode}
               onActiveTabChange={setLibraryTab}
               onPreviewSlide={setPreviewSlide}
               onSendLive={sendLiveSlide}
-              onAddToSchedule={addLibraryScheduleItem}
+              onPreviewMedia={setPreviewMedia}
+              onSendMedia={sendLiveMedia}
+              onSelectedScriptureChange={setSelectedScripture}
               onCreateCue={addCueToSchedule}
               onNavigationHandlerChange={(handler) => {
                 libraryNavigationRef.current = handler;
@@ -1202,10 +1397,11 @@ function App() {
           <LocalLibrarySearch
             activeTab={libraryTab}
             searchQuery={librarySearchQuery}
-            onSearchQueryChange={setLibrarySearchQuery}
+            onSearchQueryChange={(value) => { setSelectedScripture(null); setLibrarySearchQuery(value); }}
             searchMode={librarySearchMode}
             onSearchModeChange={setLibrarySearchMode}
             scheduledItems={librarySchedule}
+            selectedScripture={selectedScripture}
             onAddToSchedule={addLibraryScheduleItem}
             onRemoveFromSchedule={removeLibraryScheduleItem}
             onSchedulePreview={previewScheduledItem}

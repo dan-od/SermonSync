@@ -17,7 +17,11 @@ const DOWNLOADABLE_VERSIONS: BibleVersionSummary[] = [
 async function fetchVersions() {
   const response = await fetch(`${getSidecarHttpBase()}/api/bible/versions`);
   if (!response.ok) throw new Error(`Bible API error (${response.status})`);
-  return (await response.json() as { versions: BibleVersionSummary[] }).versions;
+  const versions = (await response.json() as { versions: BibleVersionSummary[] }).versions;
+  // KJV is a deprecated internal default (superseded by ENGLISHNKJ) and is
+  // hidden everywhere else (see LocalLibraryPanel, configStore's migrate) —
+  // keep this list consistent so it doesn't flash in/out of the shared store.
+  return versions.filter((version) => version.abbreviation.toUpperCase() !== "KJV");
 }
 
 async function responseError(response: Response, fallback: string) {

@@ -15,14 +15,17 @@ export function LaunchTitleBar() {
     void appWindow.isMaximized().then((value) => {
       if (active) setIsMaximized(value);
     });
-    const unlistenPromise = appWindow.onResized(() => {
-      void appWindow.isMaximized().then((value) => {
-        if (active) setIsMaximized(value);
-      });
-    });
+    const handleResize = () => {
+      if (!active || typeof screen === "undefined") return;
+      setIsMaximized(
+        Math.abs(window.outerWidth - screen.availWidth) <= 2
+        && Math.abs(window.outerHeight - screen.availHeight) <= 2,
+      );
+    };
+    window.addEventListener("resize", handleResize);
     return () => {
       active = false;
-      void unlistenPromise.then((unlisten) => unlisten());
+      window.removeEventListener("resize", handleResize);
     };
   }, [isTauriWindow]);
 
@@ -37,7 +40,7 @@ export function LaunchTitleBar() {
     ["Minimize", "−", () => getCurrentWindow().minimize()],
     [isMaximized ? "Restore" : "Maximize", isMaximized ? "❐" : "□", async () => {
       await getCurrentWindow().toggleMaximize();
-      setIsMaximized(await getCurrentWindow().isMaximized());
+      setIsMaximized((value) => !value);
     }],
     ["Close", "×", () => getCurrentWindow().close()],
   ] as const;

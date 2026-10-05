@@ -28,15 +28,13 @@ export function ShortcutsTab() {
     }
 
     const binding = shortcutFromEvent(event.nativeEvent);
-    const existing = SHORTCUT_DEFINITIONS.find((entry) => entry.action !== action && shortcuts[entry.action] === binding);
-    if (existing) {
-      setConflict(`${binding} is already assigned to ${existing.label}.`);
-      return;
-    }
-
+    if (!binding) return;
+    const displaced = SHORTCUT_DEFINITIONS.filter((entry) => entry.action !== action && shortcuts[entry.action] === binding);
     setShortcut(action, binding);
     setRecordingAction(null);
-    setConflict(null);
+    setConflict(displaced.length > 0
+      ? `${binding} moved to ${SHORTCUT_DEFINITIONS.find((entry) => entry.action === action)?.label}. Unassigned until remapped: ${displaced.map((entry) => entry.label).join(", ")}.`
+      : null);
   };
 
   return (
@@ -88,7 +86,7 @@ export function ShortcutsTab() {
                       }}
                       style={{ minWidth: "104px", border: "1px solid var(--border-base)", borderRadius: "var(--radius-sm)", padding: "4px 8px", background: isRecording ? "var(--color-primary-muted)" : "var(--bg-elevated)", color: isRecording ? "var(--color-primary)" : "var(--fg-base)", cursor: "pointer", fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 700 }}
                     >
-                      {isRecording ? "Press keys" : shortcuts[definition.action]}
+                      {isRecording ? "Press keys" : shortcuts[definition.action] || "Unassigned"}
                     </button>
                   </div>
                 );

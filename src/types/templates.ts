@@ -114,10 +114,12 @@ export type TemplateLayer = TemplateTextLayer | TemplateShapeLayer;
 
 export type TemplateMediaFit = "cover" | "contain" | "fill";
 
+export type TemplateCameraSourceType = "local" | "network";
+
 export interface TemplateBackgroundMedia {
-  type: "image" | "video";
+  type: "image" | "video" | "camera";
   src: string;
-  /** Original file name for display; the source remains the persisted data URI. */
+  /** Original file name for display. Video sources are prepared local files. */
   name?: string;
   poster?: string;
   fit: TemplateMediaFit;
@@ -144,6 +146,14 @@ export interface TemplateBackgroundMedia {
   brightness?: number;
   contrast?: number;
   saturate?: number;
+  /** Live camera background (type "camera") — wired/USB webcam or a Wi-Fi phone camera (DroidCam/IP Webcam/iVCam) on the same network. */
+  cameraSourceType?: TemplateCameraSourceType;
+  /** Local: MediaDeviceInfo.deviceId. */
+  cameraDeviceId?: string;
+  /** Stable human-readable device label used by the native projector fallback. */
+  cameraLabel?: string;
+  /** Network: resolved MJPEG/HTTP stream URL, copied in at selection time. */
+  cameraUrl?: string;
 }
 
 export interface TemplateScene {
