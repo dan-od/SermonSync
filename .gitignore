@@ -57,8 +57,8 @@ src-tauri/resources/media-engine/*
 .playwright-mcp/
 
 # Local document exports
-/Video Import Architecture.docx
-/SermonSync PRD.docx
+/Video Import Architecture.md
+/SermonSync PRD.md
 
 # Accidental ImageMagick output created from a command-line option
 /--help
