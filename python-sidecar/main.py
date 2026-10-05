@@ -18,7 +18,8 @@ import uvicorn
 from api.archive import router as archive_router
 from api.audio import router as audio_router
 from api.bible import router as bible_router
-from api.camera import camera_manager, router as camera_router
+from api.camera import camera_manager
+from api.camera import router as camera_router
 from api.engine import router as engine_router
 from api.groq import router as groq_router
 from api.pipeline import router as pipeline_router
