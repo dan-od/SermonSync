@@ -40,25 +40,34 @@ function readLogoFile(file: File, onLoaded: (dataUrl: string) => void) {
   reader.readAsDataURL(file);
 }
 
+function LogoVideoPreview({ src, fit }: { src: string; fit: LogoFit }) {
+  const [resolved] = useState(() => resolvePlayableVideoSrc(src));
+
+  useEffect(() => {
+    return () => {
+      if (resolved?.objectUrl) URL.revokeObjectURL(resolved.objectUrl);
+    };
+  }, [resolved]);
+
+  return (
+    <video
+      src={resolved?.src ?? src}
+      autoPlay
+      muted
+      loop
+      playsInline
+      controls
+      preload="auto"
+      style={{ width: "100%", height: "100%", objectFit: fit === "stretch" ? "fill" : "contain" }}
+    />
+  );
+}
+
 export function DisplayMiddlewareTab({ panelState, onPanelChange }: DisplayMiddlewareTabProps) {
   const displays = useProjectorStore((state) => state.availableDisplays);
   const selectedDisplayId = useProjectorStore((state) => state.selectedDisplayId);
   const outputStatus = useProjectorStore((state) => state.outputStatus);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
-  const [logoVideoPreviewSrc, setLogoVideoPreviewSrc] = useState<string | null>(null);
-
-  useEffect(() => {
-    const src = panelState.logo.src;
-    if (!src || !isVideoDataUrl(src)) {
-      setLogoVideoPreviewSrc(null);
-      return;
-    }
-    const resolved = resolvePlayableVideoSrc(src);
-    setLogoVideoPreviewSrc(resolved?.src ?? src);
-    return () => {
-      if (resolved?.objectUrl) URL.revokeObjectURL(resolved.objectUrl);
-    };
-  }, [panelState.logo.src]);
 
   const refreshDisplays = async () => {
     try {
@@ -130,16 +139,7 @@ export function DisplayMiddlewareTab({ panelState, onPanelChange }: DisplayMiddl
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             <div style={{ width: "100%", aspectRatio: "16 / 9", borderRadius: "var(--radius-md)", background: "var(--bg-base)", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
               {isVideoDataUrl(panelState.logo.src) ? (
-                <video
-                  src={logoVideoPreviewSrc ?? panelState.logo.src}
-                  autoPlay
-                  muted
-                  loop
-                  playsInline
-                  controls
-                  preload="auto"
-                  style={{ width: "100%", height: "100%", objectFit: panelState.logo.fit === "stretch" ? "fill" : "contain" }}
-                />
+                <LogoVideoPreview key={panelState.logo.src} src={panelState.logo.src} fit={panelState.logo.fit} />
               ) : (
                 <img
                   src={panelState.logo.src}
