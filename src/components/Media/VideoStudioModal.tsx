@@ -38,7 +38,25 @@ interface VideoStudioModalProps {
   onSave: (name: string, settings: VideoMediaSettings) => void;
 }
 
-export function VideoStudioModal({ open, name, src, sourcePath, settings, onClose, onSave }: VideoStudioModalProps) {
+type VideoStudioContentProps = Omit<VideoStudioModalProps, "open">;
+
+export function VideoStudioModal(props: VideoStudioModalProps) {
+  if (!props.open) return null;
+
+  return (
+    <VideoStudioContent
+      key={`${props.src}:${props.name}`}
+      name={props.name}
+      src={props.src}
+      sourcePath={props.sourcePath}
+      settings={props.settings}
+      onClose={props.onClose}
+      onSave={props.onSave}
+    />
+  );
+}
+
+function VideoStudioContent({ name, src, sourcePath, settings, onClose, onSave }: VideoStudioContentProps) {
   const [title, setTitle] = useState(name);
   const [local, setLocal] = useState<VideoMediaSettings>(settings);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -47,16 +65,6 @@ export function VideoStudioModal({ open, name, src, sourcePath, settings, onClos
   const [playbackSrc, setPlaybackSrc] = useState(src);
   const [normalizationAttempted, setNormalizationAttempted] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    setTitle(name);
-    setLocal(settings);
-    setIsPlaying(false);
-    setCurrentTime(0);
-    setPlaybackSrc(src);
-    setNormalizationAttempted(false);
-  }, [open, name, settings, src]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -90,14 +98,7 @@ export function VideoStudioModal({ open, name, src, sourcePath, settings, onClos
     };
   }, [local.trimEnd, local.trimStart, local.loop]);
 
-  useEffect(() => {
-    if (!open) {
-      videoRef.current?.pause();
-      setIsPlaying(false);
-    }
-  }, [open]);
-
-  if (!open) return null;
+  useEffect(() => () => videoRef.current?.pause(), []);
 
   const togglePlay = () => {
     const video = videoRef.current;

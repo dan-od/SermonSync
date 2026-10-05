@@ -33,7 +33,24 @@ interface AudioStudioModalProps {
   onSave: (name: string, settings: AudioMediaSettings) => void;
 }
 
-export function AudioStudioModal({ open, name, src, settings, onClose, onSave }: AudioStudioModalProps) {
+type AudioStudioContentProps = Omit<AudioStudioModalProps, "open">;
+
+export function AudioStudioModal(props: AudioStudioModalProps) {
+  if (!props.open) return null;
+
+  return (
+    <AudioStudioContent
+      key={`${props.src}:${props.name}`}
+      name={props.name}
+      src={props.src}
+      settings={props.settings}
+      onClose={props.onClose}
+      onSave={props.onSave}
+    />
+  );
+}
+
+function AudioStudioContent({ name, src, settings, onClose, onSave }: AudioStudioContentProps) {
   const [title, setTitle] = useState(name);
   const [volume, setVolume] = useState(settings.volume);
   const [trimStart, setTrimStart] = useState(settings.trimStart);
@@ -41,17 +58,7 @@ export function AudioStudioModal({ open, name, src, settings, onClose, onSave }:
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const { peaks, duration, loading, error } = useAudioPeaks(open ? src : null);
-
-  useEffect(() => {
-    if (!open) return;
-    setTitle(name);
-    setVolume(settings.volume);
-    setTrimStart(settings.trimStart);
-    setTrimEnd(settings.trimEnd);
-    setIsPlaying(false);
-    setCurrentTime(0);
-  }, [open, name, settings]);
+  const { peaks, duration, loading, error } = useAudioPeaks(src);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -77,14 +84,7 @@ export function AudioStudioModal({ open, name, src, settings, onClose, onSave }:
     };
   }, [trimEnd]);
 
-  useEffect(() => {
-    if (!open) {
-      audioRef.current?.pause();
-      setIsPlaying(false);
-    }
-  }, [open]);
-
-  if (!open) return null;
+  useEffect(() => () => audioRef.current?.pause(), []);
 
   const togglePlay = () => {
     const audio = audioRef.current;
@@ -127,7 +127,6 @@ export function AudioStudioModal({ open, name, src, settings, onClose, onSave }:
           <button type="button" onClick={onClose} title="Close" style={modalCloseButtonStyle}>×</button>
         </div>
 
-        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
         <audio
           ref={audioRef}
           src={src}

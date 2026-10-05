@@ -45,30 +45,37 @@ interface AudioPeaksState {
   error: string | null;
 }
 
+interface AudioPeaksResult extends AudioPeaksState {
+  src: string;
+  buckets: number;
+}
+
+const EMPTY_AUDIO_PEAKS: AudioPeaksState = { peaks: [], duration: 0, loading: false, error: null };
+const LOADING_AUDIO_PEAKS: AudioPeaksState = { peaks: [], duration: 0, loading: true, error: null };
+
 /** Decodes an audio file into normalized peak buckets for waveform rendering. */
 export function useAudioPeaks(src: string | null, buckets = 220): AudioPeaksState {
-  const [state, setState] = useState<AudioPeaksState>({ peaks: [], duration: 0, loading: Boolean(src), error: null });
+  const [result, setResult] = useState<AudioPeaksResult | null>(null);
 
   useEffect(() => {
-    if (!src) {
-      setState({ peaks: [], duration: 0, loading: false, error: null });
-      return;
-    }
+    if (!src) return;
+
     let cancelled = false;
-    setState((current) => ({ ...current, loading: true, error: null }));
     decodeAudioFile(src)
       .then((buffer) => {
         if (cancelled) return;
-        setState({ peaks: computePeaks(buffer, buckets), duration: buffer.duration, loading: false, error: null });
+        setResult({ src, buckets, peaks: computePeaks(buffer, buckets), duration: buffer.duration, loading: false, error: null });
       })
       .catch((error: unknown) => {
         if (cancelled) return;
-        setState({ peaks: [], duration: 0, loading: false, error: error instanceof Error ? error.message : "Failed to decode audio." });
+        setResult({ src, buckets, peaks: [], duration: 0, loading: false, error: error instanceof Error ? error.message : "Failed to decode audio." });
       });
     return () => {
       cancelled = true;
     };
   }, [src, buckets]);
 
-  return state;
+  if (!src) return EMPTY_AUDIO_PEAKS;
+  if (!result || result.src !== src || result.buckets !== buckets) return LOADING_AUDIO_PEAKS;
+  return result;
 }

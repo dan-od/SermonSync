@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { createPortal } from "react-dom";
 
 import { filtersToCss, flipTransform } from "../../lib/mediaFilters";
@@ -36,17 +36,27 @@ interface ImageStudioModalProps {
   onSave: (name: string, settings: ImageMediaSettings) => void;
 }
 
-export function ImageStudioModal({ open, name, src, sourcePath, settings, onClose, onSave }: ImageStudioModalProps) {
+type ImageStudioContentProps = Omit<ImageStudioModalProps, "open">;
+
+export function ImageStudioModal(props: ImageStudioModalProps) {
+  if (!props.open) return null;
+
+  return (
+    <ImageStudioContent
+      key={`${props.src}:${props.name}`}
+      name={props.name}
+      src={props.src}
+      sourcePath={props.sourcePath}
+      settings={props.settings}
+      onClose={props.onClose}
+      onSave={props.onSave}
+    />
+  );
+}
+
+function ImageStudioContent({ name, src, sourcePath, settings, onClose, onSave }: ImageStudioContentProps) {
   const [title, setTitle] = useState(name);
   const [local, setLocal] = useState<ImageMediaSettings>(settings);
-
-  useEffect(() => {
-    if (!open) return;
-    setTitle(name);
-    setLocal(settings);
-  }, [open, name, settings]);
-
-  if (!open) return null;
 
   return createPortal(
     <div role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }} style={modalBackdropStyle}>
