@@ -7,6 +7,8 @@
  * these types.
  */
 
+import type { ActiveOverlay } from "./overlays";
+
 // ---------------------------------------------------------------------------
 // Session
 // ---------------------------------------------------------------------------
@@ -133,8 +135,16 @@ export interface SuggestionCard {
 // Projector
 // ---------------------------------------------------------------------------
 
-export type OverlayMode = "widescreen" | "lower-third";
+export type OverlayMode = "widescreen" | "lower-third" | "split-screen";
 export type VerseTheme = "cup" | "cross" | "crown";
+
+/** "contain" preserves the logo's aspect ratio; "stretch" fills the full 1920x1080 canvas. */
+export type LogoFit = "contain" | "stretch";
+
+export interface LogoConfig {
+  src: string | null;
+  fit: LogoFit;
+}
 
 export type TransitionEffect =
   | "fade"
@@ -178,18 +188,78 @@ export interface ProjectorSlide {
   version: string;
 }
 
+export interface ProjectorMedia {
+  path: string;
+  name: string;
+  category: "images" | "videos";
+  fit: "cover" | "contain" | "fill";
+  opacity: number;
+}
+
+export interface DisplayInfo {
+  /** Stable connector/name-based identifier, not the mutable display index. */
+  id: string;
+  name: string;
+  friendlyName: string;
+  width: number;
+  height: number;
+  refreshHz: number | null;
+  x: number;
+  y: number;
+  scaleFactor: number;
+  /** Logical/native bounds used to match GTK monitors on scaled Linux desktops. */
+  nativeX?: number;
+  nativeY?: number;
+  nativeWidth?: number;
+  nativeHeight?: number;
+  isPrimary: boolean;
+  connected: boolean;
+}
+
+export type ProjectorOutputStatus = "closed" | "ready" | "connected" | "disconnected" | "error";
+
+export interface ProjectorPlaybackState {
+  playing: boolean;
+  looping: boolean;
+  seekTime: number | null;
+  seekRevision: number;
+}
+
+export interface ProjectorOutputSnapshot {
+  /** Monotonic delivery ID used to retry only snapshots the output has not received. */
+  revision?: number;
+  slide: ProjectorSlide | null;
+  media: ProjectorMedia | null;
+  overlays?: ActiveOverlay[];
+  feedOverride: ProjectorState["feedOverride"];
+  overlayMode: OverlayMode;
+  theme: VerseTheme;
+  transitions: TransitionsConfig;
+  logo: LogoConfig;
+  playback?: ProjectorPlaybackState;
+}
+
 export interface ProjectorState {
   isLive: boolean;
   previewSlide: ProjectorSlide | null;
   liveSlide: ProjectorSlide | null;
+  previewMedia: ProjectorMedia | null;
+  liveMedia: ProjectorMedia | null;
   currentSlide: ProjectorSlide | null;
+  currentMedia: ProjectorMedia | null;
+  activeOverlays: ActiveOverlay[];
   overlayMode: OverlayMode;
   theme: VerseTheme;
   feedOverride: "live" | "logo" | "black" | "clear";
-  /** display id/name for HDMI output selection */
+  /** Display id/name retained for backwards-compatible persisted state. */
   outputDisplay: string | null;
+  availableDisplays: DisplayInfo[];
+  selectedDisplayId: string | null;
+  outputStatus: ProjectorOutputStatus;
   ndiEnabled: boolean;
   transitions: TransitionsConfig;
+  logo: LogoConfig;
+  livePlayback: ProjectorPlaybackState;
 }
 
 // ---------------------------------------------------------------------------

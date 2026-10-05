@@ -1,8 +1,10 @@
 import { useEffect, useState, type ReactElement } from "react";
+import { invoke } from "@tauri-apps/api/core";
 
 import {
   IconArchive,
   IconBook,
+  IconCamera,
   IconGeneral,
   IconHelp,
   IconKeyboard,
@@ -19,6 +21,7 @@ import {
 import { ArchivalTab } from "./tabs/ArchivalTab";
 import { AudioDetectionTab } from "./tabs/AudioDetectionTab";
 import { BibleVersionsTab } from "./tabs/BibleVersionsTab";
+import { CameraTab } from "./tabs/CameraTab";
 import { DisplayMiddlewareTab } from "./tabs/DisplayMiddlewareTab";
 import { GeneralTab } from "./tabs/GeneralTab";
 import { HelpTab } from "./tabs/HelpTab";
@@ -30,6 +33,7 @@ import { ShortcutsTab } from "./tabs/ShortcutsTab";
 import { ThemeTab } from "./tabs/ThemeTab";
 import { TransitionsTab } from "./tabs/TransitionsTab";
 import { DEFAULT_SETTINGS_PANEL_STATE, type SettingsPanelState } from "./types";
+import { loadPanelState, normalizeSettingsPanelState, SETTINGS_STORAGE_KEY } from "./settingsPersistence";
 import type { AudioInputDevice, AudioStatus, UiTheme } from "../../types/state";
 import { useProjectorStore } from "../../stores/projectorStore";
 
@@ -39,6 +43,7 @@ export type SettingsTabId =
   | "intelligence"
   | "bible"
   | "display"
+  | "camera"
   | "presentation"
   | "shortcuts"
   | "transitions"
@@ -54,6 +59,7 @@ const TABS: { id: SettingsTabId; label: string; icon: ReactElement }[] = [
   { id: "intelligence", label: "Intelligence Layer", icon: <IconSparkles /> },
   { id: "bible", label: "Bible Versions", icon: <IconBook /> },
   { id: "display", label: "Display & Middleware", icon: <IconMonitor /> },
+  { id: "camera", label: "Camera & Wireless", icon: <IconCamera /> },
   { id: "presentation", label: "Presentation", icon: <IconLayout /> },
   { id: "shortcuts", label: "Keyboard Shortcuts", icon: <IconKeyboard /> },
   { id: "transitions", label: "Transitions & Motion", icon: <IconTransition /> },
@@ -80,18 +86,8 @@ export interface SettingsPanelProps {
   onVadSensitivityChange: (value: number) => void;
 }
 
-const SETTINGS_STORAGE_KEY = "sermonsync-settings-panel";
-
-function loadPanelState(): SettingsPanelState {
-  if (typeof window === "undefined") return DEFAULT_SETTINGS_PANEL_STATE;
-
-  try {
-    const stored = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
-    if (!stored) return DEFAULT_SETTINGS_PANEL_STATE;
-    return { ...DEFAULT_SETTINGS_PANEL_STATE, ...JSON.parse(stored) as Partial<SettingsPanelState> };
-  } catch {
-    return DEFAULT_SETTINGS_PANEL_STATE;
-  }
+function isTauriRuntime() {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
 export function SettingsPanel({
@@ -112,11 +108,46 @@ export function SettingsPanel({
   const [activeTab, setActiveTab] = useState<SettingsTabId>("general");
   const [visitedTabs, setVisitedTabs] = useState<Set<SettingsTabId>>(() => new Set(["general"]));
   const [panelState, setPanelState] = useState<SettingsPanelState>(loadPanelState);
+  const [nativePersistenceReady, setNativePersistenceReady] = useState(() => !isTauriRuntime());
 
   useEffect(() => {
-    window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(panelState));
     useProjectorStore.getState().setTransitions(panelState.transitions);
+    useProjectorStore.getState().setLogo(panelState.logo);
   }, [panelState]);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let active = true;
+    void invoke<string | null>("load_app_settings").then((payload) => {
+      if (!active) return;
+      if (payload) setPanelState(normalizeSettingsPanelState(JSON.parse(payload)));
+    }).catch((error: unknown) => {
+      console.warn("Native settings could not be loaded; using the browser backup", error);
+    }).finally(() => {
+      if (active) setNativePersistenceReady(true);
+    });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!nativePersistenceReady) return;
+    const payload = JSON.stringify(panelState);
+    try {
+      window.localStorage.setItem(SETTINGS_STORAGE_KEY, payload);
+    } catch {
+      // Keep a small browser backup for ordinary controls. Native storage is
+      // authoritative when an uploaded logo is too large for localStorage.
+      const backup = JSON.stringify({ ...panelState, logo: { ...panelState.logo, src: null } });
+      try { window.localStorage.setItem(SETTINGS_STORAGE_KEY, backup); } catch { /* Native storage still persists it. */ }
+    }
+    if (!isTauriRuntime()) return;
+    const timeout = window.setTimeout(() => {
+      void invoke("save_app_settings", { payload }).catch((error: unknown) => {
+        console.error("Settings could not be saved", error);
+      });
+    }, 100);
+    return () => window.clearTimeout(timeout);
+  }, [nativePersistenceReady, panelState]);
 
   useEffect(() => {
     if (!open) return;
@@ -147,13 +178,19 @@ export function SettingsPanel({
     if (key === "transitions") {
       useProjectorStore.getState().setTransitions(value as SettingsPanelState["transitions"]);
     }
+    if (key === "logo") {
+      useProjectorStore.getState().setLogo(value as SettingsPanelState["logo"]);
+    }
   };
 
   const handleImportSettings = (value: Partial<SettingsPanelState>) => {
     setPanelState((prev) => {
-      const next = { ...prev, ...value };
+      const next = normalizeSettingsPanelState(value, prev);
       if (next.transitions) {
         useProjectorStore.getState().setTransitions(next.transitions);
+      }
+      if (next.logo) {
+        useProjectorStore.getState().setLogo(next.logo);
       }
       return next;
     });
@@ -163,6 +200,7 @@ export function SettingsPanel({
     if (window.confirm("Reset all settings to their default values? This cannot be undone.")) {
       setPanelState(DEFAULT_SETTINGS_PANEL_STATE);
       useProjectorStore.getState().setTransitions(DEFAULT_SETTINGS_PANEL_STATE.transitions);
+      useProjectorStore.getState().setLogo(DEFAULT_SETTINGS_PANEL_STATE.logo);
     }
   };
 
@@ -332,6 +370,7 @@ export function SettingsPanel({
               {visitedTabs.has("intelligence") ? <div style={{ display: activeTab === "intelligence" ? "block" : "none" }}><IntelligenceTab panelState={panelState} onPanelChange={handlePanelChange} /></div> : null}
               {visitedTabs.has("bible") ? <div style={{ display: activeTab === "bible" ? "block" : "none" }}><BibleVersionsTab /></div> : null}
               {visitedTabs.has("display") ? <div style={{ display: activeTab === "display" ? "block" : "none" }}><DisplayMiddlewareTab panelState={panelState} onPanelChange={handlePanelChange} /></div> : null}
+              {visitedTabs.has("camera") ? <div style={{ display: activeTab === "camera" ? "block" : "none" }}><CameraTab /></div> : null}
               {visitedTabs.has("presentation") ? <div style={{ display: activeTab === "presentation" ? "block" : "none" }}><PresentationTab panelState={panelState} onPanelChange={handlePanelChange} /></div> : null}
               {visitedTabs.has("shortcuts") ? <div style={{ display: activeTab === "shortcuts" ? "block" : "none" }}><ShortcutsTab /></div> : null}
               {visitedTabs.has("transitions") ? <div style={{ display: activeTab === "transitions" ? "block" : "none" }}><TransitionsTab panelState={panelState} onPanelChange={handlePanelChange} /></div> : null}

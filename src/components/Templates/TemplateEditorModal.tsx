@@ -1,15 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Textbox } from "fabric";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@tauri-apps/api/core";
 
 import type { TemplateCanvasTheme, TemplateCategory, TemplateLayer, TemplateScene, TemplateTextScript } from "../../types/templates";
 import type { OverlayMode } from "../../types/state";
 import { createEmptyStudioDocument, type StudioDocument } from "../../types/studioDocument";
 import { useTemplateStore } from "../../stores/templateStore";
+import { stageTemplateVideo } from "../../lib/templateVideo";
+import { importErrorMessage, importVideo } from "../../lib/videoImport";
+import { mediaCategoryForPath } from "../../lib/mediaLibrary";
 import { isShortcutEvent, useShortcutStore } from "../../stores/shortcutStore";
 import { FabricStudioCanvas, type StudioCanvasHandle, type StudioTextSelection } from "./FabricStudioCanvas";
 import { StudioLayersPanel } from "./StudioLayersPanel";
 import { StudioToolbar } from "./StudioToolbar";
+import type { CameraEditMode } from "../../lib/cameraFrame";
 
 interface TemplateEditorModalProps {
   open: boolean;
@@ -97,6 +103,8 @@ function studioDocumentFromLegacyTemplate(template: TemplateCanvasTheme): Studio
     width,
     height,
     background: scene.backgroundStart,
+    backgroundMode: scene.backgroundMedia ? "media" : "color",
+    backgroundMedia: scene.backgroundMedia,
     fabricVersion: "7.0.0",
     objects,
     createdAt: template.createdAt,
@@ -346,6 +354,11 @@ function sceneFromStudioDocument(document: StudioDocument, fallback: TemplateSce
     canvasWidth: document.width,
     canvasHeight: document.height,
     backgroundStart: document.background,
+    // The studio document is the authoring model, while ProjectorView reads
+    // from the legacy-compatible scene model. Keep live camera backgrounds in
+    // both models or they appear selected in the editor and disappear after
+    // the template is saved.
+    backgroundMedia: document.backgroundMedia ?? null,
     gradientAngle: document.backgroundGradientAngle ?? 135,
     gradientStyle: document.backgroundGradientStyle ?? "linear",
     layers: layers.length > 0 ? layers : fallback.layers,
@@ -358,17 +371,18 @@ export function TemplateEditorModal(props: TemplateEditorModalProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [textSelection, setTextSelection] = useState<StudioTextSelection | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isVideoStaging, setIsVideoStaging] = useState(false);
+  const [videoImportPercent, setVideoImportPercent] = useState<number | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isTitlePromptOpen, setIsTitlePromptOpen] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [titlePromptError, setTitlePromptError] = useState<string | null>(null);
   const [historyState, setHistoryState] = useState({ canUndo: false, canRedo: false });
   const [screenLayout, setScreenLayout] = useState<OverlayMode>("widescreen");
-  const [isCameraDialogOpen, setIsCameraDialogOpen] = useState(false);
-  const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([]);
-  const [selectedCameraId, setSelectedCameraId] = useState("");
-  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [cameraEditMode, setCameraEditMode] = useState<CameraEditMode>("off");
   const templates = useTemplateStore((state) => state.templates);
+  const templatesRef = useRef(templates);
+  useEffect(() => { templatesRef.current = templates; }, [templates]);
   const createTemplateDraft = useTemplateStore((state) => state.createTemplateDraft);
   const upsertTemplate = useTemplateStore((state) => state.upsertTemplate);
   const shortcuts = useShortcutStore((state) => state.shortcuts);
@@ -377,13 +391,72 @@ export function TemplateEditorModal(props: TemplateEditorModalProps) {
   const shapeMediaInputRef = useRef<HTMLInputElement | null>(null);
   const shapeMediaTargetRef = useRef<string | null>(null);
   const shapeMediaTypeRef = useRef<"image" | "video">("image");
-  const cameraPreviewRef = useRef<HTMLVideoElement | null>(null);
-  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const canvasImportRef = useRef<AbortController | null>(null);
+  const canvasImportIdRef = useRef(0);
+
+  useEffect(() => {
+    if (!open) {
+      canvasImportIdRef.current += 1;
+      canvasImportRef.current?.abort();
+      canvasImportRef.current = null;
+    }
+    return () => {
+      if (!open) return;
+      canvasImportIdRef.current += 1;
+      canvasImportRef.current?.abort();
+    };
+  }, [open]);
+
+  const importCanvasMedia = async (shapeId?: string) => {
+    let importId = 0;
+    try {
+      const selected = await openDialog({
+        multiple: false,
+      });
+      const path = Array.isArray(selected) ? selected[0] : selected;
+      if (!path) return;
+      const name = path.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") ?? "Media";
+      const kind = mediaCategoryForPath(path);
+      if (kind === "images") {
+        const source = await invoke<string>("read_template_image_file", { path });
+        if (shapeId) await canvasHandleRef.current?.setShapeMedia(shapeId, source, name, "image");
+        else await canvasHandleRef.current?.addImage(source, name, "image");
+        return;
+      }
+      canvasImportRef.current?.abort();
+      importId = ++canvasImportIdRef.current;
+      const controller = new AbortController();
+      canvasImportRef.current = controller;
+      setIsVideoStaging(true);
+      setVideoImportPercent(null);
+      const asset = await importVideo(path, {
+        signal: controller.signal,
+        onProgress: (event) => {
+          if (canvasImportIdRef.current === importId) setVideoImportPercent(event.percent);
+        },
+      });
+      if (canvasImportIdRef.current !== importId) return;
+      if (shapeId) await canvasHandleRef.current?.setShapeMedia(shapeId, asset.path, name, "video");
+      else await canvasHandleRef.current?.addImage(asset.path, name, "video");
+    } catch (error) {
+      if ((error as { code?: string })?.code !== "IMPORT_CANCELLED") {
+        setSaveError(`The media could not be imported: ${importErrorMessage(error)}`);
+      }
+    } finally {
+      if (importId !== 0 && canvasImportIdRef.current === importId) {
+        setIsVideoStaging(false);
+        setVideoImportPercent(null);
+        canvasImportRef.current = null;
+      }
+    }
+  };
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       if (!open) {
         setDocument(null);
+        setIsVideoStaging(false);
+        setVideoImportPercent(null);
         setSelectedIds([]);
         setTextSelection(null);
         setSaveError(null);
@@ -392,12 +465,16 @@ export function TemplateEditorModal(props: TemplateEditorModalProps) {
         setTitlePromptError(null);
         return;
       }
-      const existing = templateId ? templates.find((entry) => entry.id === templateId) : undefined;
+      const existing = templateId ? templatesRef.current.find((entry) => entry.id === templateId) : undefined;
+      setIsVideoStaging(false);
+      setVideoImportPercent(null);
       const initialLayout = existing?.layout ?? "widescreen";
       setScreenLayout(initialLayout);
-      setDocument(existing?.studioDocument ?? (existing
+      const initialDocument = existing?.studioDocument ?? (existing
         ? studioDocumentFromLegacyTemplate(existing)
-        : createEmptyStudioDocument(category, `New ${categoryLabel(category)} Template`)));
+        : createEmptyStudioDocument(category, `New ${categoryLabel(category)} Template`));
+      setCameraEditMode(initialDocument.backgroundMode === "media" && initialDocument.backgroundMedia?.type === "camera" ? "frame" : "off");
+      setDocument(initialDocument);
       setSelectedIds([]);
       setTextSelection(null);
       setSaveError(null);
@@ -406,7 +483,7 @@ export function TemplateEditorModal(props: TemplateEditorModalProps) {
       setTitlePromptError(null);
     }, 0);
     return () => window.clearTimeout(timeoutId);
-  }, [category, open, templateId, templates]);
+  }, [category, open, templateId]);
 
   const onDocumentChange = useCallback((patch: Partial<Pick<StudioDocument, "objects" | "background" | "backgroundMode" | "backgroundColor" | "backgroundGradientStart" | "backgroundGradientEnd" | "backgroundGradientAngle" | "backgroundGradientStyle" | "backgroundBlur" | "backgroundMedia" | "updatedAt">>) => {
     setDocument((current) => (current ? { ...current, ...patch } : current));
@@ -427,11 +504,17 @@ export function TemplateEditorModal(props: TemplateEditorModalProps) {
   }, [document]);
 
   const saveTemplate = async (titleOverride?: string) => {
-    if (!document || isSaving) return;
+    if (!document || isSaving || isVideoStaging) return;
     setIsSaving(true);
     setSaveError(null);
     try {
-      const currentDocument = canvasHandleRef.current?.toDocument() ?? document;
+      let currentDocument = canvasHandleRef.current?.toDocument() ?? document;
+      const media = currentDocument.backgroundMedia;
+      if (media?.type === "video" && media.src.startsWith("data:") && "__TAURI_INTERNALS__" in window) {
+        const path = await stageTemplateVideo(media.src);
+        const asset = await importVideo(path, { legacy: true });
+        currentDocument = { ...currentDocument, backgroundMedia: { ...media, src: asset.path } };
+      }
       const existing = templateId ? templates.find((entry) => entry.id === templateId) : undefined;
       const draft = existing ?? createTemplateDraft(category);
       const now = Date.now();
@@ -465,67 +548,8 @@ export function TemplateEditorModal(props: TemplateEditorModalProps) {
     setScreenLayout(layout);
   };
 
-  const closeCameraDialog = () => {
-    cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
-    cameraStreamRef.current = null;
-    setIsCameraDialogOpen(false);
-    setCameraError(null);
-  };
-
-  useEffect(() => {
-    if (!isCameraDialogOpen) return;
-    let cancelled = false;
-    const startCamera = async () => {
-      if (!navigator.mediaDevices?.getUserMedia || !navigator.mediaDevices.enumerateDevices) {
-        setCameraError("Camera capture is unavailable in this application runtime.");
-        return;
-      }
-      try {
-        cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
-        const stream = await navigator.mediaDevices.getUserMedia({ video: selectedCameraId ? { deviceId: { exact: selectedCameraId } } : true, audio: false });
-        if (cancelled) {
-          stream.getTracks().forEach((track) => track.stop());
-          return;
-        }
-        cameraStreamRef.current = stream;
-        if (cameraPreviewRef.current) {
-          cameraPreviewRef.current.srcObject = stream;
-          await cameraPreviewRef.current.play().catch(() => undefined);
-        }
-        const devices = (await navigator.mediaDevices.enumerateDevices()).filter((device) => device.kind === "videoinput");
-        if (!cancelled) {
-          setCameraDevices(devices);
-          setSelectedCameraId((current) => current || devices[0]?.deviceId || "");
-          setCameraError(null);
-        }
-      } catch (error) {
-        if (!cancelled) setCameraError(error instanceof Error ? error.message : "Unable to access the selected camera.");
-      }
-    };
-    void startCamera();
-    return () => {
-      cancelled = true;
-      cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
-      cameraStreamRef.current = null;
-    };
-  }, [isCameraDialogOpen, selectedCameraId]);
-
-  const captureCameraFrame = () => {
-    const video = cameraPreviewRef.current;
-    if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
-      setCameraError("Camera preview is not ready yet.");
-      return;
-    }
-    const frame = globalThis.document.createElement("canvas");
-    frame.width = video.videoWidth;
-    frame.height = video.videoHeight;
-    frame.getContext("2d")?.drawImage(video, 0, 0, frame.width, frame.height);
-    void canvasHandleRef.current?.addImage(frame.toDataURL("image/png"), "Camera capture");
-    closeCameraDialog();
-  };
-
   const requestSave = () => {
-    if (!document || isSaving) return;
+    if (!document || isSaving || isVideoStaging) return;
     const existing = templateId ? templates.find((entry) => entry.id === templateId) : undefined;
     if (existing) {
       void saveTemplate();
@@ -555,6 +579,10 @@ export function TemplateEditorModal(props: TemplateEditorModalProps) {
       if (event.key === "Escape") {
         if (isTitlePromptOpen) {
           setIsTitlePromptOpen(false);
+          return;
+        }
+        if (cameraEditMode === "crop") {
+          setCameraEditMode("frame");
           return;
         }
         if (isTextEditing) return;
@@ -607,7 +635,7 @@ export function TemplateEditorModal(props: TemplateEditorModalProps) {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isTitlePromptOpen, onClose, open, selectedIds, shortcuts]);
+  }, [cameraEditMode, isTitlePromptOpen, onClose, open, selectedIds, shortcuts]);
 
   if (!open || !document) {
     return null;
@@ -633,6 +661,7 @@ export function TemplateEditorModal(props: TemplateEditorModalProps) {
       }}
     >
       <div
+        className="studio-modal"
         style={{
           width: "min(1180px, 96vw)",
           height: "min(760px, 92vh)",
@@ -664,6 +693,16 @@ export function TemplateEditorModal(props: TemplateEditorModalProps) {
               {categoryLabel(category).toUpperCase()} · CANVAS AUTHORING
             </span>
           </div>
+          {isVideoStaging ? <div role="status" style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--fg-muted)", fontSize: 11 }}>
+            Preparing video{videoImportPercent == null ? "…" : ` · ${videoImportPercent}%`}
+            <button type="button" onClick={() => {
+              canvasImportIdRef.current += 1;
+              canvasImportRef.current?.abort();
+              canvasImportRef.current = null;
+              setIsVideoStaging(false);
+              setVideoImportPercent(null);
+            }}>Cancel</button>
+          </div> : null}
           <button
             type="button"
             onClick={onClose}
@@ -678,6 +717,7 @@ export function TemplateEditorModal(props: TemplateEditorModalProps) {
           <div style={{ position: "relative", minHeight: 0, minWidth: 0 }}>
             <FabricStudioCanvas
               document={document}
+              cameraEditMode={cameraEditMode}
               handleRef={canvasHandleRef}
               onSelectionChange={setSelectedIds}
               onTextSelectionChange={setTextSelection}
@@ -687,8 +727,10 @@ export function TemplateEditorModal(props: TemplateEditorModalProps) {
             <StudioToolbar
               onAddText={() => canvasHandleRef.current?.addText(defaultTextBox)}
               onAddShape={(kind) => canvasHandleRef.current?.addShape(kind, defaultShapeBox)}
-              onAddMedia={() => mediaInputRef.current?.click()}
-              onAddCamera={() => setIsCameraDialogOpen(true)}
+              onAddMedia={() => {
+                if ("__TAURI_INTERNALS__" in window) void importCanvasMedia();
+                else mediaInputRef.current?.click();
+              }}
             />
             <input
               ref={mediaInputRef}
@@ -700,6 +742,7 @@ export function TemplateEditorModal(props: TemplateEditorModalProps) {
                 event.target.value = "";
                 if (!file) return;
                 const mediaType = file.type.startsWith("video/") || /\.(mp4|webm|mov|m4v|ogg)$/i.test(file.name) ? "video" : "image";
+                if (mediaType === "video") { setSaveError("Open SermonSync in the desktop app to import videos."); return; }
                 const reader = new FileReader();
                 reader.onload = () => void canvasHandleRef.current?.addImage(String(reader.result), file.name.replace(/\.[^.]+$/, ""), mediaType);
                 reader.readAsDataURL(file);
@@ -717,6 +760,7 @@ export function TemplateEditorModal(props: TemplateEditorModalProps) {
                 shapeMediaTargetRef.current = null;
                 if (!file || !studioId) return;
                 const mediaType = file.type.startsWith("video/") || /\.(mp4|webm|mov|m4v|ogg)$/i.test(file.name) ? "video" : "image";
+                if (mediaType === "video") { setSaveError("Open SermonSync in the desktop app to import videos."); return; }
                 const reader = new FileReader();
                 reader.onload = () => void canvasHandleRef.current?.setShapeMedia(studioId, String(reader.result), file.name.replace(/\.[^.]+$/, ""), mediaType);
                 reader.readAsDataURL(file);
@@ -733,6 +777,10 @@ export function TemplateEditorModal(props: TemplateEditorModalProps) {
             onToggleLock={(studioId, locked) => canvasHandleRef.current?.setLocked(studioId, locked)}
             onUpdate={(studioId, props) => canvasHandleRef.current?.updateObject(studioId, props)}
             onSetShapeMedia={(studioId, mediaType = "image") => {
+              if (mediaType === "video" && "__TAURI_INTERNALS__" in window) {
+                void importCanvasMedia(studioId);
+                return;
+              }
               shapeMediaTargetRef.current = studioId;
               shapeMediaTypeRef.current = mediaType;
               if (shapeMediaInputRef.current) shapeMediaInputRef.current.accept = mediaType === "video" ? "video/*" : "image/*";
@@ -754,7 +802,17 @@ export function TemplateEditorModal(props: TemplateEditorModalProps) {
             backgroundGradientStyle={document.backgroundGradientStyle ?? "linear"}
             backgroundBlur={document.backgroundBlur ?? 0}
             backgroundMedia={document.backgroundMedia ?? null}
-            onBackgroundConfigChange={(config) => canvasHandleRef.current?.setBackgroundConfig(config)}
+            cameraEditMode={cameraEditMode}
+            onCameraEditModeChange={(mode) => {
+              if (mode === "crop") {
+                canvasHandleRef.current?.getCanvas()?.discardActiveObject();
+                canvasHandleRef.current?.getCanvas()?.requestRenderAll();
+                setSelectedIds([]);
+              }
+              setCameraEditMode(mode);
+            }}
+            onBackgroundVideoStagingChange={setIsVideoStaging}
+            onBackgroundConfigChange={(config) => { setCameraEditMode((current) => config.mode === "media" && config.media?.type === "camera" ? (current === "crop" ? "crop" : "frame") : "off"); canvasHandleRef.current?.setBackgroundConfig(config); }}
             screenLayout={screenLayout}
             onScreenLayoutChange={changeScreenLayout}
             onDelete={(studioId) => {
@@ -785,34 +843,13 @@ export function TemplateEditorModal(props: TemplateEditorModalProps) {
           <button
             type="button"
             onClick={requestSave}
-            disabled={isSaving}
-            style={{ border: "none", background: isSaving ? "var(--bg-elevated)" : "var(--color-primary)", color: isSaving ? "var(--fg-subtle)" : "white", borderRadius: "8px", padding: "8px 12px", fontWeight: 700, cursor: isSaving ? "wait" : "pointer" }}
+            disabled={isSaving || isVideoStaging}
+            style={{ border: "none", background: isSaving || isVideoStaging ? "var(--bg-elevated)" : "var(--color-primary)", color: isSaving || isVideoStaging ? "var(--fg-subtle)" : "white", borderRadius: "8px", padding: "8px 12px", fontWeight: 700, cursor: isSaving || isVideoStaging ? "wait" : "pointer" }}
           >
-            {isSaving ? "Saving..." : "Save Template"}
+            {isVideoStaging ? "Importing video..." : isSaving ? "Saving..." : "Save Template"}
           </button>
         </footer>
       </div>
-
-      {isCameraDialogOpen ? (
-        <div role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeCameraDialog(); }} style={{ position: "absolute", inset: 0, zIndex: 3, display: "grid", placeItems: "center", padding: "16px", background: "color-mix(in srgb, var(--overlay-backdrop) 72%, transparent)" }}>
-          <section role="dialog" aria-modal="true" aria-labelledby="camera-capture-title" style={{ width: "min(560px, 100%)", background: "var(--bg-surface)", border: "1px solid var(--border-base)", borderRadius: "10px", boxShadow: "var(--shadow-lg)", padding: "16px" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", marginBottom: "12px" }}>
-              <div><h2 id="camera-capture-title" style={{ margin: 0, color: "var(--fg-base)", fontSize: "16px" }}>Camera capture</h2><p style={{ margin: "4px 0 0", color: "var(--fg-muted)", fontSize: "12px" }}>Select an integrated or connected video device, then capture a frame.</p></div>
-              <button type="button" onClick={closeCameraDialog} title="Close camera capture" style={{ width: "28px", height: "28px", border: "none", borderRadius: "6px", background: "var(--bg-elevated)", color: "var(--fg-base)", cursor: "pointer" }}>×</button>
-            </div>
-            <label style={{ display: "grid", gap: "4px", color: "var(--fg-muted)", fontSize: "11px", marginBottom: "10px" }}>Video device
-              <select value={selectedCameraId} onChange={(event) => setSelectedCameraId(event.target.value)} style={{ border: "none", borderRadius: "5px", background: "var(--bg-base)", color: "var(--fg-base)", padding: "8px", fontSize: "12px" }}>
-                {cameraDevices.length === 0 ? <option value="">Detecting cameras...</option> : cameraDevices.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `Camera ${index + 1}`}</option>)}
-              </select>
-            </label>
-            <div style={{ aspectRatio: "16 / 9", overflow: "hidden", borderRadius: "6px", background: "#0b0d14", display: "grid", placeItems: "center" }}>
-              <video ref={cameraPreviewRef} muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              {cameraError ? <span style={{ gridArea: "1 / 1", maxWidth: "80%", color: "#fff", fontSize: "12px", lineHeight: 1.4, textAlign: "center" }}>{cameraError}</span> : null}
-            </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "14px" }}><button type="button" onClick={closeCameraDialog} style={{ border: "none", borderRadius: "6px", background: "var(--bg-elevated)", color: "var(--fg-base)", padding: "8px 12px", cursor: "pointer" }}>Cancel</button><button type="button" onClick={captureCameraFrame} disabled={Boolean(cameraError)} style={{ border: "none", borderRadius: "6px", background: "var(--color-primary)", color: "var(--fg-on-accent)", padding: "8px 12px", fontWeight: 700, cursor: cameraError ? "not-allowed" : "pointer", opacity: cameraError ? 0.55 : 1 }}>Capture frame</button></div>
-          </section>
-        </div>
-      ) : null}
 
       {isTitlePromptOpen ? (
         <div

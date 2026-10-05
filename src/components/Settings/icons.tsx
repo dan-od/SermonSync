@@ -259,3 +259,23 @@ export function IconTrash(props: SVGProps<SVGSVGElement>) {
     </Base>
   );
 }
+
+export function IconCamera(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Base {...props}>
+      <path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1-1.6A1.5 1.5 0 0 1 9.8 4.7h4.4a1.5 1.5 0 0 1 1.3.7L16.5 7h2A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5v-9Z" />
+      <circle cx="12" cy="13" r="3.4" />
+    </Base>
+  );
+}
+
+export function IconWifi(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Base {...props}>
+      <path d="M3 8.5a13 13 0 0 1 18 0" />
+      <path d="M6.2 12a8.5 8.5 0 0 1 11.6 0" />
+      <path d="M9.4 15.4a4 4 0 0 1 5.2 0" />
+      <circle cx="12" cy="19" r="1" fill="currentColor" stroke="none" />
+    </Base>
+  );
+}

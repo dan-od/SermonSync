@@ -12,12 +12,17 @@
 //   — or worse, the app window loads the *stale* frontend from the orphan.
 //
 // This script kills leftover listeners on 1420 so every dev start is clean.
-// Port 8000 (Python sidecar) is only reported, never killed: some workflows
-// run the sidecar manually on purpose.
+// Port 8000 is cleaned up when it is occupied by a stale SermonSync sidecar.
+// Unrelated services are only reported and are never killed.
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const VITE_PORT = 1420;
 const SIDECAR_PORT = 8000;
+const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const SIDECAR_DIR = path.join(PROJECT_ROOT, 'python-sidecar');
 
 function pidsOnPort(port) {
   // Linux (fuser from psmisc). PIDs go to stdout; "port/tcp:" header to stderr.
@@ -60,6 +65,38 @@ function describe(pids) {
     .join(', ');
 }
 
+function processInfo(pid) {
+  let args = '';
+  let cwd = '';
+  try {
+    args = execFileSync('ps', ['-o', 'args=', '-p', pid], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch {
+    return null;
+  }
+
+  // Linux gives us the process working directory, which identifies the
+  // development sidecar even when its command line only says "python main.py".
+  try {
+    cwd = fs.realpathSync(`/proc/${pid}/cwd`);
+  } catch {
+    /* /proc is unavailable on non-Linux hosts */
+  }
+
+  return { args, cwd };
+}
+
+function isSermonSyncSidecar(pid) {
+  const info = processInfo(pid);
+  if (!info || !/main\.py(?:\s|$)/.test(info.args)) return false;
+
+  const normalizedArgs = info.args.replaceAll('\\', '/');
+  const normalizedSidecarDir = SIDECAR_DIR.replaceAll('\\', '/');
+  return info.cwd === SIDECAR_DIR || normalizedArgs.includes(`${normalizedSidecarDir}/main.py`);
+}
+
 // --- Vite port: kill orphans so strictPort never trips on stale servers ---
 const vitePids = pidsOnPort(VITE_PORT);
 if (vitePids.length) {
@@ -75,11 +112,29 @@ if (vitePids.length) {
   }
 }
 
-// --- Sidecar port: warn only (may be an intentional manual instance) ---
+// --- Sidecar port: stop stale SermonSync instances, preserve foreign services ---
 const sidecarPids = pidsOnPort(SIDECAR_PORT);
 if (sidecarPids.length) {
-  console.warn(
-    `[predev] note: sidecar port ${SIDECAR_PORT} already in use by: ${describe(sidecarPids)}`
-  );
-  console.warn('[predev] the app spawns its own sidecar in dev; kill the above if it is stale.');
+  const managedPids = sidecarPids.filter(isSermonSyncSidecar);
+  const foreignPids = sidecarPids.filter((pid) => !managedPids.includes(pid));
+
+  if (managedPids.length) {
+    console.log(
+      `[predev] stopping stale SermonSync sidecar(s) on ${SIDECAR_PORT}: ${describe(managedPids)}`
+    );
+    for (const pid of managedPids) {
+      try {
+        process.kill(Number(pid), 'SIGKILL');
+      } catch {
+        /* already gone */
+      }
+    }
+  }
+
+  if (foreignPids.length) {
+    console.warn(
+      `[predev] port ${SIDECAR_PORT} is also used by an unrelated process: ${describe(foreignPids)}`
+    );
+    console.warn('[predev] SermonSync cannot safely stop that process; Tauri sidecar startup may fail until the port is free.');
+  }
 }

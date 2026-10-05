@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type SVGProps } from "react";
 
-import type { OverlayMode, ProjectorSlide, VerseTheme } from "../types/state";
+import type { OverlayMode, ProjectorMedia, ProjectorSlide, VerseTheme } from "../types/state";
 
+import { closeProjectorOutput, openProjectorOutput, selectedDisplay } from "../lib/projectorOutput";
+import { useProjectorStore } from "../stores/projectorStore";
 import { ProjectorView } from "./ProjectorView";
 
 const SPLIT_DIVIDER_WIDTH = 6;
@@ -9,14 +11,37 @@ const MIN_SCREEN_WIDTH = 260;
 const DEFAULT_SPLIT_RATIO = 0.5;
 const PROJECTION_FONT_SIZE_PX = 48;
 
+/** "Cast" glyph: device outline broadcasting to a screen, used for the output toggle. */
+function IconCast(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width="13" height="13" aria-hidden="true" {...props}>
+      <path d="M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-7" />
+      <path d="M2 12a6 6 0 0 1 6 6" />
+      <path d="M2 16a2 2 0 0 1 2 2" />
+      <circle cx="3" cy="20" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+/** Same glyph with a filled screen indicator, used once the output is live. */
+function IconCastConnected(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width="13" height="13" aria-hidden="true" {...props}>
+      <path d="M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-7" />
+      <path d="M2 12a6 6 0 0 1 6 6" />
+      <rect x="1" y="16.5" width="5" height="5" rx="1.2" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 interface ProjectorDeskPanelProps {
   previewSlide: ProjectorSlide | null;
   liveSlide: ProjectorSlide | null;
+  previewMedia?: ProjectorMedia | null;
+  liveMedia?: ProjectorMedia | null;
   feedOverride: "live" | "logo" | "black" | "clear";
-  overlayMode: OverlayMode;
   onOverlayModeChange?: (mode: OverlayMode) => void;
   theme: VerseTheme;
-  onSendLive: () => void;
   onPrevious: () => void;
   onNext: () => void;
 }
@@ -24,13 +49,14 @@ interface ProjectorDeskPanelProps {
 export function ProjectorDeskPanel({
   previewSlide,
   liveSlide,
+  previewMedia = null,
+  liveMedia = null,
   feedOverride,
-  overlayMode,
   theme,
-  onSendLive,
   onPrevious,
   onNext,
 }: ProjectorDeskPanelProps) {
+  const overlayMode = useProjectorStore((s) => s.overlayMode);
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef({ clientX: 0, previewWidth: 0 });
   const [autoSendEnabled, setAutoSendEnabled] = useState(true);
@@ -38,6 +64,30 @@ export function ProjectorDeskPanel({
   const [previewWidth, setPreviewWidth] = useState(0);
   const [isDividerHovering, setIsDividerHovering] = useState(false);
   const [isDividerDragging, setIsDividerDragging] = useState(false);
+  const outputStatus = useProjectorStore((s) => s.outputStatus);
+  const livePlayback = useProjectorStore((s) => s.livePlayback);
+  const activeOverlays = useProjectorStore((s) => s.activeOverlays);
+  const setLivePlayback = useProjectorStore((s) => s.setLivePlayback);
+  const seekLivePlayback = useProjectorStore((s) => s.seekLivePlayback);
+  const hasSelectedDisplay = useProjectorStore((s) => s.selectedDisplayId !== null);
+  const isOutputLive = outputStatus === "connected" || outputStatus === "ready";
+  const [isTogglingOutput, setIsTogglingOutput] = useState(false);
+
+  const handleToggleOutput = useCallback(async () => {
+    setIsTogglingOutput(true);
+    try {
+      if (isOutputLive) {
+        await closeProjectorOutput();
+      } else {
+        const display = selectedDisplay();
+        if (display) await openProjectorOutput(display);
+      }
+    } catch {
+      // openProjectorOutput/closeProjectorOutput already record the failure on the store.
+    } finally {
+      setIsTogglingOutput(false);
+    }
+  }, [isOutputLive]);
 
   const clampPreviewWidth = useCallback((containerWidth: number, nextPreviewWidth: number) => {
     const availableWidth = Math.max(0, containerWidth - SPLIT_DIVIDER_WIDTH);
@@ -146,31 +196,6 @@ export function ProjectorDeskPanel({
       >
         <span style={{ color: "var(--fg-base)", letterSpacing: "0.1em", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>PROJECTION SIMULATION</span>
         <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0, flexShrink: 0 }}>
-          <button
-            type="button"
-            onClick={onSendLive}
-            style={{
-              border: "none",
-              borderRadius: "var(--radius-md)",
-              padding: "4px 10px",
-              background: "linear-gradient(90deg, #8f1df0, #b822ff)",
-              color: "white",
-              fontFamily: "var(--font-sans)",
-              fontWeight: 800,
-              fontSize: "10px",
-              lineHeight: 1,
-              letterSpacing: "0.02em",
-              cursor: "pointer",
-              opacity: autoSendEnabled ? 1 : 0.94,
-              minWidth: 0,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            ▷ ▶ DISPLAY LIVE
-          </button>
-          <span style={{ color: "var(--fg-subtle)" }}>|</span>
           <span style={{ color: "var(--fg-muted)" }}>AUTO SEND :</span>
           <button
             type="button"
@@ -236,6 +261,31 @@ export function ProjectorDeskPanel({
           >
             NEXT ›
           </button>
+          <span style={{ color: "var(--fg-subtle)" }}>|</span>
+          <button
+            type="button"
+            onClick={() => void handleToggleOutput()}
+            disabled={isTogglingOutput || (!isOutputLive && !hasSelectedDisplay)}
+            title={isOutputLive ? "Close the projector output window" : "Open the projector output window"}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "5px",
+              border: "none",
+              background: isOutputLive ? "var(--color-primary-muted)" : "var(--bg-elevated)",
+              color: isOutputLive ? "var(--color-primary)" : "var(--fg-base)",
+              borderRadius: "var(--radius-md)",
+              padding: "4px 8px",
+              fontFamily: "var(--font-mono)",
+              fontSize: "10px",
+              lineHeight: 1,
+              cursor: isTogglingOutput || (!isOutputLive && !hasSelectedDisplay) ? "not-allowed" : "pointer",
+              opacity: isTogglingOutput || (!isOutputLive && !hasSelectedDisplay) ? 0.55 : 1,
+            }}
+          >
+            {isOutputLive ? <IconCastConnected /> : <IconCast />}
+            {isOutputLive ? "CLOSE OUTPUT" : "OPEN OUTPUT"}
+          </button>
         </div>
       </div>
 
@@ -263,7 +313,7 @@ export function ProjectorDeskPanel({
             padding: "8px",
           }}
         >
-          <ProjectorView title="PREVIEW" slide={previewSlide} feedOverride="live" overlayMode={overlayMode} theme={theme} isLive={false} fontSizePx={PROJECTION_FONT_SIZE_PX} />
+          <ProjectorView title="PREVIEW" slide={previewSlide} media={previewMedia} feedOverride="live" overlayMode={overlayMode} theme={theme} isLive={false} fontSizePx={PROJECTION_FONT_SIZE_PX} />
         </div>
 
         <div
@@ -300,7 +350,7 @@ export function ProjectorDeskPanel({
             padding: "8px",
           }}
         >
-          <ProjectorView title="LIVE" slide={liveSlide} feedOverride={feedOverride} overlayMode={overlayMode} theme={theme} isLive={liveSlide !== null} fontSizePx={PROJECTION_FONT_SIZE_PX} />
+          <ProjectorView title="LIVE" slide={liveSlide} media={liveMedia} overlays={activeOverlays} feedOverride={feedOverride} overlayMode={overlayMode} theme={theme} isLive={liveSlide !== null || liveMedia !== null || activeOverlays.length > 0} fontSizePx={PROJECTION_FONT_SIZE_PX} playback={livePlayback} onPlaybackChange={setLivePlayback} onSeek={seekLivePlayback} />
         </div>
       </div>
     </div>

@@ -13,10 +13,11 @@
  * v3.0 §5–§10.
  */
 
-import type { TransitionEasing, TransitionEffect, TransitionSetting, TransitionsConfig } from "../../types/state";
-import { DEFAULT_TRANSITIONS } from "../../stores/projectorStore";
+import type { LogoConfig, TransitionEasing, TransitionEffect, TransitionSetting, TransitionsConfig } from "../../types/state";
+import { DEFAULT_LOGO, DEFAULT_TRANSITIONS } from "../../stores/projectorStore";
 
 export type { TransitionEasing, TransitionEffect, TransitionSetting, TransitionsConfig };
+export type { LogoConfig, LogoFit } from "../../types/state";
 
 export type SttMode = "moonshine" | "whisper";
 export type IdleScreenMode = "logo" | "background" | "color";
@@ -52,7 +53,9 @@ export interface SettingsPanelState {
   outputDisplayId: string;
   idleScreenMode: IdleScreenMode;
   idleScreenColor: string;
-  defaultProjectorFontSizePx: number;
+
+  // Live feed logo overlay
+  logo: LogoConfig;
 
   // Middleware mode (PRD §5.4)
   webCanvasEnabled: boolean;
@@ -105,7 +108,8 @@ export const DEFAULT_SETTINGS_PANEL_STATE: SettingsPanelState = {
   outputDisplayId: "display-1",
   idleScreenMode: "logo",
   idleScreenColor: "#0a0a0f",
-  defaultProjectorFontSizePx: 48,
+
+  logo: DEFAULT_LOGO,
 
   webCanvasEnabled: false,
   webCanvasPort: 8080,
@@ -141,18 +145,6 @@ export const MOCK_AUDIO_INPUTS: AudioInputOption[] = [
   { id: "usb-audio-interface", label: "USB Audio Interface" },
   { id: "mixer-line-in", label: "Line-in — Mixing Board" },
   { id: "virtual-cable", label: "Virtual Audio Cable" },
-];
-
-export interface DisplayOption {
-  id: string;
-  label: string;
-  resolution: string;
-}
-
-export const MOCK_DISPLAYS: DisplayOption[] = [
-  { id: "display-1", label: "Display 1 — Main Projector", resolution: "1920×1080 @ 60Hz" },
-  { id: "display-2", label: "Display 2 — Foyer TV", resolution: "1920×1080 @ 60Hz" },
-  { id: "display-3", label: "Display 3 — Stage Monitor", resolution: "Offline / Standby" },
 ];
 
 export interface SessionLogEntry {

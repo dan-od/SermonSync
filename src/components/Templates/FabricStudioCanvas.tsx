@@ -12,7 +12,12 @@ import { ActiveSelection, Canvas, Control, Ellipse, FabricImage, FabricObject, G
 
 import { STUDIO_ACCENT_COLOR, createStudioCanvas } from "../../lib/fabricDefaults";
 import type { StudioBackgroundMode, StudioDocument, StudioFabricObjectData } from "../../types/studioDocument";
+import { CameraViewport } from "../CameraViewport";
 import { ResilientVideo } from "../ResilientVideo";
+import { managedVideoUrl } from "../../lib/videoImport";
+import type { TemplateBackgroundMedia } from "../../types/templates";
+import { CameraFrameControls } from "./CameraFrameControls";
+import type { CameraEditMode } from "../../lib/cameraFrame";
 
 export type StudioShapeKind = "rectangle" | "square" | "circle" | "triangle" | "line" | "arrow" | "polygon" | "star";
 
@@ -49,6 +54,7 @@ export interface StudioTextSelection {
 
 interface FabricStudioCanvasProps {
   document: StudioDocument;
+  cameraEditMode?: CameraEditMode;
   onSelectionChange: (studioIds: string[]) => void;
   onTextSelectionChange: (selection: StudioTextSelection | null) => void;
   onDocumentChange: (patch: Partial<Pick<StudioDocument, "objects" | "background" | "backgroundMode" | "backgroundColor" | "backgroundGradientStart" | "backgroundGradientEnd" | "backgroundGradientAngle" | "backgroundGradientStyle" | "backgroundBlur" | "backgroundMedia" | "updatedAt">>) => void;
@@ -59,18 +65,67 @@ interface FabricStudioCanvasProps {
 interface StudioCanvasSnapshot {
   objects: StudioFabricObjectData[];
   background: string;
+  backgroundMode?: StudioBackgroundMode;
+  backgroundMedia?: TemplateBackgroundMedia | null;
 }
 
-function canvasSnapshot(canvas: Canvas): StudioCanvasSnapshot {
+// Fabric's Pattern serializer includes the complete image data URI in `fill`.
+// Media shapes already keep their source in studioShapeFillMediaSource, so a
+// tiny placeholder is enough for the serialized Fabric fill. This keeps history
+// and save operations from copying the same image payload twice.
+const STUDIO_MEDIA_PATTERN_PLACEHOLDER = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAwUBAQJk7uUAAAAASUVORK5CYII=";
+
+function compactSnapshotObject(object: StudioFabricObjectData): StudioFabricObjectData {
+  const fill = object.fill;
+  if (!object.studioShapeFillMediaSource || !fill || typeof fill !== "object" || (fill as Record<string, unknown>).type !== "pattern") {
+    return object;
+  }
+  return {
+    ...object,
+    fill: {
+      ...(fill as Record<string, unknown>),
+      source: STUDIO_MEDIA_PATTERN_PLACEHOLDER,
+    },
+  };
+}
+
+function canvasSnapshot(canvas: Canvas, document: StudioDocument): StudioCanvasSnapshot {
   const exported = canvas.toObject();
   return {
-    objects: exported.objects as StudioFabricObjectData[],
+    objects: (exported.objects as StudioFabricObjectData[]).map(compactSnapshotObject),
     background: typeof exported.background === "string" ? exported.background : "",
+    backgroundMode: document.backgroundMode,
+    backgroundMedia: document.backgroundMedia,
   };
 }
 
 function snapshotsEqual(left: StudioCanvasSnapshot, right: StudioCanvasSnapshot): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
+  // Do not stringify media sources or Fabric pattern payloads just to decide
+  // whether an edit created a history entry. Compare a compact projection with
+  // a short source signature so replacing media still creates an undo point.
+  const sourceSignature = (source: unknown) => {
+    if (typeof source !== "string") return source;
+    if (source.length <= 160) return source;
+    return `${source.length}:${source.slice(0, 64)}:${source.slice(-64)}`;
+  };
+  const compact = (snapshot: StudioCanvasSnapshot) => snapshot.objects.map((object) => {
+    const rest = { ...object };
+    if ("studioShapeFillMediaSource" in rest) {
+      rest.studioShapeFillMediaSource = sourceSignature(rest.studioShapeFillMediaSource);
+    }
+    const fill = rest.fill;
+    const compactFill = fill && typeof fill === "object"
+      ? { ...(fill as Record<string, unknown>), source: undefined }
+      : fill;
+    return { ...rest, fill: compactFill };
+  });
+  const media = (snapshot: StudioCanvasSnapshot) => snapshot.backgroundMedia
+    ? { ...snapshot.backgroundMedia, src: sourceSignature(snapshot.backgroundMedia.src) }
+    : null;
+  return left.background === right.background
+    && left.backgroundMode === right.backgroundMode
+    && JSON.stringify(media(left)) === JSON.stringify(media(right))
+    && JSON.stringify(compact(left)) === JSON.stringify(compact(right));
 }
 
 let studioObjectSequence = 0;
@@ -128,6 +183,7 @@ function dataUriToBlob(dataUri: string): Blob | null {
 async function videoFrameSource(source: string): Promise<string | null> {
   const video = document.createElement("video");
   video.muted = true;
+  video.crossOrigin = "anonymous";
   video.playsInline = true;
   video.preload = "auto";
   const objectUrl = source.startsWith("data:") ? (() => {
@@ -135,7 +191,7 @@ async function videoFrameSource(source: string): Promise<string | null> {
     return blob ? URL.createObjectURL(blob) : null;
   })() : null;
   try {
-    video.src = objectUrl ?? source;
+    video.src = objectUrl ?? managedVideoUrl(source) ?? source;
     // Some codecs never fire "loadeddata" or "error" in this webview (they just
     // stall), which would otherwise hang this await forever with nothing to catch.
     await new Promise<void>((resolve, reject) => {
@@ -210,7 +266,8 @@ function refreshShapeMediaPattern(object: FabricObject): void {
 
 function shapeMediaVideo(source: string): HTMLVideoElement {
   const video = document.createElement("video");
-  video.src = source;
+  video.crossOrigin = "anonymous";
+  video.src = managedVideoUrl(source) ?? source;
   video.muted = true;
   video.loop = true;
   video.playsInline = true;
@@ -232,6 +289,38 @@ function attachShapeMediaVideo(canvas: Canvas, object: FabricObject, source: str
   }, { once: true });
   video.addEventListener("timeupdate", () => canvas.requestRenderAll());
   video.load();
+}
+
+async function attachShapeMediaImage(canvas: Canvas, object: FabricObject, source: string): Promise<void> {
+  try {
+    const image = await FabricImage.fromURL(source);
+    if (!isShapeObject(object) || !canvas.getObjects().includes(object)) return;
+    object.set("fill", shapeMediaPattern(
+      object,
+      image.getElement(),
+      object.studioShapeFillFit ?? "cover",
+      object.studioShapeFillScale ?? 100,
+      object.studioShapeFillX ?? 0,
+      object.studioShapeFillY ?? 0,
+    ));
+    canvas.requestRenderAll();
+  } catch {
+    // The compact placeholder remains visible when a persisted image cannot
+    // be decoded. The source metadata is kept so it can be retried later.
+  }
+}
+
+async function hydrateShapeMedia(canvas: Canvas, videos: Map<string, HTMLVideoElement>, onReady: () => void): Promise<void> {
+  await Promise.all(canvas.getObjects().map(async (object) => {
+    const source = object.studioShapeFillMediaSource;
+    if (typeof source !== "string" || !source) return;
+    if (object.studioShapeFillMediaType === "video") {
+      attachShapeMediaVideo(canvas, object, source, videos, onReady);
+      return;
+    }
+    await attachShapeMediaImage(canvas, object, source);
+    onReady();
+  }));
 }
 
 function radialPoints(pointCount: number, outerRadius: number, innerRadius = outerRadius, rotation = -Math.PI / 2) {
@@ -296,6 +385,7 @@ function configureStudioTextbox(textbox: Textbox, boxHeight?: number): void {
 
 type StudioAutoSize = "None" | "Grow to fit" | "Shrink to fit";
 type StudioScript = "none" | "superscript" | "subscript";
+type StudioTextCase = "none" | "uppercase" | "lowercase" | "sentence" | "title";
 type TextRange = { start: number; end: number };
 
 const SCRIPT_SCHEMAS: Record<Exclude<StudioScript, "none">, { size: number; baseline: number }> = {
@@ -305,6 +395,29 @@ const SCRIPT_SCHEMAS: Record<Exclude<StudioScript, "none">, { size: number; base
 
 function normalizeStudioScript(value: unknown): StudioScript {
   return value === "superscript" || value === "subscript" ? value : "none";
+}
+
+function normalizeStudioTextCase(value: unknown): StudioTextCase {
+  return value === "uppercase" || value === "lowercase" || value === "sentence" || value === "title" ? value : "none";
+}
+
+function applyTextCase(text: string, mode: StudioTextCase): string {
+  if (mode === "uppercase") return text.toLocaleUpperCase();
+  if (mode === "lowercase") return text.toLocaleLowerCase();
+  const lower = text.toLocaleLowerCase();
+  if (mode === "title") return lower.replace(/(^|[\s\-_])([\p{L}\p{N}])/gu, (_match, prefix: string, character: string) => `${prefix}${character.toLocaleUpperCase()}`);
+  if (mode !== "sentence") return text;
+
+  let capitalizeNext = true;
+  return Array.from(lower, (character) => {
+    if (/[^\p{L}\p{N}]/u.test(character)) {
+      if (/[.!?]/u.test(character)) capitalizeNext = true;
+      return character;
+    }
+    if (!capitalizeNext) return character;
+    capitalizeNext = false;
+    return character.toLocaleUpperCase();
+  }).join("");
 }
 
 function scriptRange(textbox: Textbox): TextRange {
@@ -514,7 +627,7 @@ function selectionStyleSummary(textbox: Textbox, start: number, end: number): Re
   }));
 }
 
-export function FabricStudioCanvas({ document, onSelectionChange, onTextSelectionChange, onDocumentChange, onHistoryChange, handleRef }: FabricStudioCanvasProps) {
+export function FabricStudioCanvas({ document, cameraEditMode = "off", onSelectionChange, onTextSelectionChange, onDocumentChange, onHistoryChange, handleRef }: FabricStudioCanvasProps) {
     const clipboardRef = useRef<FabricObject[]>([]);
     const pasteOffsetRef = useRef(0);
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -527,6 +640,7 @@ export function FabricStudioCanvas({ document, onSelectionChange, onTextSelectio
   const historyPastRef = useRef<StudioCanvasSnapshot[]>([]);
   const historyFutureRef = useRef<StudioCanvasSnapshot[]>([]);
   const lastSnapshotRef = useRef<StudioCanvasSnapshot | null>(null);
+  const cameraGestureStartRef = useRef<StudioCanvasSnapshot | null>(null);
   const restoringHistoryRef = useRef(false);
   const historyOperationRef = useRef<Promise<void> | null>(null);
   const undoRef = useRef<() => Promise<void>>(async () => undefined);
@@ -537,6 +651,9 @@ export function FabricStudioCanvas({ document, onSelectionChange, onTextSelectio
   const mediaResizeStartRef = useRef<{ target: FabricObject; scaleX: number; scaleY: number; mediaScale: number } | null>(null);
   const [guides, setGuides] = useState<{ vertical: number[]; horizontal: number[] }>({ vertical: [], horizontal: [] });
   const [canvasReady, setCanvasReady] = useState(false);
+  const [cameraError, setCameraError] = useState<{ source: string; message: string } | null>(null);
+  const [cameraRetryToken, setCameraRetryToken] = useState(0);
+  const cameraSourceKey = [document.backgroundMedia?.cameraSourceType, document.backgroundMedia?.cameraDeviceId, document.backgroundMedia?.cameraLabel, document.backgroundMedia?.cameraUrl].join("|");
 
   useEffect(() => {
     documentRef.current = document;
@@ -591,7 +708,7 @@ export function FabricStudioCanvas({ document, onSelectionChange, onTextSelectio
       });
     };
     const emitDocumentChange = () => {
-      const nextSnapshot = canvasSnapshot(canvas);
+      const nextSnapshot = canvasSnapshot(canvas, documentRef.current);
       const previousSnapshot = lastSnapshotRef.current;
       if (!restoringHistoryRef.current && previousSnapshot && !snapshotsEqual(previousSnapshot, nextSnapshot)) {
         historyPastRef.current.push(previousSnapshot);
@@ -605,19 +722,21 @@ export function FabricStudioCanvas({ document, onSelectionChange, onTextSelectio
     const restoreSnapshot = async (snapshot: StudioCanvasSnapshot) => {
       restoringHistoryRef.current = true;
       try {
-        await canvas.loadFromJSON({ objects: snapshot.objects, background: snapshot.background });
-        canvas.getObjects().forEach((object) => {
-          if (object instanceof Textbox) configureStudioTextbox(object, object.studioBoxHeight ?? object.height);
-          if (object.studioShapeFillMediaType === "video" && typeof object.studioShapeFillMediaSource === "string") {
-            attachShapeMediaVideo(canvas, object, object.studioShapeFillMediaSource, shapeMediaVideosRef.current, () => undefined);
-          }
-        });
-        canvas.discardActiveObject();
-        canvas.requestRenderAll();
-        lastSnapshotRef.current = canvasSnapshot(canvas);
+        const canvasChanged = snapshot.objects !== lastSnapshotRef.current?.objects || snapshot.background !== lastSnapshotRef.current?.background;
+        documentRef.current = { ...documentRef.current, background: snapshot.background, backgroundMode: snapshot.backgroundMode, backgroundMedia: snapshot.backgroundMedia };
+        if (canvasChanged) {
+          await canvas.loadFromJSON({ objects: snapshot.objects, background: snapshot.background });
+          canvas.getObjects().forEach((object) => {
+            if (object instanceof Textbox) configureStudioTextbox(object, object.studioBoxHeight ?? object.height);
+          });
+          await hydrateShapeMedia(canvas, shapeMediaVideosRef.current, () => undefined);
+          canvas.discardActiveObject();
+          canvas.requestRenderAll();
+        }
+        lastSnapshotRef.current = snapshot;
         callbacksRef.current.onSelectionChange([]);
         callbacksRef.current.onTextSelectionChange(null);
-        callbacksRef.current.onDocumentChange({ objects: lastSnapshotRef.current.objects, updatedAt: Date.now() });
+        callbacksRef.current.onDocumentChange({ objects: snapshot.objects, background: snapshot.background, backgroundMode: snapshot.backgroundMode, backgroundMedia: snapshot.backgroundMedia, updatedAt: Date.now() });
       } finally {
         restoringHistoryRef.current = false;
       }
@@ -851,10 +970,11 @@ export function FabricStudioCanvas({ document, onSelectionChange, onTextSelectio
         canvas.getObjects().forEach((object) => {
           if (object instanceof Textbox) configureStudioTextbox(object, object.studioBoxHeight ?? object.height);
         });
+        void hydrateShapeMedia(canvas, shapeMediaVideosRef.current, () => emitDocumentChangeRef.current());
         canvas.requestRenderAll();
         historyPastRef.current = [];
         historyFutureRef.current = [];
-        lastSnapshotRef.current = canvasSnapshot(canvas);
+        lastSnapshotRef.current = canvasSnapshot(canvas, documentRef.current);
         callbacksRef.current.onHistoryChange({ canUndo: false, canRedo: false });
       })
       .catch((error: unknown) => {
@@ -869,7 +989,7 @@ export function FabricStudioCanvas({ document, onSelectionChange, onTextSelectio
         canvas.requestRenderAll();
         historyPastRef.current = [];
         historyFutureRef.current = [];
-        lastSnapshotRef.current = canvasSnapshot(canvas);
+        lastSnapshotRef.current = canvasSnapshot(canvas, documentRef.current);
         callbacksRef.current.onHistoryChange({ canUndo: false, canRedo: false });
         callbacksRef.current.onDocumentChange({ objects: [], updatedAt: Date.now() });
       });
@@ -1172,12 +1292,16 @@ export function FabricStudioCanvas({ document, onSelectionChange, onTextSelectio
         const canvas = canvasRef.current;
         const current = documentRef.current;
         if (!canvas) return current;
-        const exported = canvas.toObject();
+        // Edits are serialized into lastSnapshotRef whenever Fabric changes.
+        // Reusing that snapshot avoids a second full Pattern/source traversal
+        // when Save is clicked, which was the visible pause in the studio.
+        const snapshot = lastSnapshotRef.current ?? canvasSnapshot(canvas, current);
         return {
           ...current,
-          background: (exported.background as string | undefined) ?? current.background,
-          fabricVersion: exported.version ?? current.fabricVersion,
-          objects: exported.objects as StudioFabricObjectData[],
+          // Background controls are kept in the React document patch; using
+          // that value preserves a color change made immediately before Save.
+          background: current.background,
+          objects: snapshot.objects,
           updatedAt: Date.now(),
         };
       },
@@ -1198,6 +1322,8 @@ export function FabricStudioCanvas({ document, onSelectionChange, onTextSelectio
           && Boolean(selection && selection.end > selection.start);
         const requestedScript = normalizeStudioScript(props.studioScript);
         const hasScriptRequest = props.studioScript === "none" || props.studioScript === "superscript" || props.studioScript === "subscript";
+        const requestedTextCase = normalizeStudioTextCase(props.studioTextCase);
+        const hasTextCaseRequest = object instanceof Textbox && "studioTextCase" in props;
 
         if (hasHighlightedText && Object.keys(selectionStyles).length > 0) {
           object.setSelectionStyles(selectionStyles, selection!.start, selection!.end);
@@ -1213,6 +1339,21 @@ export function FabricStudioCanvas({ document, onSelectionChange, onTextSelectio
         }
         if (object instanceof Textbox && hasHighlightedText && "fontSize" in props) {
           updateScriptFontSize(object, selection!, Number(props.fontSize));
+        }
+        if (object instanceof Textbox && hasTextCaseRequest) {
+          const range = hasHighlightedText ? selection! : scriptRange(object);
+          const start = Math.max(0, Math.min(range.start, object.text.length));
+          const end = Math.max(start, Math.min(range.end, object.text.length));
+          const transformed = applyTextCase(object.text.slice(start, end), requestedTextCase);
+          object.set({
+            text: `${object.text.slice(0, start)}${transformed}${object.text.slice(end)}`,
+            studioTextCase: requestedTextCase,
+          });
+          if (object.isEditing) {
+            object.selectionStart = start;
+            object.selectionEnd = start + transformed.length;
+          }
+          object.initDimensions();
         }
 
         // Container/paragraph properties still apply to the textbox itself.
@@ -1230,6 +1371,7 @@ export function FabricStudioCanvas({ document, onSelectionChange, onTextSelectio
         }
         if ("backgroundColor" in props && hasHighlightedText) delete objectProps.backgroundColor;
         if (hasScriptRequest) delete objectProps.studioScript;
+        if (hasTextCaseRequest) delete objectProps.studioTextCase;
         if (object instanceof Textbox && !hasHighlightedText && "fontSize" in props && normalizeStudioScript(object.studioScript) !== "none") {
           updateScriptFontSize(object, scriptRange(object), Number(props.fontSize));
           delete objectProps.fontSize;
@@ -1292,6 +1434,15 @@ export function FabricStudioCanvas({ document, onSelectionChange, onTextSelectio
         const canvas = canvasRef.current;
         if (!canvas) return;
         const background = config.mode === "color" ? (config.color ?? "") : "";
+        const previous = lastSnapshotRef.current;
+        const next = previous && { ...previous, background, backgroundMode: config.mode, backgroundMedia: config.media ?? null };
+        if (previous && next && !snapshotsEqual(previous, next)) {
+          historyPastRef.current.push(previous);
+          historyFutureRef.current = [];
+          callbacksRef.current.onHistoryChange({ canUndo: true, canRedo: false });
+        }
+        if (next) lastSnapshotRef.current = next;
+        documentRef.current = { ...documentRef.current, background, backgroundMode: config.mode, backgroundMedia: config.media ?? null };
         canvas.backgroundColor = background;
         canvas.requestRenderAll();
         callbacksRef.current.onDocumentChange({
@@ -1310,6 +1461,41 @@ export function FabricStudioCanvas({ document, onSelectionChange, onTextSelectio
     }),
     [],
   );
+
+  const beginCameraGesture = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    cameraGestureStartRef.current = lastSnapshotRef.current ?? canvasSnapshot(canvas, documentRef.current);
+  };
+  const changeCameraFrame = (media: TemplateBackgroundMedia) => {
+    documentRef.current = { ...documentRef.current, backgroundMedia: media };
+    callbacksRef.current.onDocumentChange({ backgroundMedia: media, updatedAt: Date.now() });
+  };
+  const endCameraGesture = () => {
+    const start = cameraGestureStartRef.current;
+    cameraGestureStartRef.current = null;
+    if (!start) return;
+    const next = { ...start, backgroundMedia: documentRef.current.backgroundMedia };
+    if (snapshotsEqual(start, next)) return;
+    historyPastRef.current.push(start);
+    historyFutureRef.current = [];
+    lastSnapshotRef.current = next;
+    callbacksRef.current.onHistoryChange({ canUndo: true, canRedo: false });
+  };
+  const getCameraSnapTargets = () => {
+    const current = documentRef.current;
+    const targets = { vertical: [0, 50, 100], horizontal: [0, 50, 100] };
+    for (const object of canvasRef.current?.getObjects() ?? []) {
+      if (!object.visible) continue;
+      const left = object.left / current.width * 100;
+      const top = object.top / current.height * 100;
+      const width = object.getScaledWidth() / current.width * 100;
+      const height = object.getScaledHeight() / current.height * 100;
+      targets.vertical.push(left, left + width / 2, left + width);
+      targets.horizontal.push(top, top + height / 2, top + height);
+    }
+    return targets;
+  };
 
   return (
     <div
@@ -1358,9 +1544,18 @@ export function FabricStudioCanvas({ document, onSelectionChange, onTextSelectio
             style={{ display: "block", border: "1px solid var(--border-base)", boxShadow: "var(--shadow-md)" }}
           />
         </div>
-        {canvasReady && document.backgroundMode === "media" && document.backgroundMedia && typeof document.backgroundMedia.src === "string" && document.backgroundMedia.src.length > 0 ? (
+        {canvasReady && document.backgroundMode === "media" && document.backgroundMedia && (document.backgroundMedia.type === "camera" || (typeof document.backgroundMedia.src === "string" && document.backgroundMedia.src.length > 0)) ? (
           <div style={{ position: "absolute", inset: 0, zIndex: 1, filter: document.backgroundBlur ? `blur(${document.backgroundBlur}px)` : undefined, transform: document.backgroundBlur ? "scale(1.04)" : undefined }}>
-          {document.backgroundMedia.type === "video" ? (
+          {document.backgroundMedia.type === "camera" ? (
+            <CameraViewport
+              key={`${cameraSourceKey}:${cameraRetryToken}`}
+              media={document.backgroundMedia}
+              onReady={() => setCameraError(null)}
+              onError={(message) => setCameraError((current) => current?.source === cameraSourceKey && current.message === message ? current : { source: cameraSourceKey, message })}
+              retryToken={cameraRetryToken}
+              style={{ position: "absolute", left: `${document.backgroundMedia.x}%`, top: `${document.backgroundMedia.y}%`, width: `${document.backgroundMedia.width}%`, height: `${document.backgroundMedia.height}%`, opacity: document.backgroundMedia.opacity, mixBlendMode: document.backgroundMedia.blendMode as CSSProperties["mixBlendMode"] }}
+            />
+          ) : document.backgroundMedia.type === "video" ? (
             <ResilientVideo
               key={document.backgroundMedia.src}
               media={document.backgroundMedia}
@@ -1371,7 +1566,24 @@ export function FabricStudioCanvas({ document, onSelectionChange, onTextSelectio
            )}
           </div>
         ) : null}
-        <div aria-hidden="true" style={{ position: "absolute", inset: 0, zIndex: 3, pointerEvents: "none" }}>
+        {canvasReady && cameraEditMode !== "off" && document.backgroundMode === "media" && document.backgroundMedia?.type === "camera" ? (
+          <CameraFrameControls
+            media={document.backgroundMedia}
+            mode={cameraEditMode}
+            getSnapTargets={getCameraSnapTargets}
+            onStart={beginCameraGesture}
+            onChange={changeCameraFrame}
+            onGuides={(next) => setGuides({ vertical: next.vertical.map((position) => position / 100 * document.width), horizontal: next.horizontal.map((position) => position / 100 * document.height) })}
+            onEnd={endCameraGesture}
+          />
+        ) : null}
+        {document.backgroundMode === "media" && document.backgroundMedia?.type === "camera" && cameraError?.source === cameraSourceKey ? (
+          <div role="alert" style={{ position: "absolute", zIndex: 5, top: 12, left: 12, maxWidth: "65%", padding: "8px 10px", borderRadius: 5, background: "rgba(20, 12, 16, 0.92)", color: "#ffb4b4", fontSize: 12, lineHeight: 1.4, display: "flex", alignItems: "center", gap: 8 }}>
+            <span>Camera preview: {cameraError.message}</span>
+            <button type="button" onClick={() => { setCameraError(null); setCameraRetryToken((value) => value + 1); }} style={{ border: "none", borderRadius: 4, background: "var(--color-primary)", color: "var(--fg-on-accent)", padding: "4px 7px", cursor: "pointer" }}>Retry</button>
+          </div>
+        ) : null}
+        <div aria-hidden="true" style={{ position: "absolute", inset: 0, zIndex: 5, pointerEvents: "none" }}>
           {guides.vertical.map((position) => (
             <div key={`v-${position}`} style={{ position: "absolute", top: 0, bottom: 0, left: `${position / document.width * 100}%`, width: 1, background: "var(--color-accent, #ff3d9a)", boxShadow: "0 0 5px rgba(255,61,154,.7)" }} />
           ))}

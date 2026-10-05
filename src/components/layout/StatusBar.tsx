@@ -13,7 +13,6 @@ export interface StatusBarProps {
   audioStatus?: "disconnected" | "connected" | "capturing" | "error";
   audioError?: string | null;
   isSessionLive?: boolean;
-  onSync?: () => void;
   vadPercent: number;
   onVadPercentChange?: (vadPercent: number) => void;
   sampleRateLabel: string;
@@ -62,7 +61,6 @@ export function StatusBar({
   audioStatus = "disconnected",
   audioError = null,
   isSessionLive = false,
-  onSync,
   vadPercent,
   onVadPercentChange,
   sampleRateLabel,
@@ -79,6 +77,7 @@ export function StatusBar({
   const channelDropdownRef = useRef<HTMLDivElement>(null);
   const [isInputMenuOpen, setIsInputMenuOpen] = useState(false);
   const [isChannelMenuOpen, setIsChannelMenuOpen] = useState(false);
+  const [hoveredInputDevice, setHoveredInputDevice] = useState<string | null>(null);
   const clampedVad = Math.min(100, Math.max(0, vadPercent));
   // Real input meter: a rolling history of measured levels, oldest → newest.
   // Read high-frequency audio values here so they do not re-render App.
@@ -294,6 +293,13 @@ export function StatusBar({
                 background: "var(--bg-elevated)",
                 boxShadow: "var(--shadow-md)",
                 padding: "4px",
+                boxSizing: "border-box",
+                maxHeight: "min(320px, calc(100vh - 44px))",
+                overflowY: "auto",
+                overflowX: "hidden",
+                overscrollBehaviorY: "contain",
+                scrollbarWidth: "thin",
+                scrollbarColor: "var(--border-base) transparent",
               }}
             >
               {inputDevices.map((device) => {
@@ -308,18 +314,24 @@ export function StatusBar({
                     onClick={() => {
                       onInputNameChange?.(device);
                       setIsInputMenuOpen(false);
+                      setHoveredInputDevice(null);
                     }}
+                    onMouseEnter={() => setHoveredInputDevice(device)}
+                    onMouseLeave={() => setHoveredInputDevice((current) => current === device ? null : current)}
+                    onFocus={() => setHoveredInputDevice(device)}
+                    onBlur={() => setHoveredInputDevice((current) => current === device ? null : current)}
                     style={{
                       width: "100%",
                       border: "none",
                       borderRadius: "6px",
-                      background: selected ? "var(--color-primary-muted)" : "transparent",
-                      color: selected ? "var(--fg-base)" : "var(--fg-muted)",
+                      background: selected || hoveredInputDevice === device ? "var(--color-primary-muted)" : "transparent",
+                      color: selected || hoveredInputDevice === device ? "var(--fg-base)" : "var(--fg-muted)",
                       fontFamily: "var(--font-sans)",
                       fontSize: "12px",
                       padding: "8px 9px",
                       cursor: "pointer",
                       textAlign: "left",
+                      overflowWrap: "anywhere",
                     }}
                   >
                     {device}
@@ -497,38 +509,6 @@ export function StatusBar({
       <div style={{ width: "1px", alignSelf: "stretch", background: "var(--border-base)" }} />
 
       <div style={{ display: "flex", alignItems: "center", gap: "9px", minWidth: 0, flex: "0 1 auto" }}>
-        <span
-          style={{
-            padding: "2px 7px",
-            borderRadius: "4px",
-            background: "var(--bg-elevated)",
-            color: "var(--fg-muted)",
-            fontWeight: 700,
-            letterSpacing: "0.04em",
-            lineHeight: 1,
-          }}
-        >
-          OFFLINE MODE
-        </span>
-        <button
-          type="button"
-          onClick={() => onSync?.()}
-          style={{
-            border: "none",
-            borderRadius: "4px",
-            background: "var(--bg-elevated)",
-            color: "var(--fg-base)",
-            padding: "2px 8px",
-            fontFamily: "var(--font-mono)",
-            fontSize: "10px",
-            fontWeight: 700,
-            letterSpacing: "0.06em",
-            lineHeight: 1,
-            cursor: "pointer",
-          }}
-        >
-          SYNC
-        </button>
         <span style={{ color: "var(--fg-subtle)" }}>{sampleRateLabel}</span>
         <span style={{ color: "var(--fg-subtle)" }}>|</span>
         <span style={{ color: "var(--fg-subtle)", letterSpacing: "0.05em" }}>LAT</span>
