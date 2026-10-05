@@ -6,9 +6,8 @@ import asyncio
 import struct
 
 import pytest
-from fastapi import HTTPException
-
 from api import camera
+from fastapi import HTTPException
 
 
 def test_metadata_node_is_not_a_video_capture(monkeypatch):
@@ -43,7 +42,14 @@ def test_mjpeg_input_is_detected_without_opening_a_stream(monkeypatch):
 
 
 def test_native_device_endpoint_returns_capture_nodes(monkeypatch):
-    monkeypatch.setattr(camera, "_local_capture_devices", lambda: [("/dev/video1", "USB3 Video"), ("/dev/video3", "Integrated Webcam_HD")])
+    monkeypatch.setattr(
+        camera,
+        "_local_capture_devices",
+        lambda: [
+            ("/dev/video1", "USB3 Video"),
+            ("/dev/video3", "Integrated Webcam_HD"),
+        ],
+    )
     assert asyncio.run(camera.camera_devices()) == {
         "devices": [
             {"deviceId": "/dev/video1", "label": "USB3 Video"},

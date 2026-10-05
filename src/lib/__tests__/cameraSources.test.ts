@@ -1,11 +1,18 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { listLocalCameras } from "../cameraSources";
 
-const originalMediaDevices = navigator.mediaDevices;
+const originalNavigator = globalThis.navigator;
+const originalMediaDevices = originalNavigator?.mediaDevices;
+
+beforeEach(() => {
+  vi.stubGlobal("navigator", originalNavigator ?? { userAgent: "", mediaDevices: undefined });
+});
 
 afterEach(() => {
-  Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: originalMediaDevices });
+  if (originalNavigator) {
+    Object.defineProperty(originalNavigator, "mediaDevices", { configurable: true, value: originalMediaDevices });
+  }
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });

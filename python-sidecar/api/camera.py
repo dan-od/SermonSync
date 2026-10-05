@@ -12,6 +12,7 @@ import asyncio
 import os
 import re
 import struct
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -115,7 +116,10 @@ def _find_video_device(label: str) -> str:
         matches.append((score, path))
 
     if not matches:
-        raise HTTPException(status_code=404, detail=f"No Linux video device matched camera '{label}'.")
+        raise HTTPException(
+            status_code=404,
+            detail=f"No Linux video device matched camera '{label}'.",
+        )
     matches.sort()
     return matches[0][1]
 
@@ -132,7 +136,9 @@ class _CameraStream:
 
     async def start(self) -> None:
         async with self.lifecycle_lock:
-            if self.process is not None and self.process.returncode is None and self.reader_task is not None and not self.reader_task.done():
+            process_running = self.process is not None and self.process.returncode is None
+            reader_running = self.reader_task is not None and not self.reader_task.done()
+            if process_running and reader_running:
                 return
             if self.reader_task is not None and not self.reader_task.done():
                 self.reader_task.cancel()
@@ -171,7 +177,10 @@ class _CameraStream:
                     stderr=asyncio.subprocess.DEVNULL,
                 )
             except FileNotFoundError as error:
-                raise HTTPException(status_code=503, detail="FFmpeg is required for the Linux camera fallback.") from error
+                raise HTTPException(
+                    status_code=503,
+                    detail="FFmpeg is required for the Linux camera fallback.",
+                ) from error
 
             self.reader_task = asyncio.create_task(self._read_frames())
 
@@ -214,25 +223,17 @@ class _CameraStream:
                     pending = pending[end + 2 :]
                     for queue in tuple(self.clients):
                         if queue.full():
-                            try:
+                            with suppress(asyncio.QueueEmpty):
                                 queue.get_nowait()
-                            except asyncio.QueueEmpty:
-                                pass
-                        try:
+                        with suppress(asyncio.QueueFull):
                             queue.put_nowait(frame)
-                        except asyncio.QueueFull:
-                            pass
         finally:
             for queue in tuple(self.clients):
                 if queue.full():
-                    try:
+                    with suppress(asyncio.QueueEmpty):
                         queue.get_nowait()
-                    except asyncio.QueueEmpty:
-                        pass
-                try:
+                with suppress(asyncio.QueueFull):
                     queue.put_nowait(None)
-                except asyncio.QueueFull:
-                    pass
             # Keep the process reference even if the reader exits first. A
             # subsequent start or stop must reap the old FFmpeg process.
 
@@ -297,7 +298,12 @@ class _CameraManager:
                 raise
             return stream, queue
 
-    async def unsubscribe(self, device: str, stream: _CameraStream, queue: asyncio.Queue[bytes | None]) -> None:
+    async def unsubscribe(
+        self,
+        device: str,
+        stream: _CameraStream,
+        queue: asyncio.Queue[bytes | None],
+    ) -> None:
         await stream.remove_client(queue)
         if stream.clients:
             return
@@ -318,15 +324,23 @@ camera_manager = _CameraManager()
 
 @router.get("/devices")
 async def camera_devices() -> dict[str, list[dict[str, str]]]:
-    return {"devices": [{"deviceId": path, "label": label} for path, label in _local_capture_devices()]}
+    devices = [
+        {"deviceId": path, "label": label}
+        for path, label in _local_capture_devices()
+    ]
+    return {"devices": devices}
 
 
 def _resolve_camera_device(label: str | None, device: str | None) -> str:
     if not label and not device:
         raise HTTPException(status_code=400, detail="A camera label or device is required.")
     capture_devices = dict(_local_capture_devices()) if device else {}
-    if device and device in capture_devices and (not label or _normalise_label(label) in _normalise_label(capture_devices[device])):
-        return device
+    if device and device in capture_devices:
+        device_matches_label = not label or (
+            _normalise_label(label) in _normalise_label(capture_devices[device])
+        )
+        if device_matches_label:
+            return device
     if label:
         return _find_video_device(label)
     raise HTTPException(status_code=404, detail="The selected video capture device is unavailable.")
@@ -340,10 +354,20 @@ async def camera_frame(label: str | None = None, device: str | None = None) -> R
         try:
             frame = await asyncio.wait_for(queue.get(), timeout=_FIRST_FRAME_TIMEOUT_SECONDS)
         except asyncio.TimeoutError as error:
-            raise HTTPException(status_code=504, detail="The camera did not deliver a frame.") from error
+            raise HTTPException(
+                status_code=504,
+                detail="The camera did not deliver a frame.",
+            ) from error
         if frame is None:
-            raise HTTPException(status_code=503, detail="The camera stream ended before it produced a frame.")
-        return Response(frame, media_type="image/jpeg", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+            raise HTTPException(
+                status_code=503,
+                detail="The camera stream ended before it produced a frame.",
+            )
+        return Response(
+            frame,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
     finally:
         # A snapshot joins the shared capture only long enough to receive one
         # frame. Keep the manager entry so the active MJPEG view is unaffected.
@@ -359,10 +383,19 @@ async def camera_mjpeg(label: str | None = None, device: str | None = None) -> S
         first_frame = await asyncio.wait_for(queue.get(), timeout=_FIRST_FRAME_TIMEOUT_SECONDS)
     except asyncio.TimeoutError as error:
         await camera_manager.unsubscribe(selected_device, stream, queue)
-        raise HTTPException(status_code=504, detail="The camera did not deliver a frame. Retry, or check its connection and other apps using it.") from error
+        raise HTTPException(
+            status_code=504,
+            detail=(
+                "The camera did not deliver a frame. Retry, or check its "
+                "connection and other apps using it."
+            ),
+        ) from error
     if first_frame is None:
         await camera_manager.unsubscribe(selected_device, stream, queue)
-        raise HTTPException(status_code=503, detail="The camera stream ended before it produced a frame.")
+        raise HTTPException(
+            status_code=503,
+            detail="The camera stream ended before it produced a frame.",
+        )
 
     async def frames():
         try:
