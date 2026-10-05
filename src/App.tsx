@@ -1,4 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 
 import { AuthGate } from "./components/Auth/AuthGate";
 import type { BranchAccount } from "./components/Auth/types";
@@ -21,7 +22,7 @@ import {
   useTemplateStore,
   useTranscriptionStore,
 } from "./stores";
-import { SHORTCUT_DEFINITIONS, isShortcutEvent, useShortcutStore } from "./stores/shortcutStore";
+import { shortcutActionForEvent, useShortcutStore } from "./stores/shortcutStore";
 import type { ProjectorSlide, SuggestionCard } from "./types/state";
 
 const AiPanel = lazy(() => import("./components/AiPanel").then((module) => ({ default: module.AiPanel })));
@@ -453,6 +454,11 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return target.isContentEditable || ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName);
 }
 
+function isControlActivation(event: KeyboardEvent): boolean {
+  if (event.ctrlKey || event.altKey || event.shiftKey || event.metaKey || !["Enter", " "].includes(event.key)) return false;
+  return event.target instanceof Element && Boolean(event.target.closest("button, a[href], summary, [role='button'], [role='link']"));
+}
+
 function toSlide(card: SuggestionCard | BiblePassage): ProjectorSlide {
   const versions = useConfigStore.getState().bibleVersions;
   const matched = versions.find(
@@ -547,12 +553,28 @@ function App() {
   const overlayMode = useProjectorStore((s) => s.overlayMode);
   const projectorTheme = useProjectorStore((s) => s.theme);
   const feedOverride = useProjectorStore((s) => s.feedOverride);
+  const outputDisplay = useProjectorStore((s) => s.outputDisplay);
+  const setOutputDisplay = useProjectorStore((s) => s.setOutputDisplay);
+  const transitions = useProjectorStore((s) => s.transitions);
+  const [outputError, setOutputError] = useState<string | null>(null);
   const setPreviewSlide = useProjectorStore((s) => s.setPreview);
   const sendLiveSlide = useProjectorStore((s) => s.sendLive);
   const setOverlayMode = useProjectorStore((s) => s.setOverlayMode);
   const setFeedOverride = useProjectorStore((s) => s.setFeedOverride);
   const shortcuts = useShortcutStore((s) => s.shortcuts);
   const initializeTemplates = useTemplateStore((s) => s.initialize);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    void invoke("set_projection_state", {
+      payload: { liveSlide, feedOverride, overlayMode, theme: projectorTheme, transitions },
+    }).catch((error) => setOutputError(String(error)));
+  }, [liveSlide, feedOverride, overlayMode, projectorTheme, transitions]);
+
+  useEffect(() => {
+    if (!liveSlide || !isTauri()) return;
+    void invoke("open_projector", { displayId: outputDisplay }).then(() => setOutputError(null)).catch((error) => setOutputError(String(error)));
+  }, [liveSlide, outputDisplay]);
 
   useEffect(() => {
     void initializeTemplates();
@@ -797,16 +819,15 @@ function App() {
   }, [setPreviewSlide]);
 
   useEffect(() => {
-    if (isSettingsOpen) return;
+    if (isSettingsOpen || showLaunchScreen || !authenticatedBranch) return;
 
     const handleShortcut = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.repeat || isEditableTarget(event.target)) return;
-      const definition = SHORTCUT_DEFINITIONS.find((entry) => isShortcutEvent(event, shortcuts[entry.action]));
-      if (!definition) return;
-      if (definition.action === "template-undo" || definition.action === "template-redo") return;
+      if (event.defaultPrevented || event.repeat || isEditableTarget(event.target) || isControlActivation(event) || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      const action = shortcutActionForEvent(event, shortcuts);
+      if (!action || action === "template-undo" || action === "template-redo") return;
 
       event.preventDefault();
-      switch (definition.action) {
+      switch (action) {
         case "feed-live":
           handleFeedOverrideChange("live");
           break;
@@ -842,7 +863,7 @@ function App() {
 
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [cycleLive, handleFeedOverrideChange, isSettingsOpen, previewSlide, sendLiveSlide, setOverlayMode, shortcuts]);
+  }, [authenticatedBranch, cycleLive, handleFeedOverrideChange, isSettingsOpen, previewSlide, sendLiveSlide, setOverlayMode, shortcuts, showLaunchScreen]);
 
   const addLibraryScheduleItem = (slide?: ProjectorSlide) => {
     if (slide) {
@@ -1040,6 +1061,9 @@ function App() {
     overlayMode,
     onOverlayModeChange: setOverlayMode,
     theme: projectorTheme,
+    outputDisplay,
+    onOutputDisplayChange: setOutputDisplay,
+    outputError,
     onSendLive: () => {
       if (previewSlide) {
         sendLiveSlide(previewSlide);

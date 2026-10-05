@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 
 import type { OverlayMode, ProjectorSlide, VerseTheme } from "../types/state";
 
@@ -19,7 +20,12 @@ interface ProjectorDeskPanelProps {
   onSendLive: () => void;
   onPrevious: () => void;
   onNext: () => void;
+  outputDisplay: string | null;
+  onOutputDisplayChange: (display: string | null) => void;
+  outputError: string | null;
 }
+
+interface OutputDisplay { id: string; label: string; width: number; height: number; primary: boolean }
 
 export function ProjectorDeskPanel({
   previewSlide,
@@ -30,6 +36,9 @@ export function ProjectorDeskPanel({
   onSendLive,
   onPrevious,
   onNext,
+  outputDisplay,
+  onOutputDisplayChange,
+  outputError,
 }: ProjectorDeskPanelProps) {
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef({ clientX: 0, previewWidth: 0 });
@@ -38,6 +47,32 @@ export function ProjectorDeskPanel({
   const [previewWidth, setPreviewWidth] = useState(0);
   const [isDividerHovering, setIsDividerHovering] = useState(false);
   const [isDividerDragging, setIsDividerDragging] = useState(false);
+  const [displays, setDisplays] = useState<OutputDisplay[]>([]);
+  const [controlError, setControlError] = useState<string | null>(null);
+  const lastAutoSentSlideRef = useRef<ProjectorSlide | null>(null);
+  const onSendLiveRef = useRef(onSendLive);
+  useEffect(() => { onSendLiveRef.current = onSendLive; }, [onSendLive]);
+
+  useEffect(() => {
+    if (!autoSendEnabled || !previewSlide || lastAutoSentSlideRef.current === previewSlide) return;
+    lastAutoSentSlideRef.current = previewSlide;
+    onSendLiveRef.current();
+  }, [autoSendEnabled, previewSlide]);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    void invoke<OutputDisplay[]>("list_output_displays").then(setDisplays).catch((error) => setControlError(String(error)));
+  }, []);
+
+  const openOutput = () => {
+    if (!isTauri()) { setControlError("Projection output requires the desktop app."); return; }
+    void invoke("open_projector", { displayId: outputDisplay }).then(() => setControlError(null)).catch((error) => setControlError(String(error)));
+  };
+
+  const closeOutput = () => {
+    if (!isTauri()) return;
+    void invoke("close_projector").then(() => setControlError(null)).catch((error) => setControlError(String(error)));
+  };
 
   const clampPreviewWidth = useCallback((containerWidth: number, nextPreviewWidth: number) => {
     const availableWidth = Math.max(0, containerWidth - SPLIT_DIVIDER_WIDTH);
@@ -144,8 +179,14 @@ export function ProjectorDeskPanel({
           fontSize: "10px",
         }}
       >
-        <span style={{ color: "var(--fg-base)", letterSpacing: "0.1em", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>PROJECTION SIMULATION</span>
+        <span style={{ color: "var(--fg-base)", letterSpacing: "0.1em", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>PROJECTION</span>
         <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0, flexShrink: 0 }}>
+          <select aria-label="Output display" value={outputDisplay ?? ""} onChange={(event) => onOutputDisplayChange(event.target.value || null)} style={{ maxWidth: 145, fontSize: 10, background: "var(--bg-elevated)", color: "var(--fg-base)", border: "1px solid var(--border-base)" }}>
+            <option value="">Auto display</option>
+            {displays.map((display) => <option key={display.id} value={display.id}>{display.label} ({display.width}×{display.height})</option>)}
+          </select>
+          <button type="button" onClick={openOutput} title="Open full-screen output window" style={{ cursor: "pointer" }}>Open Output</button>
+          <button type="button" onClick={closeOutput} title="Close output window" style={{ cursor: "pointer" }}>Close</button>
           <button
             type="button"
             onClick={onSendLive}
@@ -238,6 +279,7 @@ export function ProjectorDeskPanel({
           </button>
         </div>
       </div>
+      {(outputError || controlError) && <div role="alert" style={{ color: "var(--color-error)", fontSize: 11, padding: "0 10px" }}>{outputError || controlError}</div>}
 
       <div
         ref={splitContainerRef}

@@ -55,15 +55,27 @@ const STORAGE_KEY = "sermonsync-shortcuts-v1";
 function readShortcuts(): Record<ShortcutAction, string> {
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (!stored) return DEFAULT_SHORTCUTS;
-    return { ...DEFAULT_SHORTCUTS, ...JSON.parse(stored) };
+    if (!stored) return { ...DEFAULT_SHORTCUTS };
+    const parsed: unknown = JSON.parse(stored);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { ...DEFAULT_SHORTCUTS };
+    const saved = parsed as Partial<Record<ShortcutAction, unknown>>;
+    const shortcuts = { ...DEFAULT_SHORTCUTS };
+    const used = new Set<string>();
+    for (const { action } of SHORTCUT_DEFINITIONS) {
+      const candidate = saved[action];
+      const binding = typeof candidate === "string" && candidate.trim() ? candidate : DEFAULT_SHORTCUTS[action];
+      shortcuts[action] = used.has(binding) ? (used.has(DEFAULT_SHORTCUTS[action]) ? "" : DEFAULT_SHORTCUTS[action]) : binding;
+      if (shortcuts[action]) used.add(shortcuts[action]);
+    }
+    return shortcuts;
   } catch {
-    return DEFAULT_SHORTCUTS;
+    return { ...DEFAULT_SHORTCUTS };
   }
 }
 
 function writeShortcuts(shortcuts: Record<ShortcutAction, string>) {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(shortcuts));
+  try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(shortcuts)); }
+  catch { /* Keep the active session usable when storage is unavailable. */ }
 }
 
 function keyName(key: string) {
@@ -72,12 +84,19 @@ function keyName(key: string) {
 }
 
 export function shortcutFromEvent(event: KeyboardEvent): string {
+  if (event.isComposing || ["Control", "Alt", "Shift", "Meta", "Dead", "Unidentified", "Process"].includes(event.key)) return "";
   const modifiers = [event.ctrlKey && "Ctrl", event.altKey && "Alt", event.shiftKey && "Shift", event.metaKey && "Meta"].filter(Boolean);
   return [...modifiers, keyName(event.key)].join("+");
 }
 
 export function isShortcutEvent(event: KeyboardEvent, binding: string): boolean {
-  return shortcutFromEvent(event) === binding;
+  return Boolean(binding) && shortcutFromEvent(event) === binding;
+}
+
+export function shortcutActionForEvent(event: KeyboardEvent, shortcuts: Record<ShortcutAction, string>): ShortcutAction | null {
+  const binding = shortcutFromEvent(event);
+  if (!binding) return null;
+  return SHORTCUT_DEFINITIONS.find(({ action }) => shortcuts[action] === binding)?.action ?? null;
 }
 
 interface ShortcutStore {
@@ -90,6 +109,7 @@ export const useShortcutStore = create<ShortcutStore>((set) => ({
   shortcuts: readShortcuts(),
   setShortcut: (action, binding) =>
     set((state) => {
+      if (!binding || Object.entries(state.shortcuts).some(([existingAction, value]) => existingAction !== action && value === binding)) return state;
       const shortcuts = { ...state.shortcuts, [action]: binding };
       writeShortcuts(shortcuts);
       return { shortcuts };

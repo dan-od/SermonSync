@@ -176,6 +176,7 @@ export interface ProjectorSlide {
   reference: ScriptureReference;
   text: string;
   version: string;
+  media?: { type: "image" | "video"; src: string; name: string };
 }
 
 export interface ProjectorState {

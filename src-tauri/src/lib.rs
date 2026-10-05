@@ -1,6 +1,7 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde::Serialize;
@@ -44,8 +45,129 @@ struct SidecarSpawnErrorPayload {
 
 const TEMPLATE_THEMES_FILE: &str = "templates/themes.json";
 const KEYRING_SERVICE: &str = "sermonsync.ai-providers";
+const PROJECTOR_EVENT: &str = "projector://state";
 
 struct SidecarState(Mutex<Option<SidecarChild>>);
+struct ProjectionState(Mutex<serde_json::Value>);
+
+#[derive(Serialize)]
+struct OutputDisplay {
+    id: String,
+    label: String,
+    width: u32,
+    height: u32,
+    primary: bool,
+}
+
+#[tauri::command]
+fn list_output_displays(app: tauri::AppHandle) -> Result<Vec<OutputDisplay>, String> {
+    let main = app.get_webview_window("main").ok_or("Main window is unavailable")?;
+    let primary = main.primary_monitor().map_err(|e| e.to_string())?;
+    Ok(main.available_monitors()
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .enumerate()
+        .map(|(index, monitor)| OutputDisplay {
+            id: index.to_string(),
+            label: monitor.name().cloned().unwrap_or_else(|| format!("Display {}", index + 1)),
+            width: monitor.size().width,
+            height: monitor.size().height,
+            primary: primary.as_ref().is_some_and(|p| p.position() == monitor.position() && p.size() == monitor.size()),
+        })
+        .collect::<Vec<_>>())
+}
+
+#[tauri::command]
+fn open_projector(app: tauri::AppHandle, display_id: Option<String>) -> Result<(), String> {
+    let main = app.get_webview_window("main").ok_or("Main window is unavailable")?;
+    let monitors = main.available_monitors().map_err(|e| e.to_string())?;
+    let main_monitor = main.current_monitor().map_err(|e| e.to_string())?;
+    let chosen = display_id
+        .as_deref()
+        .and_then(|id| id.parse::<usize>().ok())
+        .and_then(|index| monitors.get(index))
+        .or_else(|| monitors.iter().find(|monitor| main_monitor.as_ref().is_none_or(|current| current.position() != monitor.position())))
+        .or_else(|| monitors.first())
+        .ok_or("No output display is available")?;
+
+    let output = if let Some(window) = app.get_webview_window("projector") {
+        window
+    } else {
+        tauri::WebviewWindowBuilder::new(&app, "projector", tauri::WebviewUrl::App("index.html?projection=1".into()))
+            .title("SermonSync Projection")
+            .decorations(false)
+            .build()
+            .map_err(|e| e.to_string())?
+    };
+    if output.is_fullscreen().map_err(|e| e.to_string())?
+        && output.current_monitor().map_err(|e| e.to_string())?
+            .as_ref().is_some_and(|monitor| monitor.position() == chosen.position())
+    {
+        output.show().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+    output.set_fullscreen(false).map_err(|e| e.to_string())?;
+    output.set_position(*chosen.position()).map_err(|e| e.to_string())?;
+    output.set_size(*chosen.size()).map_err(|e| e.to_string())?;
+    output.set_fullscreen(true).map_err(|e| e.to_string())?;
+    output.show().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn close_projector(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(output) = app.get_webview_window("projector") {
+        output.close().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn get_projection_state(state: tauri::State<'_, ProjectionState>) -> Result<serde_json::Value, String> {
+    state.0.lock().map(|value| value.clone()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_projection_state(app: tauri::AppHandle, state: tauri::State<'_, ProjectionState>, payload: serde_json::Value) -> Result<(), String> {
+    *state.0.lock().map_err(|e| e.to_string())? = payload.clone();
+    app.emit_to("projector", PROJECTOR_EVENT, payload).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn import_media_files(app: tauri::AppHandle, paths: Vec<String>) -> Result<Vec<String>, String> {
+    let directory = app.path().app_data_dir().map_err(|e| e.to_string())?.join("media");
+    std::fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
+    paths.into_iter().enumerate().map(|(index, path)| {
+        let source = PathBuf::from(&path);
+        let extension = source.extension().and_then(|value| value.to_str()).unwrap_or("");
+        if !["mp3", "wav", "ogg", "flac", "m4a", "aac", "png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "mp4", "mov", "webm", "mkv", "avi"]
+            .iter().any(|allowed| extension.eq_ignore_ascii_case(allowed)) {
+            return Err(format!("Unsupported media format: {}", source.display()));
+        }
+        if source.parent() == Some(directory.as_path()) && source.is_file() {
+            return Ok(source.to_string_lossy().into_owned());
+        }
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e| e.to_string())?.as_nanos();
+        let filename = format!("{nonce}-{index}.{}", extension.to_ascii_lowercase());
+        let destination = directory.join(filename);
+        std::fs::copy(&source, &destination).map_err(|e| format!("Could not import {}: {e}", source.display()))?;
+        Ok(destination.to_string_lossy().into_owned())
+    }).collect()
+}
+
+#[tauri::command]
+fn remove_media_file(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    let directory = app.path().app_data_dir().map_err(|e| e.to_string())?.join("media");
+    let file = PathBuf::from(path);
+    if !file.starts_with(&directory) || file.parent() != Some(directory.as_path()) {
+        return Ok(()); // Older library entries may point to user-owned files.
+    }
+    match std::fs::remove_file(file) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.to_string()),
+    }
+}
 
 #[cfg(debug_assertions)]
 fn stop_sidecar(state: &SidecarState) {
@@ -306,6 +428,7 @@ fn spawn_health_probe(app_handle: tauri::AppHandle) {
 pub fn run() {
     tauri::Builder::default()
         .manage(SidecarState(Mutex::new(None)))
+        .manage(ProjectionState(Mutex::new(serde_json::Value::Null)))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -480,7 +603,14 @@ pub fn run() {
             import_bible_file,
             load_template_themes,
             save_template_themes,
-            save_text_file
+            save_text_file,
+            list_output_displays,
+            open_projector,
+            close_projector,
+            get_projection_state,
+            set_projection_state,
+            import_media_files,
+            remove_media_file
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

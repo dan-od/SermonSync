@@ -600,9 +600,10 @@ interface ProjectorViewProps {
   theme: VerseTheme;
   isLive: boolean;
   fontSizePx: number;
+  bare?: boolean;
 }
 
-export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive, fontSizePx }: ProjectorViewProps) {
+export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive, fontSizePx, bare = false }: ProjectorViewProps) {
   const stageRef = useRef<HTMLDivElement>(null);
   const backgroundVideoRef = useRef<HTMLVideoElement | null>(null);
   const [viewportSize, setViewportSize] = useState({ width: OVERLAY_WIDTH, height: OVERLAY_HEIGHT });
@@ -658,7 +659,7 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
   const isClearOverride = feedOverride === "clear";
   const isLogoOverride = feedOverride === "logo";
   const showSlide = feedOverride === "live";
-  const templateCategory = useMemo(() => (slide ? inferSlideCategory(slide) : null), [slide]);
+  const templateCategory = useMemo(() => (slide && !slide.media ? inferSlideCategory(slide) : null), [slide]);
   const activeTemplate = useMemo(() => {
     if (!templateCategory) {
       return null;
@@ -714,7 +715,7 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
     ? "logo"
     : (templateCategory ?? "scriptures");
 
-  const contentKey = `${feedOverride}-${slide?.reference?.book ?? ""}-${slide?.reference?.chapter ?? ""}-${slide?.reference?.verse ?? ""}-${slide?.text ?? ""}-${overlayMode}`;
+  const contentKey = `${feedOverride}-${slide?.reference?.book ?? ""}-${slide?.reference?.chapter ?? ""}-${slide?.reference?.verse ?? ""}-${slide?.text ?? ""}-${slide?.media?.src ?? ""}-${overlayMode}`;
 
   const [animKey, setAnimKey] = useState(0);
   const [transitionCategory, setTransitionCategory] = useState<TransitionCategory>(activeCategory);
@@ -797,7 +798,7 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
     >
       <div
         style={{
-          display: "flex",
+          display: bare ? "none" : "flex",
           alignItems: "center",
           justifyContent: "space-between",
           padding: "4px 4px 8px",
@@ -888,10 +889,10 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          paddingLeft: `${VIEWPORT_SAFE_INSET}px`,
-          paddingRight: `${VIEWPORT_SAFE_INSET}px`,
-          paddingTop: `${VIEWPORT_SAFE_INSET}px`,
-          paddingBottom: `${VIEWPORT_SAFE_INSET}px`,
+          paddingLeft: bare ? 0 : `${VIEWPORT_SAFE_INSET}px`,
+          paddingRight: bare ? 0 : `${VIEWPORT_SAFE_INSET}px`,
+          paddingTop: bare ? 0 : `${VIEWPORT_SAFE_INSET}px`,
+          paddingBottom: bare ? 0 : `${VIEWPORT_SAFE_INSET}px`,
           overflow: "hidden",
           background: "transparent",
         }}
@@ -901,7 +902,7 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
             width: `${viewportSize.width}px`,
             height: `${viewportSize.height}px`,
             position: "relative",
-            borderRadius: "var(--radius-lg)",
+            borderRadius: bare ? 0 : "var(--radius-lg)",
             background: isBlackOverride
               ? "#000000"
               : "linear-gradient(180deg, rgba(16, 20, 44, 0.95), rgba(8, 9, 18, 1))",
@@ -949,7 +950,13 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
                 <TemplateSceneOverlay scene={outgoingLayoutScene.scene} slide={outgoingLayoutScene.slide} category={outgoingLayoutScene.category} animateDynamicLayers={false} />
               </div>
             ) : null}
-            {activeProjectionScene && ((showSlide && slide) || (isClearOverride && slide)) ? (
+            {showSlide && slide?.media ? (
+              slide.media.type === "image" ? (
+                <img src={slide.media.src} alt={slide.media.name} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+              ) : (
+                <ResilientVideo media={{ type: "video", src: slide.media.src, fit: "contain", loop: true, x: 0, y: 0, width: 100, height: 100, opacity: 1, muted: true, speed: 1 }} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+              )
+            ) : activeProjectionScene && ((showSlide && slide) || (isClearOverride && slide)) ? (
               <TemplateSceneOverlay
                 scene={activeProjectionScene}
                 slide={slide}
@@ -966,6 +973,11 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
                   transformStyle: "preserve-3d",
                 }}
               />
+            ) : showSlide && slide ? (
+              <div style={{ width: "100%", height: "100%", padding: "8%", boxSizing: "border-box", display: "flex", flexDirection: "column", justifyContent: "center", gap: 36, color: "#fff", background: "#101426" }}>
+                <div style={{ fontSize: Math.max(fontSizePx, 48), lineHeight: 1.28, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{slide.text}</div>
+                <div style={{ fontSize: 28, color: "#cbbdff" }}>{slide.version === "SONG" ? slide.reference.book : `${referenceLabel(slide)} · ${slide.version}`}</div>
+              </div>
             ) : isLogoOverride ? (
               <div
                 style={{
@@ -994,7 +1006,7 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
           )}
         </div>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: "8px", minHeight: "28px", padding: "6px 4px 0", color: "var(--fg-muted)", fontFamily: "var(--font-mono)", fontSize: "10px" }}>
+      {!bare && <div style={{ display: "flex", alignItems: "center", gap: "8px", minHeight: "28px", padding: "6px 4px 0", color: "var(--fg-muted)", fontFamily: "var(--font-mono)", fontSize: "10px" }}>
         <button
           type="button"
           onClick={() => setIsBackgroundVideoPlaying((current) => !current)}
@@ -1032,7 +1044,7 @@ export function ProjectorView({ title, slide, feedOverride, overlayMode, isLive,
         >
           ↻
         </button>
-      </div>
+      </div>}
     </div>
   );
 }

@@ -1652,19 +1652,6 @@ function SongsTab({ previewReference, liveReference, onPreviewSlide, onSendLive,
     return () => onNavigationHandlerChange?.(null);
   }, [navigateSongSlides, onNavigationHandlerChange]);
 
-  const handleSongKeyDownCapture = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.defaultPrevented || event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
-      return;
-    }
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    navigateSongSlides(event.key === "ArrowLeft" ? -1 : 1);
-  };
-
   const confirmRename = () => {
     if (!renameTarget || !renameTitle.trim()) return;
     renameSong(renameTarget.id, renameTitle.trim(), renameArtist.trim());
@@ -1673,7 +1660,6 @@ function SongsTab({ previewReference, liveReference, onPreviewSlide, onSendLive,
 
   return (
     <div
-      onKeyDownCapture={handleSongKeyDownCapture}
       style={{
         display: "flex",
         height: "100%",
@@ -2336,10 +2322,28 @@ function saveMediaItems(items: MediaItem[]): void {
   }
 }
 
-function MediaTab() {
+function MediaTab({ onPreviewSlide, onSendLive }: Pick<LocalLibraryPanelProps, "onPreviewSlide" | "onSendLive">) {
   const [items, setItems] = useState<MediaItem[]>(() => loadMediaItems());
   const [selectedCategory, setSelectedCategory] = useState<MediaCategory>("images");
   const [importError, setImportError] = useState<string | null>(null);
+  const migrationRef = useRef<Promise<Map<string, string>> | null>(null);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let active = true;
+    if (!migrationRef.current) {
+      const saved = loadMediaItems();
+      migrationRef.current = Promise.allSettled(saved.map(async (item) => {
+        const [path] = await invoke<string[]>("import_media_files", { paths: [item.path] });
+        return { id: item.id, path };
+      })).then((results) => new Map(results.flatMap((result) => result.status === "fulfilled" ? [[result.value.id, result.value.path] as const] : [])));
+    }
+    void migrationRef.current.then((migrated) => {
+      if (!active) return;
+      setItems((current) => current.map((item) => ({ ...item, path: migrated.get(item.id) ?? item.path })));
+    });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     saveMediaItems(items);
@@ -2374,16 +2378,14 @@ function MediaTab() {
       if (!selected) return;
       const paths = Array.isArray(selected) ? selected : [selected];
 
+      const importedPaths = await invoke<string[]>("import_media_files", { paths });
       setItems((current) => {
-        const existingPaths = new Set(current.map((item) => item.path));
-        const additions: MediaItem[] = paths
-          .filter((path) => !existingPaths.has(path))
-          .map((path) => ({
-            id: `${category}-${path}`,
-            name: fileNameFromPath(path),
-            path,
-            category,
-          }));
+        const additions: MediaItem[] = importedPaths.map((path, index) => ({
+          id: `${category}-${path}`,
+          name: fileNameFromPath(paths[index]),
+          path,
+          category,
+        }));
         return [...current, ...additions];
       });
     } catch (error) {
@@ -2392,8 +2394,10 @@ function MediaTab() {
   }, []);
 
   const handleRemove = useCallback((id: string) => {
-    setItems((current) => current.filter((item) => item.id !== id));
-  }, []);
+    const item = items.find((entry) => entry.id === id);
+    setItems((current) => current.filter((entry) => entry.id !== id));
+    if (item && isTauriRuntime()) void invoke("remove_media_file", { path: item.path }).catch(console.error);
+  }, [items]);
 
   const activeCategoryLabel = MEDIA_CATEGORIES.find((entry) => entry.id === selectedCategory)?.label ?? "";
 
@@ -2469,7 +2473,7 @@ function MediaTab() {
               }}
             >
               {visibleItems.map((item) => (
-                <MediaThumbnail key={item.id} item={item} onRemove={() => handleRemove(item.id)} />
+                <MediaThumbnail key={`${item.id}-${item.path}`} item={item} onRemove={() => handleRemove(item.id)} onPreviewSlide={onPreviewSlide} onSendLive={onSendLive} />
               ))}
             </div>
           )}
@@ -2479,8 +2483,9 @@ function MediaTab() {
   );
 }
 
-function MediaThumbnail({ item, onRemove }: { item: MediaItem; onRemove: () => void }) {
+function MediaThumbnail({ item, onRemove, onPreviewSlide, onSendLive }: { item: MediaItem; onRemove: () => void; onPreviewSlide: (slide: ProjectorSlide) => void; onSendLive: (slide: ProjectorSlide) => void }) {
   const [isHovered, setIsHovered] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const src = useMemo(() => {
     try {
       return convertFileSrc(item.path);
@@ -2488,6 +2493,12 @@ function MediaThumbnail({ item, onRemove }: { item: MediaItem; onRemove: () => v
       return "";
     }
   }, [item.path]);
+  const slide: ProjectorSlide = {
+    reference: { book: "Media", chapter: 1, verse: 1 },
+    text: item.name,
+    version: "MEDIA",
+    media: { type: item.category === "videos" ? "video" : "image", src, name: item.name },
+  };
 
   return (
     <div
@@ -2514,9 +2525,10 @@ function MediaThumbnail({ item, onRemove }: { item: MediaItem; onRemove: () => v
           justifyContent: "center",
         }}
       >
-        {item.category === "images" && (
-          <img src={src} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        {item.category === "images" && !loadFailed && (
+          <img src={src} alt={item.name} onError={() => setLoadFailed(true)} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
         )}
+        {item.category === "images" && loadFailed && <span style={{ padding: 8, color: "var(--color-error)", fontSize: 11, textAlign: "center" }}>Image unavailable. Remove and import it again.</span>}
         {item.category === "videos" && (
           <ResilientVideo
             media={{ type: "video", src, fit: "cover", loop: false, x: 0, y: 0, width: 100, height: 100, opacity: 1, muted: true, speed: 1 }}
@@ -2568,6 +2580,12 @@ function MediaThumbnail({ item, onRemove }: { item: MediaItem; onRemove: () => v
       >
         {item.name}
       </span>
+      {item.category !== "audio" && !loadFailed && (
+        <div style={{ display: "flex", gap: 4 }}>
+          <button type="button" onClick={() => onPreviewSlide(slide)} style={{ flex: 1, cursor: "pointer" }}>Preview</button>
+          <button type="button" onClick={() => onSendLive(slide)} style={{ flex: 1, cursor: "pointer" }}>Live</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -3190,7 +3208,7 @@ export function LocalLibraryPanel({
           <div key={activeTab} className={`library-tab-slide library-tab-slide--${tabDirection}`}>
             {activeTab === "scriptures" && <ScripturesTab {...searchableProps} searchMode={searchMode} />}
             {activeTab === "songs" && <SongsTab {...searchableProps} />}
-            {activeTab === "media" && <MediaTab />}
+            {activeTab === "media" && <MediaTab onPreviewSlide={onPreviewSlide} onSendLive={onSendLive} />}
           </div>
         ) : null}
       </div>

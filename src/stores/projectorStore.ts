@@ -81,7 +81,10 @@ const initialState: ProjectorState = {
   overlayMode: "widescreen",
   theme: "cross",
   feedOverride: "live",
-  outputDisplay: null,
+  outputDisplay: (() => {
+    try { return typeof window === "undefined" ? null : window.localStorage.getItem("sermonsync-output-display"); }
+    catch { return null; }
+  })(),
   ndiEnabled: false,
   transitions: DEFAULT_TRANSITIONS,
 };
@@ -104,7 +107,13 @@ export const useProjectorStore = create<ProjectorStore>((set) => ({
 
   setFeedOverride: (feedOverride) => set({ feedOverride }),
 
-  setOutputDisplay: (outputDisplay) => set({ outputDisplay }),
+  setOutputDisplay: (outputDisplay) => {
+    try {
+      if (outputDisplay) window.localStorage.setItem("sermonsync-output-display", outputDisplay);
+      else window.localStorage.removeItem("sermonsync-output-display");
+    } catch { /* Projection still works if settings storage is unavailable. */ }
+    set({ outputDisplay });
+  },
 
   toggleLive: (isLive) =>
     set((s) => ({ isLive: isLive ?? !s.isLive })),

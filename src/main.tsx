@@ -1,6 +1,7 @@
 import { Component, StrictMode, type ErrorInfo, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
+import { ProjectionOutput } from './components/ProjectionOutput.tsx'
 import './styles/global.css'
 
 class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -31,6 +32,6 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <AppErrorBoundary><App /></AppErrorBoundary>
+    <AppErrorBoundary>{new URLSearchParams(window.location.search).has('projection') ? <ProjectionOutput /> : <App />}</AppErrorBoundary>
   </StrictMode>,
 )

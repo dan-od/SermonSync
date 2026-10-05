@@ -552,6 +552,9 @@ export function TemplateEditorModal(props: TemplateEditorModalProps) {
       const target = event.target as HTMLElement | null;
       const isTextEditing = target?.tagName === "TEXTAREA" || target?.isContentEditable;
       const isFormEditing = isTextEditing || target?.tagName === "INPUT" || target?.tagName === "SELECT" || target?.tagName === "BUTTON";
+      const canvas = canvasHandleRef.current?.getCanvas();
+      const activeCanvasObject = canvas?.getActiveObject();
+      const isCanvasTextEditing = activeCanvasObject instanceof Textbox && activeCanvasObject.isEditing;
       if (event.key === "Escape") {
         if (isTitlePromptOpen) {
           setIsTitlePromptOpen(false);
@@ -566,14 +569,11 @@ export function TemplateEditorModal(props: TemplateEditorModalProps) {
         onClose();
         return;
       }
-      if (!isFormEditing && isShortcutEvent(event, shortcuts["template-undo"])) {
+      if (!isFormEditing && !isCanvasTextEditing && isShortcutEvent(event, shortcuts["template-undo"])) {
         event.preventDefault();
         void canvasHandleRef.current?.undo();
         return;
       }
-      const canvas = canvasHandleRef.current?.getCanvas();
-      const activeCanvasObject = canvas?.getActiveObject();
-      const isCanvasTextEditing = activeCanvasObject instanceof Textbox && activeCanvasObject.isEditing;
       if (!isFormEditing && !isCanvasTextEditing && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c") {
         event.preventDefault();
         void canvasHandleRef.current?.copySelection();
@@ -594,7 +594,7 @@ export function TemplateEditorModal(props: TemplateEditorModalProps) {
         canvasHandleRef.current?.ungroupSelection();
         return;
       }
-      if (!isFormEditing && isShortcutEvent(event, shortcuts["template-redo"])) {
+      if (!isFormEditing && !isCanvasTextEditing && isShortcutEvent(event, shortcuts["template-redo"])) {
         event.preventDefault();
         void canvasHandleRef.current?.redo();
         return;

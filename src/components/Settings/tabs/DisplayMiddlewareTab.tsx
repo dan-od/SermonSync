@@ -1,6 +1,9 @@
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import { useEffect, useState } from "react";
+import { useProjectorStore } from "../../../stores/projectorStore";
 import { IconMonitor } from "../icons";
 import { InfoBanner, RadioCardGroup, SectionIntro, SelectRow, SettingsCard, SliderRow, TextRow, ToggleRow } from "../primitives";
-import { MOCK_DISPLAYS, type IdleScreenMode, type SettingsPanelState } from "../types";
+import { type IdleScreenMode, type SettingsPanelState } from "../types";
 
 interface DisplayMiddlewareTabProps {
   panelState: SettingsPanelState;
@@ -14,6 +17,14 @@ const IDLE_SCREEN_OPTIONS: { value: IdleScreenMode; label: string; description: 
 ];
 
 export function DisplayMiddlewareTab({ panelState, onPanelChange }: DisplayMiddlewareTabProps) {
+  const [displays, setDisplays] = useState<{ id: string; label: string; width: number; height: number }[]>([]);
+  const outputDisplay = useProjectorStore((state) => state.outputDisplay);
+  const setOutputDisplay = useProjectorStore((state) => state.setOutputDisplay);
+
+  useEffect(() => {
+    if (isTauri()) void invoke<typeof displays>("list_output_displays").then(setDisplays).catch(console.error);
+  }, []);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-6)" }}>
       <SectionIntro
@@ -21,12 +32,12 @@ export function DisplayMiddlewareTab({ panelState, onPanelChange }: DisplayMiddl
         description="EasyWorship-style display takeover for standalone churches, or feed content into OBS/EasyWorship/ProPresenter as middleware (PRD §5.3, §5.4)."
       />
 
-      <SettingsCard icon={<IconMonitor />} title="Output Display" subtitle="Any resolution, hot-plug supported">
+      <SettingsCard icon={<IconMonitor />} title="Output Display" subtitle="Choose a connected screen for full-screen projection">
         <SelectRow
           label="Active Output Display"
-          value={panelState.outputDisplayId}
-          options={MOCK_DISPLAYS.map((d) => ({ value: d.id, label: `${d.label} — ${d.resolution}` }))}
-          onChange={(value) => onPanelChange("outputDisplayId", value)}
+          value={outputDisplay ?? ""}
+          options={[{ value: "", label: "Automatic (prefer second display)" }, ...displays.map((d) => ({ value: d.id, label: `${d.label} — ${d.width}×${d.height}` }))]}
+          onChange={(value) => { setOutputDisplay(value || null); onPanelChange("outputDisplayId", value); }}
         />
         <SliderRow
           label="Default projector font size"

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   SHORTCUT_DEFINITIONS,
@@ -11,33 +11,40 @@ import { SectionIntro, SettingsCard } from "../primitives";
 
 const CATEGORIES = ["Live feed", "Screen layout", "Local library", "Workspace", "Template Studio"] as const;
 
-export function ShortcutsTab() {
+export function ShortcutsTab({ active }: { active: boolean }) {
   const shortcuts = useShortcutStore((state) => state.shortcuts);
   const setShortcut = useShortcutStore((state) => state.setShortcut);
   const resetShortcuts = useShortcutStore((state) => state.resetShortcuts);
   const [recordingAction, setRecordingAction] = useState<ShortcutAction | null>(null);
   const [conflict, setConflict] = useState<string | null>(null);
 
-  const captureShortcut = (event: React.KeyboardEvent<HTMLButtonElement>, action: ShortcutAction) => {
-    event.preventDefault();
-    event.stopPropagation();
-    if (event.key === "Escape") {
+  useEffect(() => {
+    if (!active || !recordingAction) return;
+    const captureShortcut = (event: KeyboardEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.repeat) return;
+      if (event.key === "Escape") {
+        setRecordingAction(null);
+        setConflict(null);
+        return;
+      }
+
+      const binding = shortcutFromEvent(event);
+      if (!binding) return;
+      const existing = SHORTCUT_DEFINITIONS.find((entry) => entry.action !== recordingAction && shortcuts[entry.action] === binding);
+      if (existing) {
+        setConflict(`${binding} is already assigned to ${existing.label}.`);
+        return;
+      }
+
+      setShortcut(recordingAction, binding);
       setRecordingAction(null);
       setConflict(null);
-      return;
-    }
-
-    const binding = shortcutFromEvent(event.nativeEvent);
-    const existing = SHORTCUT_DEFINITIONS.find((entry) => entry.action !== action && shortcuts[entry.action] === binding);
-    if (existing) {
-      setConflict(`${binding} is already assigned to ${existing.label}.`);
-      return;
-    }
-
-    setShortcut(action, binding);
-    setRecordingAction(null);
-    setConflict(null);
-  };
+    };
+    document.addEventListener("keydown", captureShortcut, true);
+    return () => document.removeEventListener("keydown", captureShortcut, true);
+  }, [active, recordingAction, setShortcut, shortcuts]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-6)" }}>
@@ -83,9 +90,6 @@ export function ShortcutsTab() {
                         setRecordingAction(definition.action);
                         setConflict(null);
                       }}
-                      onKeyDown={(event) => {
-                        if (isRecording) captureShortcut(event, definition.action);
-                      }}
                       style={{ minWidth: "104px", border: "1px solid var(--border-base)", borderRadius: "var(--radius-sm)", padding: "4px 8px", background: isRecording ? "var(--color-primary-muted)" : "var(--bg-elevated)", color: isRecording ? "var(--color-primary)" : "var(--fg-base)", cursor: "pointer", fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 700 }}
                     >
                       {isRecording ? "Press keys" : shortcuts[definition.action]}
@@ -96,7 +100,7 @@ export function ShortcutsTab() {
             </div>
           );
         })}
-        {conflict ? <p role="alert" style={{ margin: 0, color: "var(--color-danger)", fontSize: "var(--text-xs)" }}>{conflict}</p> : null}
+        {conflict ? <p role="alert" style={{ margin: 0, color: "var(--color-error)", fontSize: "var(--text-xs)" }}>{conflict}</p> : null}
       </SettingsCard>
     </div>
   );

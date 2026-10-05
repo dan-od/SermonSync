@@ -333,7 +333,7 @@ export function SettingsPanel({
               {visitedTabs.has("bible") ? <div style={{ display: activeTab === "bible" ? "block" : "none" }}><BibleVersionsTab /></div> : null}
               {visitedTabs.has("display") ? <div style={{ display: activeTab === "display" ? "block" : "none" }}><DisplayMiddlewareTab panelState={panelState} onPanelChange={handlePanelChange} /></div> : null}
               {visitedTabs.has("presentation") ? <div style={{ display: activeTab === "presentation" ? "block" : "none" }}><PresentationTab panelState={panelState} onPanelChange={handlePanelChange} /></div> : null}
-              {visitedTabs.has("shortcuts") ? <div style={{ display: activeTab === "shortcuts" ? "block" : "none" }}><ShortcutsTab /></div> : null}
+              {visitedTabs.has("shortcuts") ? <div style={{ display: activeTab === "shortcuts" ? "block" : "none" }}><ShortcutsTab active={activeTab === "shortcuts"} /></div> : null}
               {visitedTabs.has("transitions") ? <div style={{ display: activeTab === "transitions" ? "block" : "none" }}><TransitionsTab panelState={panelState} onPanelChange={handlePanelChange} /></div> : null}
               {visitedTabs.has("theme") ? <div style={{ display: activeTab === "theme" ? "block" : "none" }}><ThemeTab theme={uiTheme} onThemeChange={onUiThemeChange} /></div> : null}
               {visitedTabs.has("archive") ? <div style={{ display: activeTab === "archive" ? "block" : "none" }}><ArchivalTab panelState={panelState} onPanelChange={handlePanelChange} /></div> : null}
