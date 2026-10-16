@@ -1,4 +1,6 @@
-# fix/utterance-segmentation — sweep results (defaults NOT changed yet)
+# fix/utterance-segmentation — sweep results
+
+**Picked: silence_flush 0.8 s, ceiling 6 s (option 1), min chunk 0.4 s unchanged.**
 
 Swept one knob at a time from today's defaults (silence_flush 0.45 s, min chunk 0.4 s, ceiling 6 s),
 speed 1.0, on the integration build (fixes A + B + C + partials setting, hangover 300 ms). Two
@@ -46,7 +48,7 @@ silence_flush before an utterance is cut):
 | 300 ms (default) | 0.40 / 0.30–0.33 | 60 / 54 s | 71–73 of ~100 / 14–19 of ~113 |
 | 500 ms | 0.38 / 0.30 | 63 / 78 s | 78 of 94 / 22 of 112 |
 
-Candidate defaults to choose between (not committed):
+Candidate defaults (option 1 chosen and committed):
 1. silence_flush 0.8 s, ceiling 6 s — the safe win, latency unchanged.
 2. silence_flush 0.8 s, ceiling 10 s — more accuracy on preachers who never pause, ~+1.5 s delay.
 3. Either of the above with hangover 150 ms — less false-open; needs one combined run to confirm.
