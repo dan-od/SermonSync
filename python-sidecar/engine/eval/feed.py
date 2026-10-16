@@ -147,6 +147,10 @@ def _pipeline_config() -> dict:
                 "partials_enabled",
                 "partial_model",
                 "language",
+                "prompt_mode",
+                "style_prompt",
+                "prompt_as_hotwords",
+                "hallucination_filter",
             )
             if hasattr(st, k)
         },

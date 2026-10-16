@@ -1,0 +1,169 @@
+{
+  "run": {
+    "dir": "20261016-061718_abc-hot-explicit-refs",
+    "label": "ABC-hot-explicit_refs",
+    "title": "Special Christmas Service - Dec. 25, 2021. Living Faith Church, King Jesus",
+    "source": "https://www.youtube.com/watch?v=i9jrxRIAq1Q",
+    "window": [
+      1590.0,
+      2190.0
+    ],
+    "duration_s": 600.0,
+    "speed": 1.0,
+    "overrides": {
+      "streaming.prompt_mode": "style",
+      "streaming.prompt_as_hotwords": true
+    },
+    "captions": "uploaded",
+    "engine": {
+      "model": "base",
+      "device": "cpu",
+      "compute_type": "int8",
+      "backend": "faster-whisper"
+    },
+    "vad": "SileroVAD",
+    "git": {
+      "branch": "HEAD",
+      "commit": "abf3ab0",
+      "dirty": false
+    },
+    "normalizer": "whisper EnglishTextNormalizer"
+  },
+  "wer": {
+    "captions": {
+      "source": "uploaded captions",
+      "label": "agreement with uploaded captions of unverified origin (may be machine-made)",
+      "window": [
+        1590.0,
+        2190.0
+      ],
+      "ref_words": 1532,
+      "hyp_words": 1605,
+      "wer": 0.4445,
+      "substitutions": 432,
+      "deletions": 88,
+      "insertions": 161,
+      "hits": 1012
+    },
+    "primary": "captions",
+    "ref_spans": {
+      "ref_words": 102,
+      "spans": 19,
+      "wer": 0.5392,
+      "substitutions": 44,
+      "deletions": 7,
+      "insertions": 4
+    }
+  },
+  "worship_gate": {
+    "caption_speech_in_worship_s": 0,
+    "blocked_speech_s": 0,
+    "blocked_pct_of_speech": 0.0
+  },
+  "vad": {
+    "vad_open_s": 523.4,
+    "forwarded_s": 523.4,
+    "reached_whisper_s": 559.6,
+    "stale_dropped_s": 0,
+    "trimmed_s": 0,
+    "worship_s": 0,
+    "caption_speech_s": 448.5,
+    "recall": 93.7,
+    "recall_vad_only": 87.6,
+    "recall_gate": 87.6,
+    "false_open_s": 60.2,
+    "false_open_s_per_10min": 60.15,
+    "speech_lost_to_stale_drop_s": 0
+  },
+  "hallucinations": {
+    "count": 0,
+    "per_10min": 0.0,
+    "during_music": 0,
+    "words": 0
+  },
+  "chunks": {
+    "count": 91,
+    "median_s": 6.36,
+    "mean_s": 6.29,
+    "reasons": {
+      "pause": 26,
+      "ceiling": 65
+    },
+    "histogram": {
+      "0-1s": 3,
+      "1-2s": 3,
+      "2-3s": 9,
+      "3-4s": 2,
+      "4-5s": 4,
+      "5-6s": 5,
+      "6-8s": 44,
+      "8-10s": 16,
+      "10-15s": 5,
+      "15s+": 0
+    }
+  },
+  "latency": {
+    "final_infer_ms_median": 514.2,
+    "final_infer_ms_p90": 3467.0,
+    "speech_end_to_final_s_median": 0.9,
+    "speech_end_to_final_s_p90": 3.6
+  },
+  "compute": {
+    "final_inference_s": 129.5,
+    "partial_inference_s": 293.4,
+    "partial_count": 244,
+    "partial_infer_ms_median": 413.2,
+    "partial_share_pct": 69.4,
+    "inference_realtime_factor": 0.705
+  },
+  "detection": {
+    "expected": 19,
+    "found": 13,
+    "recall": 68.4,
+    "suggestions": 1348,
+    "suggestions_per_10min": 1348.0,
+    "precision": 1.0,
+    "precision_top1": 8.3,
+    "latency_median_s": 3.656,
+    "latency_mean_s": 5.392,
+    "stages": {
+      "2": 724,
+      "4": 613,
+      "0": 11
+    },
+    "by_stage": {
+      "2": {
+        "suggestions": 724,
+        "matched": 8,
+        "precision": 1.1,
+        "found": 6
+      },
+      "4": {
+        "suggestions": 613,
+        "matched": 0,
+        "precision": 0.0,
+        "found": 0
+      },
+      "0": {
+        "suggestions": 11,
+        "matched": 6,
+        "precision": 54.5,
+        "found": 7
+      }
+    },
+    "expected_source": "reference parser over uploaded captions"
+  },
+  "headline": {
+    "wer": 0.4445,
+    "wer_source": "uploaded captions",
+    "ref_span_wer": 0.5392,
+    "vad_recall_pct": 93.7,
+    "vad_false_open_s": 60.2,
+    "hallucinations_per_10min": 0.0,
+    "refs_expected": 19,
+    "refs_precision_pct": 1.0,
+    "refs_recall_pct": 68.4,
+    "spoken_to_suggestion_median_s": 3.656,
+    "engine": "faster-whisper/base/cpu-int8"
+  }
+}
