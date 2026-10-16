@@ -214,6 +214,7 @@ class FeedController:
         label: str | None = None,
         overrides: dict | None = None,
         score: bool = True,
+        captions_human: bool = False,
     ) -> dict:
         if self.active:
             raise FeedBusyError("a test feed is already running")
@@ -228,6 +229,7 @@ class FeedController:
             "label": label,
             "overrides": overrides or {},
             "score": score,
+            "captions_human": captions_human,
         }
         self.state, self.title, self.error = "loading", None, None
         self.run_dir, self.report_path = None, None

@@ -54,6 +54,7 @@ def lookup(source: str) -> dict:
                 "start": entry.get("start", 0),
                 "duration": entry.get("duration"),
                 "label": entry["id"],
+                "captions_human": bool(entry.get("captions_human")),
             }
     raise SystemExit(f"unknown source {source!r} (not a URL, file, or id in {SOURCES})")
 

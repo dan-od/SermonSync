@@ -10,43 +10,56 @@
 #   expected_refs.json   [{"ref": "John 3:16", "t": 734.2}, ...]  (t = when
 #                        the reference is spoken, source seconds)
 # Both override what the scorer would otherwise take from YouTube captions.
+#
+# Captions: an uploaded English track that is just a copy of the auto captions
+# is detected and ignored. Any other uploaded track is scored as "agreement
+# with uploaded captions (unverified)" unless the entry says
+# `captions_human: true` (only set that after checking a person wrote it).
+# Real accuracy needs a hand-corrected reference.txt.
 
 sources:
   # A Nigerian preacher in English with HUMAN-MADE English captions, so WER
   # is real accuracy rather than agreement with YouTube's own ASR.
   - id: nigerian_human_captions
-    url:            # TODO
-    start: 0
+    url: https://www.youtube.com/watch?v=ooaB4z653Aw
+    start: 60
     duration: 600
-    notes: "Nigerian preacher, human English captions"
+    notes: "Adeboye (Ezel Media clip). Manual en track is punctuated with quoted speech, but NOT verified as human-made; may be an AI transcript. Re-uploaded 'manual' tracks on Nigerian channels are usually copies of the auto-captions."
 
   # Keyboard / organ playing under the preaching (exhortation, altar call).
   # Exercises the worship gate during speech (fix F) and VAD under music.
   - id: music_under_preaching
-    url:            # TODO
-    start: 0
+    url: https://www.youtube.com/watch?v=lJfWmv3eM7c
+    start: 2400
     duration: 600
-    notes: "keyboard/music under the preacher"
+    notes: "Neon Adejo live worship: spoken exhortation over keyboard (~480 words). Worship-leader exhortation, not a full sermon. Not verified by listening."
 
   # Many explicit "turn with me to ..." references: detection precision,
   # recall and spoken->suggestion latency.
   - id: explicit_refs
-    url:            # TODO
-    start: 0
+    url: https://www.youtube.com/watch?v=i9jrxRIAq1Q
+    start: 1590
     duration: 600
-    notes: "dense explicit references"
+    notes: "Living Faith Church Asaba, Christmas 2021. ~15 distinct explicit references in the window (Ephesians 2, Revelation 5, Luke 24, Romans 8, Isaiah 37, 'John three verse three to five'). Auto captions only."
 
   # Phone / camcorder room recording: reverb, crowd noise, distant mic.
   - id: noisy_room
-    url:            # TODO
+    url: https://www.youtube.com/watch?v=NtUddpvsBa8
     start: 0
     duration: 600
-    notes: "noisy room recording"
+    notes: "Open-air crusade, Igando Lagos. Poor audio inferred from garbled auto captions; not confirmed as a phone recording. Mixed English/Yoruba/Pidgin likely."
 
   # Worship / praise segment with no preaching. Every final here is a
   # hallucination; the scorer counts them.
   - id: worship_music
-    url:            # TODO
-    start: 0
+    url: https://www.youtube.com/watch?v=aeNAHcly6kE
+    start: 1200
     duration: 600
-    notes: "silence/music: sung worship, no speech"
+    notes: "NSPPD afternoon worship (Jerry Eze). 1200-1800: ~160 caption words, 22 [Music] markers; almost all singing."
+
+  # Second dense-reference source (Kumuyi Bible study re-upload, ~8 refs).
+  - id: explicit_refs_2
+    url: https://www.youtube.com/watch?v=X-iW1iAhJJI
+    start: 3900
+    duration: 600
+    notes: "Pastor W F Kumuyi Monday Bible Study (re-upload channel). Mark 16, Acts 2, Joshua 5, Ezekiel 44, Romans 2, Deuteronomy 13, Colossians 2."

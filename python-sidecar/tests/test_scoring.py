@@ -222,3 +222,24 @@ def test_compare_runs(tmp_path):
     rows = {r[0]: r for r in mod.compare(a, b)}
     assert rows["WER"][3].endswith("✓")
     assert rows["refs recall %"][3].endswith("✗")
+
+
+FRAGMENT_VTT = """WEBVTT
+
+00:00:01.935 --> 00:00:27.160 align:start position:0%
+\\x20
+yo<00:00:01.968><c>u </c><00:00:02.001><c>ar</c><00:00:02.035><c>e </c><00:00:02.068><c>go</c><00:00:02.101><c>od</c>
+
+00:00:27.160 --> 00:00:32.532 align:start position:0%
+\\x20
+Ep<00:00:27.193><c>he</c><00:00:27.226><c>si</c><00:00:27.300><c>an</c><00:00:27.400><c>s </c><00:00:27.500><c>tw</c><00:00:27.550><c>o</c>
+"""
+
+
+def test_parse_fragment_timed_captions(tmp_path):
+    """Some uploaded tracks time 2-letter fragments, not words."""
+    p = tmp_path / "frag.vtt"
+    p.write_text(FRAGMENT_VTT)
+    words = cap.parse_vtt(p).words
+    assert [w.text for w in words] == ["you", "are", "good", "Ephesians", "two"]
+    assert [w.t for w in words] == [1.935, 2.001, 2.068, 27.16, 27.5]
