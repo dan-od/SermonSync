@@ -1,0 +1,168 @@
+{
+  "run": {
+    "dir": "20261016-043602_ab-explicit-refs-2",
+    "label": "AB-explicit_refs_2",
+    "title": "Monday Bible Study  || 5th October, 2026  || Pastor W F Kumuyi",
+    "source": "https://www.youtube.com/watch?v=X-iW1iAhJJI",
+    "window": [
+      3900.0,
+      4500.0
+    ],
+    "duration_s": 600.0,
+    "speed": 1.0,
+    "overrides": {
+      "streaming.hallucination_filter": false
+    },
+    "captions": "auto",
+    "engine": {
+      "model": "base",
+      "device": "cpu",
+      "compute_type": "int8",
+      "backend": "faster-whisper"
+    },
+    "vad": "SileroVAD",
+    "git": {
+      "branch": "HEAD",
+      "commit": "abf3ab0",
+      "dirty": false
+    },
+    "normalizer": "whisper EnglishTextNormalizer"
+  },
+  "wer": {
+    "captions": {
+      "source": "auto captions",
+      "label": "agreement with YouTube ASR (auto-captions), not accuracy",
+      "window": [
+        3900.0,
+        4500.0
+      ],
+      "ref_words": 892,
+      "hyp_words": 931,
+      "wer": 0.4809,
+      "substitutions": 282,
+      "deletions": 54,
+      "insertions": 93,
+      "hits": 556
+    },
+    "primary": "captions",
+    "ref_spans": {
+      "ref_words": 42,
+      "spans": 11,
+      "wer": 0.619,
+      "substitutions": 18,
+      "deletions": 3,
+      "insertions": 5
+    }
+  },
+  "worship_gate": {
+    "caption_speech_in_worship_s": 0,
+    "blocked_speech_s": 0,
+    "blocked_pct_of_speech": 0.0
+  },
+  "vad": {
+    "vad_open_s": 574.1,
+    "forwarded_s": 574.1,
+    "reached_whisper_s": 593.6,
+    "stale_dropped_s": 0,
+    "trimmed_s": 0,
+    "worship_s": 0,
+    "caption_speech_s": 394.5,
+    "recall": 100.0,
+    "recall_vad_only": 99.3,
+    "recall_gate": 99.3,
+    "false_open_s": 93.2,
+    "false_open_s_per_10min": 93.17,
+    "speech_lost_to_stale_drop_s": 0
+  },
+  "hallucinations": {
+    "count": 0,
+    "per_10min": 0.0,
+    "during_music": 0,
+    "words": 0
+  },
+  "chunks": {
+    "count": 92,
+    "median_s": 6.45,
+    "mean_s": 6.68,
+    "reasons": {
+      "ceiling": 90,
+      "pause": 2
+    },
+    "histogram": {
+      "0-1s": 1,
+      "1-2s": 0,
+      "2-3s": 0,
+      "3-4s": 1,
+      "4-5s": 0,
+      "5-6s": 0,
+      "6-8s": 85,
+      "8-10s": 5,
+      "10-15s": 0,
+      "15s+": 0
+    }
+  },
+  "latency": {
+    "final_infer_ms_median": 382.95,
+    "final_infer_ms_p90": 1611.4,
+    "speech_end_to_final_s_median": 0.38,
+    "speech_end_to_final_s_p90": 1.62
+  },
+  "compute": {
+    "final_inference_s": 65.9,
+    "partial_inference_s": 301.3,
+    "partial_count": 360,
+    "partial_infer_ms_median": 477.2,
+    "partial_share_pct": 82.1,
+    "inference_realtime_factor": 0.612
+  },
+  "detection": {
+    "expected": 11,
+    "found": 2,
+    "recall": 18.2,
+    "suggestions": 735,
+    "suggestions_per_10min": 735.0,
+    "precision": 0.3,
+    "precision_top1": 0.0,
+    "latency_median_s": 15.988,
+    "latency_mean_s": 15.988,
+    "stages": {
+      "2": 387,
+      "4": 337,
+      "1": 11
+    },
+    "by_stage": {
+      "2": {
+        "suggestions": 387,
+        "matched": 2,
+        "precision": 0.5,
+        "found": 2
+      },
+      "4": {
+        "suggestions": 337,
+        "matched": 0,
+        "precision": 0.0,
+        "found": 0
+      },
+      "1": {
+        "suggestions": 11,
+        "matched": 0,
+        "precision": 0.0,
+        "found": 0
+      }
+    },
+    "expected_source": "reference parser over auto captions"
+  },
+  "headline": {
+    "wer": 0.4809,
+    "wer_source": "auto captions",
+    "ref_span_wer": 0.619,
+    "vad_recall_pct": 100.0,
+    "vad_false_open_s": 93.2,
+    "hallucinations_per_10min": 0.0,
+    "refs_expected": 11,
+    "refs_precision_pct": 0.3,
+    "refs_recall_pct": 18.2,
+    "spoken_to_suggestion_median_s": 15.988,
+    "engine": "faster-whisper/base/cpu-int8"
+  }
+}
