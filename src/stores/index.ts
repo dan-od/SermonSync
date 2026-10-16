@@ -5,4 +5,5 @@ export { useSessionStore } from "./sessionStore";
 export { useSongStore } from "./songStore";
 export { useSuggestionStore } from "./suggestionStore";
 export { useTemplateStore } from "./templateStore";
+export { useTestFeedStore } from "./testFeedStore";
 export { useTranscriptionStore } from "./transcriptionStore";

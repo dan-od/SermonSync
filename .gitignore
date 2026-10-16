@@ -62,3 +62,7 @@ src-tauri/resources/media-engine/*
 
 # Accidental ImageMagick output created from a command-line option
 /--help
+
+# Live-feed eval harness (SS-072): downloaded media + recorded runs
+python-sidecar/eval_cache/
+python-sidecar/eval_runs/

@@ -1,0 +1,155 @@
+{
+  "run": {
+    "dir": "20261016-005224_baseline-noisy-room",
+    "label": "baseline-noisy_room",
+    "title": "I WILL NOT LET YOU GO..... (OPEN AIR CRUSADE @ IGANDO, LAGOS)",
+    "source": "https://www.youtube.com/watch?v=NtUddpvsBa8",
+    "window": [
+      0.0,
+      600.0
+    ],
+    "duration_s": 600.0,
+    "speed": 1.0,
+    "overrides": {},
+    "captions": "auto",
+    "engine": {
+      "model": "base",
+      "device": "cpu",
+      "compute_type": "int8",
+      "backend": "faster-whisper"
+    },
+    "vad": "SileroVAD",
+    "git": {
+      "branch": "feat/ss-072-live-feed-harness",
+      "commit": "eb1514c",
+      "dirty": false
+    },
+    "normalizer": "whisper EnglishTextNormalizer"
+  },
+  "wer": {
+    "captions": {
+      "source": "auto captions",
+      "label": "agreement with YouTube ASR (auto-captions), not accuracy",
+      "window": [
+        0.0,
+        600.0
+      ],
+      "ref_words": 1065,
+      "hyp_words": 3,
+      "wer": 0.9991,
+      "substitutions": 2,
+      "deletions": 1062,
+      "insertions": 0,
+      "hits": 1
+    },
+    "primary": "captions",
+    "ref_spans": {
+      "ref_words": 0,
+      "wer": null,
+      "spans": 0
+    }
+  },
+  "worship_gate": {
+    "caption_speech_in_worship_s": 0,
+    "blocked_speech_s": 0,
+    "blocked_pct_of_speech": 0.0
+  },
+  "vad": {
+    "vad_open_s": 0.5,
+    "forwarded_s": 0.5,
+    "reached_whisper_s": 0.7,
+    "stale_dropped_s": 0,
+    "trimmed_s": 0,
+    "worship_s": 0,
+    "caption_speech_s": 424.6,
+    "recall": 0.2,
+    "recall_vad_only": 0.1,
+    "recall_gate": 0.1,
+    "false_open_s": 0,
+    "false_open_s_per_10min": 0.0,
+    "speech_lost_to_stale_drop_s": 0
+  },
+  "hallucinations": {
+    "count": 0,
+    "per_10min": 0.0,
+    "during_music": 0,
+    "words": 0
+  },
+  "chunks": {
+    "count": 1,
+    "median_s": 0.66,
+    "mean_s": 0.66,
+    "reasons": {
+      "pause": 1
+    },
+    "histogram": {
+      "0-1s": 1,
+      "1-2s": 0,
+      "2-3s": 0,
+      "3-4s": 0,
+      "4-5s": 0,
+      "5-6s": 0,
+      "6-8s": 0,
+      "8-10s": 0,
+      "10-15s": 0,
+      "15s+": 0
+    }
+  },
+  "latency": {
+    "final_infer_ms_median": 399.7,
+    "final_infer_ms_p90": 399.7,
+    "speech_end_to_final_s_median": 0.9,
+    "speech_end_to_final_s_p90": 0.9
+  },
+  "compute": {
+    "final_inference_s": 0.4,
+    "partial_inference_s": 0.0,
+    "partial_count": 0,
+    "partial_infer_ms_median": null,
+    "partial_share_pct": 0.0,
+    "inference_realtime_factor": 0.001
+  },
+  "detection": {
+    "expected": 0,
+    "found": 0,
+    "recall": null,
+    "suggestions": 10,
+    "suggestions_per_10min": 10.0,
+    "precision": 0.0,
+    "precision_top1": 0.0,
+    "latency_median_s": null,
+    "latency_mean_s": null,
+    "stages": {
+      "4": 5,
+      "2": 5
+    },
+    "by_stage": {
+      "4": {
+        "suggestions": 5,
+        "matched": 0,
+        "precision": 0.0,
+        "found": 0
+      },
+      "2": {
+        "suggestions": 5,
+        "matched": 0,
+        "precision": 0.0,
+        "found": 0
+      }
+    },
+    "expected_source": "reference parser over auto captions"
+  },
+  "headline": {
+    "wer": 0.9991,
+    "wer_source": "auto captions",
+    "ref_span_wer": null,
+    "vad_recall_pct": 0.2,
+    "vad_false_open_s": 0,
+    "hallucinations_per_10min": 0.0,
+    "refs_expected": 0,
+    "refs_precision_pct": 0.0,
+    "refs_recall_pct": null,
+    "spoken_to_suggestion_median_s": null,
+    "engine": "faster-whisper/base/cpu-int8"
+  }
+}

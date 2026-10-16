@@ -386,7 +386,29 @@ export interface SidecarSystemStatusEvent {
   stages: Record<string, StageMetrics>;
 }
 
+/**
+ * Dev-only live-feed test harness (SS-072): a file or YouTube URL is playing
+ * through the live pipeline instead of the microphone.
+ */
+export interface SidecarTestFeedEvent {
+  type: "test_feed";
+  state: "idle" | "loading" | "playing" | "draining" | "stopped" | "error";
+  title: string | null;
+  source: string | null;
+  /** Seconds into the source media. */
+  position: number;
+  start: number;
+  end: number | null;
+  speed: number;
+  label?: string | null;
+  captions?: string | null;
+  run_dir?: string | null;
+  report?: string | null;
+  error?: string | null;
+}
+
 export type SidecarWsEvent =
+  | SidecarTestFeedEvent
   | SidecarAckEvent
   | SidecarAudioLevelEvent
   | SidecarVadStateEvent
