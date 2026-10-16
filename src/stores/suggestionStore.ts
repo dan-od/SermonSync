@@ -7,7 +7,7 @@
  */
 import { create } from "zustand";
 
-import type { SidecarSuggestionsEvent, SuggestionCard, SuggestionStatus } from "../types/state";
+import type { PipelineStage, SidecarSuggestionsEvent, SuggestionCard, SuggestionStatus } from "../types/state";
 
 interface SuggestionStore {
   cards: SuggestionCard[];
@@ -24,8 +24,8 @@ interface SuggestionStore {
 
 const MAX_DECK_SIZE = 20;
 
-function stageOrFallback(value: number): 1 | 2 | 3 | 4 {
-  if (value === 1 || value === 2 || value === 3 || value === 4) {
+function stageOrFallback(value: number): PipelineStage {
+  if (value === 0 || value === 1 || value === 2 || value === 3 || value === 4) {
     return value;
   }
   return 4;
