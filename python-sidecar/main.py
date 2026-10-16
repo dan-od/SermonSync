@@ -101,6 +101,9 @@ async def lifespan(app: FastAPI):
     logger.info("sidecar pipeline ready")
     yield
     status_task.cancel()
+    from engine.eval.feed import test_feed
+
+    await test_feed.stop()
     await streaming_transcriber.stop()
     await capture_manager.stop()
     await camera_manager.stop_all()
@@ -132,6 +135,15 @@ app.include_router(presets_router)
 app.include_router(units_router)
 app.include_router(settings_router)
 app.include_router(groq_router)
+
+# SS-072: dev-only live-feed test harness (file/YouTube -> live pipeline).
+from engine.eval.feed import dev_feed_enabled  # noqa: E402
+
+if dev_feed_enabled():
+    from api.dev_feed import router as test_feed_router
+
+    app.include_router(test_feed_router)
+    logger.warning("DEV TEST FEED ENABLED (SERMONSYNC_DEV_FEED=1)")
 
 
 @app.get("/health")

@@ -1,4 +1,10 @@
-import { useAudioStore, useSessionStore, useSuggestionStore, useTranscriptionStore } from "../stores";
+import {
+  useAudioStore,
+  useSessionStore,
+  useSuggestionStore,
+  useTestFeedStore,
+  useTranscriptionStore,
+} from "../stores";
 import type { SidecarWsEvent } from "../types/state";
 
 const SIDECAR_WS_BASE = import.meta.env.VITE_SIDECAR_WS_BASE ?? "ws://127.0.0.1:8000/ws/audio";
@@ -140,6 +146,10 @@ export function dispatchSidecarEvent(event: SidecarWsEvent) {
     }
     case "context_update": {
       transcription.setThemes(event);
+      break;
+    }
+    case "test_feed": {
+      useTestFeedStore.getState().setStatus(event);
       break;
     }
     case "system_status": {

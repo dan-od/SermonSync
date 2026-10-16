@@ -1,0 +1,10 @@
+# Dev / evaluation tooling — not shipped with the sidecar.
+-r requirements.txt
+pytest
+ruff
+# Live-feed eval harness (SS-072): YouTube download, WER scoring, sources.yaml
+yt-dlp
+jiwer
+whisper-normalizer
+pyyaml
+httpx

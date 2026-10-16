@@ -21,10 +21,11 @@ import {
   useSessionStore,
   useSuggestionStore,
   useTemplateStore,
+  useTestFeedStore,
   useTranscriptionStore,
 } from "./stores";
 import { SHORTCUT_DEFINITIONS, isShortcutEvent, useShortcutStore } from "./stores/shortcutStore";
-import type { ProjectorSlide, SuggestionCard } from "./types/state";
+import type { ProjectorSlide, SidecarTestFeedEvent, SuggestionCard } from "./types/state";
 
 const AiPanel = lazy(() => import("./components/AiPanel").then((module) => ({ default: module.AiPanel })));
 const BiblePanel = lazy(() => import("./components/BiblePanel").then((module) => ({ default: module.BiblePanel })));
@@ -519,6 +520,8 @@ function App() {
   useEffect(() => {
     interface EngineStatus {
       version?: string;
+      dev_feed?: boolean;
+      test_feed?: SidecarTestFeedEvent | null;
       transcription?: {
         configured_model?: string;
         loaded_model?: string | null;
@@ -535,6 +538,10 @@ function App() {
         .then((d: EngineStatus | null) => {
           if (!d) return;
           if (d.version) setEngineVersion(`v${d.version}`);
+          // SS-072: dev-only test feed controls follow the sidecar's flag.
+          const testFeed = useTestFeedStore.getState();
+          testFeed.setEnabled(Boolean(d.dev_feed));
+          if (d.test_feed && testFeed.status === null) testFeed.setStatus(d.test_feed);
           const t = d.transcription;
           if (!t) return;
           const model = t.loaded_model ?? t.configured_model ?? "unknown";
