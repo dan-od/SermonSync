@@ -76,6 +76,7 @@ def main() -> int:
     parser.add_argument("--label")
     parser.add_argument("--set", action="append", default=[], metavar="TARGET.ATTR=VALUE")
     parser.add_argument("--monitor", action="store_true", help="play the audio out loud")
+    parser.add_argument("--sample-rate", type=int, default=48000, help="device rate to emulate")
     args = parser.parse_args()
 
     body = lookup(args.source)
@@ -86,6 +87,7 @@ def main() -> int:
         body["label"] = args.label
     body["speed"] = args.speed
     body["monitor"] = args.monitor
+    body["sample_rate"] = args.sample_rate
     body["overrides"] = {k: parse_value(v) for k, v in (item.split("=", 1) for item in args.set)}
     status = http(args.base, "POST", "/api/audio/test-feed", body)
     print(f"started: {body}", flush=True)

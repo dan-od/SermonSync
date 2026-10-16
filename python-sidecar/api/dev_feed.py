@@ -23,6 +23,8 @@ class FeedRequest(BaseModel):
     speed: Optional[float] = Field(default=1.0, gt=0, le=16)
     # Play the audio out loud while it feeds (real time only).
     monitor: bool = False
+    # Device rate to emulate (48 kHz is a typical built-in mic).
+    sample_rate: int = Field(default=48000, ge=8000, le=192000)
     label: Optional[str] = None
     # {"streaming.silence_flush_seconds": 0.6, ...} — restored after the run.
     overrides: dict[str, Any] = Field(default_factory=dict)
@@ -40,6 +42,7 @@ async def post_test_feed(req: FeedRequest) -> dict:
             duration=req.duration,
             speed=req.speed or 1.0,
             monitor=req.monitor,
+            sample_rate=req.sample_rate,
             label=req.label,
             overrides=req.overrides,
             score=req.score,

@@ -211,6 +211,7 @@ class FeedController:
         duration: float | None = None,
         speed: float = 1.0,
         monitor: bool = False,
+        sample_rate: int = fs.SAMPLE_RATE,
         label: str | None = None,
         overrides: dict | None = None,
         score: bool = True,
@@ -226,6 +227,7 @@ class FeedController:
             "duration": duration,
             "speed": speed,
             "monitor": monitor,
+            "sample_rate": sample_rate,
             "label": label,
             "overrides": overrides or {},
             "score": score,
@@ -324,6 +326,7 @@ class FeedController:
                 duration=req["duration"],
                 speed=req["speed"],
                 monitor=req["monitor"],
+                sample_rate=req.get("sample_rate") or fs.SAMPLE_RATE,
                 on_finish=lambda reason: loop.call_soon_threadsafe(finished.set),
             )
             self._source = source
