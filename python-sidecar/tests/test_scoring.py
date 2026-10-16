@@ -224,16 +224,22 @@ def test_compare_runs(tmp_path):
     assert rows["refs recall %"][3].endswith("✗")
 
 
-FRAGMENT_VTT = """WEBVTT
-
-00:00:01.935 --> 00:00:27.160 align:start position:0%
-\\x20
-yo<00:00:01.968><c>u </c><00:00:02.001><c>ar</c><00:00:02.035><c>e </c><00:00:02.068><c>go</c><00:00:02.101><c>od</c>
-
-00:00:27.160 --> 00:00:32.532 align:start position:0%
-\\x20
-Ep<00:00:27.193><c>he</c><00:00:27.226><c>si</c><00:00:27.300><c>an</c><00:00:27.400><c>s </c><00:00:27.500><c>tw</c><00:00:27.550><c>o</c>
-"""
+FRAGMENT_VTT = "\n".join(
+    [
+        "WEBVTT",
+        "",
+        "00:00:01.935 --> 00:00:27.160 align:start position:0%",
+        " ",
+        "yo<00:00:01.968><c>u </c><00:00:02.001><c>ar</c><00:00:02.035><c>e </c>"
+        "<00:00:02.068><c>go</c><00:00:02.101><c>od</c>",
+        "",
+        "00:00:27.160 --> 00:00:32.532 align:start position:0%",
+        " ",
+        "Ep<00:00:27.193><c>he</c><00:00:27.226><c>si</c><00:00:27.300><c>an</c>"
+        "<00:00:27.400><c>s </c><00:00:27.500><c>tw</c><00:00:27.550><c>o</c>",
+        "",
+    ]
+)
 
 
 def test_parse_fragment_timed_captions(tmp_path):
