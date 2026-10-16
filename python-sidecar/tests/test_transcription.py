@@ -209,3 +209,11 @@ def test_fallback_marks_engine_degraded(monkeypatch):
     assert eng.model_size == "tiny"
     assert eng.requested_model == "large-v3-turbo"
     assert eng.degraded is True
+
+
+def test_segmentation_defaults():
+    """Picked from the SS-072 sweep: wait 0.8 s of silence, cut at 6 s."""
+    st = streaming.StreamingTranscriber()
+    assert st.silence_flush_seconds == 0.8
+    assert st.max_chunk_seconds == 6.0
+    assert st.min_flush_seconds == 0.4

@@ -44,7 +44,7 @@ class StreamingTranscriber:
         language: str | None = "en",
         matching_enabled: bool = True,
         min_flush_seconds: float = 0.4,
-        silence_flush_seconds: float = 0.45,
+        silence_flush_seconds: float = 0.8,
         partial_interval: float = 1.0,
         partial_min_seconds: float = 0.8,
         partial_max_seconds: float = 3.0,
@@ -59,7 +59,9 @@ class StreamingTranscriber:
         self.max_buffer_seconds = max_buffer_seconds
         self.poll_interval = poll_interval
         # A pause this long ends the utterance. Also the latency floor: text
-        # lands this soon after you stop speaking.
+        # lands this soon after you stop speaking. 0.8 s (was 0.45) stops
+        # cutting at breaths mid-sentence: WER −0.01 to −0.04 for +0.05 to
+        # +0.2 s word delay in the SS-072 sweep (eval/results/utterance-segmentation).
         self.min_flush_seconds = min_flush_seconds
         self.silence_flush_seconds = silence_flush_seconds
         # Interim hypotheses while the speaker is still going, so the UI shows
