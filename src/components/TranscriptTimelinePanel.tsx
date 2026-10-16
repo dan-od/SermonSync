@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { TranscriptItem } from "./desktop/uiTypes";
+import { TestFeedBar } from "./TestFeedBar";
 
 interface TranscriptTimelinePanelProps {
   items: TranscriptItem[];
@@ -141,6 +142,8 @@ export function TranscriptTimelinePanel({
           {`${totalEvents} EVENTS`}
         </div>
       </div>
+
+      <TestFeedBar />
 
       <div style={{ height: "1px", background: "var(--border-base)" }} />
 

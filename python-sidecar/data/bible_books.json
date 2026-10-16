@@ -1,0 +1,628 @@
+{
+ "_comment": "Bible book names for spoken/written reference parsing. Shared by the sidecar (engine/matching/reference_parser.py) and the frontend (src/lib/scriptureSearch.ts). 'name' is the canonical name in bible.db. Numbered books list the base aliases only; ordinal prefixes (1/first/1st/I/one ...) come from 'ordinals'. 'homophones' are ASR misspellings honoured only when chapter/verse numbers follow. 'weak' books are also common English words and need an explicit verse (or the word 'chapter') before a bare number counts.",
+ "ordinals": {
+  "1": [
+   "1",
+   "1st",
+   "first",
+   "i",
+   "one"
+  ],
+  "2": [
+   "2",
+   "2nd",
+   "second",
+   "ii",
+   "two"
+  ],
+  "3": [
+   "3",
+   "3rd",
+   "third",
+   "iii",
+   "three"
+  ]
+ },
+ "books": [
+  {
+   "name": "Genesis",
+   "aliases": [
+    "genesis",
+    "gen"
+   ],
+   "homophones": [
+    "genesys"
+   ]
+  },
+  {
+   "name": "Exodus",
+   "aliases": [
+    "exodus",
+    "exod"
+   ]
+  },
+  {
+   "name": "Leviticus",
+   "aliases": [
+    "leviticus",
+    "lev",
+    "levi ticus"
+   ]
+  },
+  {
+   "name": "Numbers",
+   "aliases": [
+    "numbers",
+    "num"
+   ],
+   "weak": true
+  },
+  {
+   "name": "Deuteronomy",
+   "aliases": [
+    "deuteronomy",
+    "deut"
+   ],
+   "homophones": [
+    "deutoronomy",
+    "deuteronomi"
+   ]
+  },
+  {
+   "name": "Joshua",
+   "aliases": [
+    "joshua",
+    "josh"
+   ]
+  },
+  {
+   "name": "Judges",
+   "aliases": [
+    "judges",
+    "judg",
+    "jdg"
+   ],
+   "weak": true
+  },
+  {
+   "name": "Ruth",
+   "aliases": [
+    "ruth"
+   ]
+  },
+  {
+   "name": "1 Samuel",
+   "ordinal": 1,
+   "aliases": [
+    "samuel"
+   ]
+  },
+  {
+   "name": "2 Samuel",
+   "ordinal": 2,
+   "aliases": [
+    "samuel"
+   ]
+  },
+  {
+   "name": "1 Kings",
+   "ordinal": 1,
+   "aliases": [
+    "kings",
+    "kgs"
+   ]
+  },
+  {
+   "name": "2 Kings",
+   "ordinal": 2,
+   "aliases": [
+    "kings",
+    "kgs"
+   ]
+  },
+  {
+   "name": "1 Chronicles",
+   "ordinal": 1,
+   "aliases": [
+    "chronicles",
+    "chron",
+    "chr"
+   ],
+   "homophones": [
+    "chronicle"
+   ]
+  },
+  {
+   "name": "2 Chronicles",
+   "ordinal": 2,
+   "aliases": [
+    "chronicles",
+    "chron",
+    "chr"
+   ],
+   "homophones": [
+    "chronicle"
+   ]
+  },
+  {
+   "name": "Ezra",
+   "aliases": [
+    "ezra"
+   ]
+  },
+  {
+   "name": "Nehemiah",
+   "aliases": [
+    "nehemiah"
+   ],
+   "homophones": [
+    "nehemia"
+   ]
+  },
+  {
+   "name": "Esther",
+   "aliases": [
+    "esther",
+    "esth"
+   ],
+   "homophones": [
+    "ester"
+   ]
+  },
+  {
+   "name": "Job",
+   "aliases": [
+    "job"
+   ],
+   "weak": true
+  },
+  {
+   "name": "Psalms",
+   "aliases": [
+    "psalms",
+    "psalm",
+    "ps",
+    "psa",
+    "pss"
+   ],
+   "homophones": [
+    "salm",
+    "salms",
+    "sam's",
+    "psalmist"
+   ]
+  },
+  {
+   "name": "Proverbs",
+   "aliases": [
+    "proverbs",
+    "proverb",
+    "prov"
+   ]
+  },
+  {
+   "name": "Ecclesiastes",
+   "aliases": [
+    "ecclesiastes",
+    "eccles",
+    "eccl",
+    "qoheleth"
+   ],
+   "homophones": [
+    "ecclesiastics"
+   ]
+  },
+  {
+   "name": "Song of Solomon",
+   "aliases": [
+    "song of solomon",
+    "song of songs",
+    "songs of solomon",
+    "song",
+    "songs",
+    "canticles"
+   ],
+   "weak": true
+  },
+  {
+   "name": "Isaiah",
+   "aliases": [
+    "isaiah"
+   ],
+   "homophones": [
+    "isaia",
+    "isiah"
+   ]
+  },
+  {
+   "name": "Jeremiah",
+   "aliases": [
+    "jeremiah",
+    "jer"
+   ],
+   "homophones": [
+    "jeremia"
+   ]
+  },
+  {
+   "name": "Lamentations",
+   "aliases": [
+    "lamentations"
+   ],
+   "homophones": [
+    "lamentation"
+   ]
+  },
+  {
+   "name": "Ezekiel",
+   "aliases": [
+    "ezekiel",
+    "ezek"
+   ],
+   "homophones": [
+    "ezekial",
+    "ezekiel's"
+   ]
+  },
+  {
+   "name": "Daniel",
+   "aliases": [
+    "daniel"
+   ]
+  },
+  {
+   "name": "Hosea",
+   "aliases": [
+    "hosea"
+   ],
+   "homophones": [
+    "hosia",
+    "hoshea"
+   ]
+  },
+  {
+   "name": "Joel",
+   "aliases": [
+    "joel"
+   ]
+  },
+  {
+   "name": "Amos",
+   "aliases": [
+    "amos"
+   ]
+  },
+  {
+   "name": "Obadiah",
+   "aliases": [
+    "obadiah",
+    "obad"
+   ],
+   "homophones": [
+    "obadia"
+   ]
+  },
+  {
+   "name": "Jonah",
+   "aliases": [
+    "jonah"
+   ],
+   "homophones": [
+    "jona"
+   ]
+  },
+  {
+   "name": "Micah",
+   "aliases": [
+    "micah"
+   ],
+   "homophones": [
+    "michael",
+    "mica",
+    "micha",
+    "mika"
+   ]
+  },
+  {
+   "name": "Nahum",
+   "aliases": [
+    "nahum"
+   ]
+  },
+  {
+   "name": "Habakkuk",
+   "aliases": [
+    "habakkuk"
+   ],
+   "homophones": [
+    "habakuk",
+    "habbakuk",
+    "habakook"
+   ]
+  },
+  {
+   "name": "Zephaniah",
+   "aliases": [
+    "zephaniah",
+    "zeph"
+   ],
+   "homophones": [
+    "zephania"
+   ]
+  },
+  {
+   "name": "Haggai",
+   "aliases": [
+    "haggai"
+   ],
+   "homophones": [
+    "hey guy",
+    "hagai",
+    "haggi",
+    "haggay",
+    "hagi"
+   ]
+  },
+  {
+   "name": "Zechariah",
+   "aliases": [
+    "zechariah",
+    "zech"
+   ],
+   "homophones": [
+    "zachariah",
+    "zacharia",
+    "zecharia"
+   ]
+  },
+  {
+   "name": "Malachi",
+   "aliases": [
+    "malachi"
+   ],
+   "homophones": [
+    "malachai",
+    "malaki"
+   ]
+  },
+  {
+   "name": "Matthew",
+   "aliases": [
+    "matthew",
+    "matt"
+   ],
+   "homophones": [
+    "mathew"
+   ]
+  },
+  {
+   "name": "Mark",
+   "aliases": [
+    "mark"
+   ],
+   "weak": true
+  },
+  {
+   "name": "Luke",
+   "aliases": [
+    "luke"
+   ]
+  },
+  {
+   "name": "John",
+   "aliases": [
+    "john"
+   ]
+  },
+  {
+   "name": "Acts",
+   "aliases": [
+    "acts",
+    "act"
+   ],
+   "homophones": [
+    "x",
+    "ax",
+    "axe",
+    "axe's"
+   ],
+   "weak": true
+  },
+  {
+   "name": "Romans",
+   "aliases": [
+    "romans"
+   ],
+   "homophones": [
+    "romance",
+    "roman"
+   ]
+  },
+  {
+   "name": "1 Corinthians",
+   "ordinal": 1,
+   "aliases": [
+    "corinthians",
+    "cor"
+   ],
+   "homophones": [
+    "corinthian",
+    "corinth"
+   ]
+  },
+  {
+   "name": "2 Corinthians",
+   "ordinal": 2,
+   "aliases": [
+    "corinthians",
+    "cor"
+   ],
+   "homophones": [
+    "corinthian",
+    "corinth"
+   ]
+  },
+  {
+   "name": "Galatians",
+   "aliases": [
+    "galatians"
+   ],
+   "homophones": [
+    "galatian"
+   ]
+  },
+  {
+   "name": "Ephesians",
+   "aliases": [
+    "ephesians"
+   ],
+   "homophones": [
+    "ephesian",
+    "effusions"
+   ]
+  },
+  {
+   "name": "Philippians",
+   "aliases": [
+    "philippians",
+    "phil",
+    "phili"
+   ],
+   "homophones": [
+    "philippian",
+    "philipians",
+    "phillipians"
+   ]
+  },
+  {
+   "name": "Colossians",
+   "aliases": [
+    "colossians"
+   ],
+   "homophones": [
+    "colossian",
+    "collisions"
+   ]
+  },
+  {
+   "name": "1 Thessalonians",
+   "ordinal": 1,
+   "aliases": [
+    "thessalonians",
+    "thess"
+   ],
+   "homophones": [
+    "thessalonian"
+   ]
+  },
+  {
+   "name": "2 Thessalonians",
+   "ordinal": 2,
+   "aliases": [
+    "thessalonians",
+    "thess"
+   ],
+   "homophones": [
+    "thessalonian"
+   ]
+  },
+  {
+   "name": "1 Timothy",
+   "ordinal": 1,
+   "aliases": [
+    "timothy"
+   ]
+  },
+  {
+   "name": "2 Timothy",
+   "ordinal": 2,
+   "aliases": [
+    "timothy"
+   ]
+  },
+  {
+   "name": "Titus",
+   "aliases": [
+    "titus"
+   ]
+  },
+  {
+   "name": "Philemon",
+   "aliases": [
+    "philemon",
+    "philem"
+   ],
+   "homophones": [
+    "philemon's"
+   ]
+  },
+  {
+   "name": "Hebrews",
+   "aliases": [
+    "hebrews"
+   ],
+   "homophones": [
+    "hebrew"
+   ]
+  },
+  {
+   "name": "James",
+   "aliases": [
+    "james"
+   ]
+  },
+  {
+   "name": "1 Peter",
+   "ordinal": 1,
+   "aliases": [
+    "peter"
+   ]
+  },
+  {
+   "name": "2 Peter",
+   "ordinal": 2,
+   "aliases": [
+    "peter"
+   ]
+  },
+  {
+   "name": "1 John",
+   "ordinal": 1,
+   "aliases": [
+    "john"
+   ]
+  },
+  {
+   "name": "2 John",
+   "ordinal": 2,
+   "aliases": [
+    "john"
+   ]
+  },
+  {
+   "name": "3 John",
+   "ordinal": 3,
+   "aliases": [
+    "john"
+   ]
+  },
+  {
+   "name": "Jude",
+   "aliases": [
+    "jude"
+   ],
+   "homophones": [
+    "june",
+    "jude's"
+   ]
+  },
+  {
+   "name": "Revelation",
+   "aliases": [
+    "revelation",
+    "revelations",
+    "rev"
+   ]
+  }
+ ]
+}

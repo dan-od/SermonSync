@@ -13,6 +13,7 @@ import time
 
 from ws_hub import manager
 
+from ..eval import tap
 from ..monitoring import monitor
 from . import whisper_engine
 from .buffer import transcript_buffer
@@ -80,6 +81,12 @@ class StreamingTranscriber:
         self._task: asyncio.Task | None = None
         self._first_chunk_ts: float | None = None
         self._last_feed_ts: float | None = None
+        # Cumulative byte offsets into the fed stream: total bytes ever fed,
+        # and the offset of _buf[0]. Lets the eval harness (SS-072) map every
+        # chunk, drop and trim back to the audio it came from.
+        self._fed_bytes = 0
+        self._buf_offset = 0
+        self._chunk_seq = 0
         # Optional callback(segment: dict) for downstream (buffer/matching).
         self.on_segment = None
 
@@ -93,10 +100,15 @@ class StreamingTranscriber:
             self._first_chunk_ts = now
         self._last_feed_ts = now
         self._buf.extend(pcm)
+        self._fed_bytes += len(pcm)
         # Keep only a short recent window while inference is busy.
         max_bytes = int(self.max_buffer_seconds * self.sample_rate * 2)
         if len(self._buf) > max_bytes:
-            del self._buf[: len(self._buf) - max_bytes]
+            dropped = len(self._buf) - max_bytes
+            del self._buf[:dropped]
+            start = self._buf_offset
+            self._buf_offset += dropped
+            tap.emit("chunk_drop", reason="trim", byte_start=start, byte_end=start + dropped)
 
     # --- lifecycle --------------------------------------------------------
     async def start(self) -> None:
@@ -115,9 +127,22 @@ class StreamingTranscriber:
             self._task.cancel()
             self._task = None
         self._buf.clear()
+        self._buf_offset = self._fed_bytes
         self._first_chunk_ts = None
         self._last_feed_ts = None
         logger.info("streaming transcriber stopped")
+
+    def reset(self) -> None:
+        """Drop buffered audio without stopping (a new, unrelated stream)."""
+        self._buf.clear()
+        self._buf_offset = self._fed_bytes
+        self._first_chunk_ts = None
+        self._last_feed_ts = None
+        self._last_partial_ts = 0.0
+
+    @property
+    def fed_bytes(self) -> int:
+        return self._fed_bytes
 
     def _buffered_seconds(self) -> float:
         return len(self._buf) / (self.sample_rate * 2)
@@ -129,7 +154,11 @@ class StreamingTranscriber:
         # Sub-threshold fragments cannot be flushed. Drop them after a long
         # pause so the next utterance does not inherit stale audio.
         if current_time - self._last_feed_ts >= STALE_BUFFER_SECONDS:
+            start, n = self._buf_offset, len(self._buf)
             self._buf.clear()
+            self._buf_offset = self._fed_bytes
+            if n:
+                tap.emit("chunk_drop", reason="stale_drop", byte_start=start, byte_end=start + n)
             self._first_chunk_ts = None
             self._last_feed_ts = None
 
@@ -145,6 +174,10 @@ class StreamingTranscriber:
         now = now if now is not None else time.time()
         return (now - self._last_feed_ts) >= self.silence_flush_seconds
 
+    def _cut_reason(self) -> str:
+        """Why the buffer is being cut: the ceiling, or a speaker pause."""
+        return "ceiling" if self._buffered_seconds() >= self.max_chunk_seconds else "pause"
+
     def _ready_for_partial(self, now: float | None = None) -> bool:
         """True when an interim hypothesis is worth emitting mid-utterance."""
         if self._buffered_seconds() < self.partial_min_seconds:
@@ -157,12 +190,21 @@ class StreamingTranscriber:
             while self._running:
                 await asyncio.sleep(self.poll_interval)
                 if self._ready_to_infer():
+                    reason = self._cut_reason()
                     chunk = bytes(self._buf)
+                    start = self._buf_offset
                     self._buf.clear()
+                    self._buf_offset = self._fed_bytes
+                    self._chunk_seq += 1
+                    tap.emit(
+                        "chunk", seq=self._chunk_seq, reason=reason,
+                        byte_start=start, byte_end=start + len(chunk),
+                        duration=round(len(chunk) / (self.sample_rate * 2), 3),
+                    )
                     received_ts = self._first_chunk_ts or time.time()
                     self._first_chunk_ts = None
                     self._last_partial_ts = time.time()
-                    await self._infer_and_emit(chunk, received_ts)
+                    await self._infer_and_emit(chunk, received_ts, self._chunk_seq)
                 else:
                     self._expire_stale_buffer()
                     if not self._ready_for_partial():
@@ -179,6 +221,7 @@ class StreamingTranscriber:
         """Broadcast an interim hypothesis (is_final=False). Never assembled
         into sentences and never matched — it will be revised."""
         engine = whisper_engine.get_engine()
+        infer_start = time.time()
         try:
             segments = await asyncio.to_thread(
                 engine.transcribe, pcm16_to_float(pcm), self.language
@@ -187,6 +230,10 @@ class StreamingTranscriber:
             logger.debug("partial transcription failed: %s", exc)
             return
         text = " ".join(seg["text"] for seg in segments if seg["text"]).strip()
+        tap.emit(
+            "partial", text=text, infer_ms=round((time.time() - infer_start) * 1000, 1),
+            duration=round(len(pcm) / (self.sample_rate * 2), 3),
+        )
         if not text:
             return
         transcript_buffer.add_fragment(text, is_final=False, timestamp=time.time())
@@ -202,7 +249,7 @@ class StreamingTranscriber:
             }
         )
 
-    async def _infer_and_emit(self, pcm: bytes, received_ts: float) -> None:
+    async def _infer_and_emit(self, pcm: bytes, received_ts: float, seq: int = 0) -> None:
         engine = whisper_engine.get_engine()
         audio = pcm16_to_float(pcm)
         infer_start = time.time()
@@ -218,6 +265,18 @@ class StreamingTranscriber:
         monitor.record_stage("transcription", (emit_ts - infer_start) * 1000)
         monitor.record_end_to_end(latency_ms)
         monitor.clear_error("transcription")
+        if tap.active():
+            tap.emit(
+                "inference", seq=seq, infer_ms=round((emit_ts - infer_start) * 1000, 1),
+                latency_ms=latency_ms, duration=round(len(audio) / self.sample_rate, 3),
+                segments=[
+                    {k: seg.get(k) for k in (
+                        "text", "start", "end", "confidence", "no_speech_prob",
+                        "avg_logprob", "compression_ratio",
+                    )}
+                    for seg in segments
+                ],
+            )
         for seg in segments:
             if not seg["text"]:
                 continue

@@ -16,7 +16,7 @@
 
 from PyInstaller.utils.hooks import collect_all
 
-datas = [("data/bible.db", "data")]
+datas = [("data/bible.db", "data"), ("data/bible_books.json", "data")]
 binaries = []
 hiddenimports = []
 

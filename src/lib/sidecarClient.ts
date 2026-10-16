@@ -1,4 +1,4 @@
-import type { AudioInputDevice, SidecarSystemStatusEvent } from "../types/state";
+import type { AudioInputDevice, SidecarSystemStatusEvent, SidecarTestFeedEvent } from "../types/state";
 
 const SIDECAR_HTTP_BASE = import.meta.env.VITE_SIDECAR_HTTP_BASE ?? "http://127.0.0.1:8000";
 
@@ -117,6 +117,27 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function getSidecarHttpBase() {
   return SIDECAR_HTTP_BASE;
+}
+
+export interface TestFeedRequest {
+  source: string;
+  start?: number;
+  duration?: number;
+  speed?: number;
+  monitor?: boolean;
+  label?: string;
+}
+
+/** Dev-only (SERMONSYNC_DEV_FEED=1): play a file/URL through the live pipeline. */
+export function startTestFeed(request: TestFeedRequest) {
+  return fetchJson<SidecarTestFeedEvent>("/api/audio/test-feed", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+export function stopTestFeed() {
+  return fetchJson<SidecarTestFeedEvent>("/api/audio/test-feed/stop", { method: "POST" });
 }
 
 export function getSidecarStatus() {

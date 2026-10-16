@@ -8,6 +8,7 @@ divergence is exactly what made SS-013 look shipped while `tiny` was running.
 
 from __future__ import annotations
 
+from engine.eval.feed import dev_feed_enabled, test_feed
 from engine.transcription import whisper_engine
 from engine.transcription.streaming import streaming_transcriber
 from engine.version import ENGINE_NAME, ENGINE_VERSION
@@ -32,4 +33,7 @@ def engine_status() -> dict:
             **status,
             "streaming": streaming_transcriber._running,
         },
+        # SS-072: the UI shows the test-feed controls only when this is true.
+        "dev_feed": dev_feed_enabled(),
+        "test_feed": test_feed.status() if dev_feed_enabled() else None,
     }

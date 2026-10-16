@@ -59,6 +59,11 @@ def select_device(req: SelectDeviceRequest) -> dict:
 @router.post("/start-capture")
 async def start_capture() -> dict:
     """Begin capturing PCM audio from the selected device and streaming it."""
+    from engine.eval.feed import test_feed
+
+    if test_feed.active:
+        # Mic and test feed would both drive process_frame and corrupt each other.
+        raise HTTPException(status_code=409, detail="a test feed is running; stop it first")
     try:
         await capture_manager.start()
     except AudioBackendError as exc:
