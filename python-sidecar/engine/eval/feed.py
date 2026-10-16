@@ -146,6 +146,7 @@ def _pipeline_config() -> dict:
                 "partial_max_seconds",
                 "partials_enabled",
                 "partial_model",
+                "partial_mode",
                 "language",
                 "prompt_mode",
                 "style_prompt",
