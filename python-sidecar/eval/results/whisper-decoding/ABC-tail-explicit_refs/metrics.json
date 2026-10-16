@@ -1,0 +1,176 @@
+{
+  "run": {
+    "dir": "20261016-055700_abc-tail-explicit-refs",
+    "label": "ABC-tail-explicit_refs",
+    "title": "Special Christmas Service - Dec. 25, 2021. Living Faith Church, King Jesus",
+    "source": "https://www.youtube.com/watch?v=i9jrxRIAq1Q",
+    "window": [
+      1590.0,
+      2190.0
+    ],
+    "duration_s": 600.0,
+    "speed": 1.0,
+    "overrides": {
+      "streaming.prompt_mode": "final_tail"
+    },
+    "captions": "uploaded",
+    "engine": {
+      "model": "base",
+      "device": "cpu",
+      "compute_type": "int8",
+      "backend": "faster-whisper"
+    },
+    "vad": "SileroVAD",
+    "git": {
+      "branch": "HEAD",
+      "commit": "abf3ab0",
+      "dirty": false
+    },
+    "normalizer": "whisper EnglishTextNormalizer"
+  },
+  "wer": {
+    "captions": {
+      "source": "uploaded captions",
+      "label": "agreement with uploaded captions of unverified origin (may be machine-made)",
+      "window": [
+        1590.0,
+        2190.0
+      ],
+      "ref_words": 1532,
+      "hyp_words": 1587,
+      "wer": 0.4099,
+      "substitutions": 399,
+      "deletions": 87,
+      "insertions": 142,
+      "hits": 1046
+    },
+    "primary": "captions",
+    "ref_spans": {
+      "ref_words": 102,
+      "spans": 19,
+      "wer": 0.5686,
+      "substitutions": 42,
+      "deletions": 12,
+      "insertions": 4
+    }
+  },
+  "worship_gate": {
+    "caption_speech_in_worship_s": 0,
+    "blocked_speech_s": 0,
+    "blocked_pct_of_speech": 0.0
+  },
+  "vad": {
+    "vad_open_s": 523.4,
+    "forwarded_s": 523.4,
+    "reached_whisper_s": 555.8,
+    "stale_dropped_s": 0,
+    "trimmed_s": 3.8,
+    "worship_s": 0,
+    "caption_speech_s": 448.5,
+    "recall": 93.2,
+    "recall_vad_only": 87.6,
+    "recall_gate": 87.6,
+    "false_open_s": 60.2,
+    "false_open_s_per_10min": 60.15,
+    "speech_lost_to_stale_drop_s": 0
+  },
+  "hallucinations": {
+    "count": 0,
+    "per_10min": 0.0,
+    "during_music": 0,
+    "words": 0
+  },
+  "chunks": {
+    "count": 83,
+    "median_s": 6.46,
+    "mean_s": 6.85,
+    "reasons": {
+      "pause": 26,
+      "ceiling": 57,
+      "trim": 190
+    },
+    "histogram": {
+      "0-1s": 4,
+      "1-2s": 7,
+      "2-3s": 5,
+      "3-4s": 4,
+      "4-5s": 1,
+      "5-6s": 5,
+      "6-8s": 30,
+      "8-10s": 9,
+      "10-15s": 15,
+      "15s+": 3
+    }
+  },
+  "latency": {
+    "final_infer_ms_median": 500.05,
+    "final_infer_ms_p90": 1339.6,
+    "speech_end_to_final_s_median": 0.7,
+    "speech_end_to_final_s_p90": 1.78
+  },
+  "compute": {
+    "final_inference_s": 88.1,
+    "partial_inference_s": 330.2,
+    "partial_count": 229,
+    "partial_infer_ms_median": 396.7,
+    "partial_share_pct": 78.9,
+    "inference_realtime_factor": 0.697
+  },
+  "detection": {
+    "expected": 19,
+    "found": 12,
+    "recall": 63.2,
+    "suggestions": 1420,
+    "suggestions_per_10min": 1420.0,
+    "precision": 0.8,
+    "precision_top1": 5.0,
+    "latency_median_s": 8.839,
+    "latency_mean_s": 8.833,
+    "stages": {
+      "2": 761,
+      "4": 651,
+      "0": 7,
+      "1": 1
+    },
+    "by_stage": {
+      "2": {
+        "suggestions": 761,
+        "matched": 8,
+        "precision": 1.1,
+        "found": 9
+      },
+      "4": {
+        "suggestions": 651,
+        "matched": 0,
+        "precision": 0.0,
+        "found": 0
+      },
+      "0": {
+        "suggestions": 7,
+        "matched": 3,
+        "precision": 42.9,
+        "found": 3
+      },
+      "1": {
+        "suggestions": 1,
+        "matched": 0,
+        "precision": 0.0,
+        "found": 0
+      }
+    },
+    "expected_source": "reference parser over uploaded captions"
+  },
+  "headline": {
+    "wer": 0.4099,
+    "wer_source": "uploaded captions",
+    "ref_span_wer": 0.5686,
+    "vad_recall_pct": 93.2,
+    "vad_false_open_s": 60.2,
+    "hallucinations_per_10min": 0.0,
+    "refs_expected": 19,
+    "refs_precision_pct": 0.8,
+    "refs_recall_pct": 63.2,
+    "spoken_to_suggestion_median_s": 8.839,
+    "engine": "faster-whisper/base/cpu-int8"
+  }
+}
