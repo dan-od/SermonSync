@@ -91,6 +91,11 @@ def _clean(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def _clean_keep(text: str) -> str:
+    """Strip tags and entities but keep spacing exactly."""
+    return html.unescape(_TAG.sub("", text))
+
+
 def _is_music(text: str) -> bool:
     if "♪" in text or "♫" in text:
         return True
@@ -137,14 +142,26 @@ def parse_vtt(path: str | Path, kind: str | None = None) -> Captions:
                     if _is_music(_clean(line)):
                         music.append((start, end))
                     continue
+                # Concatenate the pieces exactly and give each word the time of
+                # its first character: YouTube puts the space inside the piece
+                # ("<ts><c> with</c>"), and some uploaders time 2-letter
+                # fragments ("yo<ts><c>u </c>"), so pieces are not words.
                 pieces = _INLINE_TS.split(line)
-                words: list[Word] = []
-                head = _clean(pieces[0])
-                for tok in _speech_words(head):
-                    words.append(Word(start, tok))
+                chars: list[tuple[str, float]] = [(c, start) for c in _clean_keep(pieces[0])]
                 for ts, chunk in zip(pieces[1::2], pieces[2::2]):
-                    for tok in _speech_words(_clean(chunk)):
-                        words.append(Word(parse_ts(ts), tok))
+                    at = parse_ts(ts)
+                    chars.extend((c, at) for c in _clean_keep(chunk))
+                words: list[Word] = []
+                current, current_t = "", start
+                for c, at in chars + [(" ", start)]:
+                    if c.isspace():
+                        if current:
+                            words.extend(Word(current_t, tok) for tok in _speech_words(current))
+                        current = ""
+                    else:
+                        if not current:
+                            current_t = at
+                        current += c
                 text = _clean(_INLINE_TS.sub("", line))
                 if _is_music(text):
                     music.append((start, end))

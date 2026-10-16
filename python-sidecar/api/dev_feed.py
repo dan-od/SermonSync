@@ -27,6 +27,8 @@ class FeedRequest(BaseModel):
     # {"streaming.silence_flush_seconds": 0.6, ...} — restored after the run.
     overrides: dict[str, Any] = Field(default_factory=dict)
     score: bool = True
+    # The source's uploaded captions are known to be human-written.
+    captions_human: bool = False
 
 
 @router.post("")
@@ -41,6 +43,7 @@ async def post_test_feed(req: FeedRequest) -> dict:
             label=req.label,
             overrides=req.overrides,
             score=req.score,
+            captions_human=req.captions_human,
         )
     except FeedBusyError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

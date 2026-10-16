@@ -64,12 +64,16 @@ class PreparedSource:
     title: str
     audio_path: str
     captions_path: str | None = None
-    # "human" | "auto" | "file" (a .vtt next to a local file) | None
+    # "uploaded" (an uploaded English track that is not a copy of the auto
+    # captions) | "auto" | "file" (a .vtt next to a local file) | None
     captions_kind: str | None = None
     captions_lang: str | None = None
     url: str | None = None
     channel: str | None = None
     media_duration: float | None = None
+    # 1 - WER between an uploaded English track and the auto captions; near 1
+    # means the "manual" track is a copy of YouTube's ASR.
+    uploaded_vs_auto_agreement: float | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -162,33 +166,26 @@ def _prepare_url(url: str, cache_dir: Path) -> PreparedSource:
 
     # Captions: a human-made English track is a real reference; auto captions
     # are YouTube's own ASR output, so the scorer labels them differently.
+    # Many channels upload a copy of the auto captions as a "manual" track, so
+    # an uploaded track only counts as human when it differs from them.
+    for old in target.glob("captions*"):
+        old.unlink()
     human = _english_key(info.get("subtitles") or {}, ("en", "en-US", "en-GB"))
     auto = _english_key(info.get("automatic_captions") or {}, ("en-orig", "en"))
-    kind, lang = ("human", human) if human else ("auto", auto) if auto else (None, None)
-    captions_path = None
-    if lang:
-        for old in target.glob("captions.*"):
-            old.unlink()
-        with yt_dlp.YoutubeDL(
-            {
-                **base_opts,
-                "skip_download": True,
-                "writesubtitles": kind == "human",
-                "writeautomaticsub": kind == "auto",
-                "subtitleslangs": [lang],
-                "subtitlesformat": "vtt",
-                "outtmpl": {
-                    "default": str(target / "captions"),
-                    "subtitle": str(target / "captions"),
-                },
-            }
-        ) as ydl:
-            ydl.download([url])
-        found = next(iter(sorted(target.glob("captions*.vtt"))), None)
-        if found is not None:
-            captions_path = str(found)
+    auto_path = _fetch_captions(url, target, auto, automatic=True) if auto else None
+    human_path = _fetch_captions(url, target, human, automatic=False) if human else None
+    kind, lang, captions_path, check = None, None, None, None
+    if human_path is not None:
+        check = _caption_agreement(human_path, auto_path) if auto_path else None
+        if check is not None and check >= COPIED_CAPTIONS_AGREEMENT:
+            logger.info("uploaded captions for %s match the auto captions (%.2f)", url, check)
         else:
-            kind, lang = None, None
+            # Distinct from the auto captions, but that alone does not prove
+            # a person wrote it (it may be another ASR). The scorer treats it
+            # as human only when the source is marked captions_human.
+            kind, lang, captions_path = "uploaded", human, str(human_path)
+    if captions_path is None and auto_path is not None:
+        kind, lang, captions_path = "auto", auto, str(auto_path)
 
     prepared = PreparedSource(
         source=url,
@@ -201,9 +198,50 @@ def _prepare_url(url: str, cache_dir: Path) -> PreparedSource:
         url=info.get("webpage_url") or url,
         channel=info.get("channel") or info.get("uploader"),
         media_duration=info.get("duration") or probe_duration(audio),
+        uploaded_vs_auto_agreement=check,
     )
     meta_path.write_text(json.dumps(prepared.to_dict(), indent=2))
     return prepared
+
+
+COPIED_CAPTIONS_AGREEMENT = 0.9
+
+
+def _fetch_captions(url: str, target: Path, lang: str, automatic: bool) -> Path | None:
+    import yt_dlp
+
+    stem = target / ("captions_auto" if automatic else "captions_uploaded")
+    with yt_dlp.YoutubeDL(
+        {
+            "quiet": True,
+            "no_warnings": True,
+            "noplaylist": True,
+            "skip_download": True,
+            "writesubtitles": not automatic,
+            "writeautomaticsub": automatic,
+            "subtitleslangs": [lang],
+            "subtitlesformat": "vtt",
+            "outtmpl": {"default": str(stem), "subtitle": str(stem)},
+        }
+    ) as ydl:
+        ydl.download([url])
+    return next(iter(sorted(target.glob(f"{stem.name}*.vtt"))), None)
+
+
+def _caption_agreement(uploaded: Path, auto: Path) -> float | None:
+    """1 - WER of the uploaded track against the auto captions (dev deps)."""
+    try:
+        import jiwer
+
+        from ..eval.captions import parse_vtt
+        from ..eval.scoring import normalize
+    except ImportError:
+        return None
+    a = normalize(" ".join(w.text for w in parse_vtt(uploaded).words))
+    b = normalize(" ".join(w.text for w in parse_vtt(auto).words))
+    if not a or not b:
+        return None
+    return round(max(0.0, 1.0 - jiwer.wer(b, a)), 3)
 
 
 def decode_command(

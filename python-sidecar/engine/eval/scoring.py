@@ -287,12 +287,16 @@ def load_captions(run: Run) -> cap.Captions | None:
     if path is None or not path.is_file():
         return None
     kind = (run.meta.get("source") or {}).get("captions_kind")
-    return cap.parse_vtt(path, kind if kind in ("human", "auto") else None)
+    if kind in ("uploaded", "file") and run.meta.get("request", {}).get("captions_human"):
+        kind = "human"
+    return cap.parse_vtt(path, kind if kind in ("human", "auto", "uploaded") else None)
 
 
 def caption_reference(captions: cap.Captions, run: Run) -> Reference:
     if captions.kind == "auto":
         label = "agreement with YouTube ASR (auto-captions), not accuracy"
+    elif captions.kind == "uploaded":
+        label = "agreement with uploaded captions of unverified origin (may be machine-made)"
     else:
         label = "accuracy vs human captions"
     return Reference(
