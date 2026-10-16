@@ -1,0 +1,175 @@
+{
+  "run": {
+    "dir": "20261016-073840_d-sf0-8-explicit-refs",
+    "label": "D-sf0.8-explicit_refs",
+    "title": "Special Christmas Service - Dec. 25, 2021. Living Faith Church, King Jesus",
+    "source": "https://www.youtube.com/watch?v=i9jrxRIAq1Q",
+    "window": [
+      1590.0,
+      2190.0
+    ],
+    "duration_s": 600.0,
+    "speed": 1.0,
+    "overrides": {
+      "streaming.silence_flush_seconds": 0.8
+    },
+    "captions": "uploaded",
+    "engine": {
+      "model": "base",
+      "device": "cpu",
+      "compute_type": "int8",
+      "backend": "faster-whisper"
+    },
+    "vad": "SileroVAD",
+    "git": {
+      "branch": "HEAD",
+      "commit": "abf3ab0",
+      "dirty": false
+    },
+    "normalizer": "whisper EnglishTextNormalizer"
+  },
+  "wer": {
+    "captions": {
+      "source": "uploaded captions",
+      "label": "agreement with uploaded captions of unverified origin (may be machine-made)",
+      "window": [
+        1590.0,
+        2190.0
+      ],
+      "ref_words": 1532,
+      "hyp_words": 1590,
+      "wer": 0.3675,
+      "substitutions": 383,
+      "deletions": 61,
+      "insertions": 119,
+      "hits": 1088
+    },
+    "primary": "captions",
+    "ref_spans": {
+      "ref_words": 102,
+      "spans": 19,
+      "wer": 0.5686,
+      "substitutions": 44,
+      "deletions": 5,
+      "insertions": 9
+    }
+  },
+  "worship_gate": {
+    "caption_speech_in_worship_s": 0,
+    "blocked_speech_s": 0,
+    "blocked_pct_of_speech": 0.0
+  },
+  "vad": {
+    "vad_open_s": 523.4,
+    "forwarded_s": 523.4,
+    "reached_whisper_s": 559.6,
+    "stale_dropped_s": 0,
+    "trimmed_s": 0,
+    "worship_s": 0,
+    "caption_speech_s": 448.5,
+    "recall": 93.7,
+    "recall_vad_only": 87.6,
+    "recall_gate": 87.6,
+    "false_open_s": 60.2,
+    "false_open_s_per_10min": 60.15,
+    "speech_lost_to_stale_drop_s": 0
+  },
+  "hallucinations": {
+    "count": 0,
+    "per_10min": 0.0,
+    "during_music": 0,
+    "words": 0
+  },
+  "chunks": {
+    "count": 94,
+    "median_s": 6.24,
+    "mean_s": 6.09,
+    "reasons": {
+      "ceiling": 79,
+      "pause": 15
+    },
+    "histogram": {
+      "0-1s": 2,
+      "1-2s": 5,
+      "2-3s": 3,
+      "3-4s": 0,
+      "4-5s": 4,
+      "5-6s": 1,
+      "6-8s": 72,
+      "8-10s": 5,
+      "10-15s": 2,
+      "15s+": 0
+    }
+  },
+  "latency": {
+    "final_infer_ms_median": 427.8,
+    "final_infer_ms_p90": 686.5,
+    "speech_end_to_final_s_median": 0.46,
+    "speech_end_to_final_s_p90": 1.56
+  },
+  "compute": {
+    "final_inference_s": 61.3,
+    "partial_inference_s": 250.7,
+    "partial_count": 378,
+    "partial_infer_ms_median": 360.65,
+    "partial_share_pct": 80.4,
+    "inference_realtime_factor": 0.52
+  },
+  "detection": {
+    "expected": 19,
+    "found": 11,
+    "recall": 57.9,
+    "suggestions": 1334,
+    "suggestions_per_10min": 1334.0,
+    "precision": 0.9,
+    "precision_top1": 6.7,
+    "latency_median_s": 3.687,
+    "latency_mean_s": 4.84,
+    "stages": {
+      "2": 700,
+      "4": 627,
+      "0": 5,
+      "1": 2
+    },
+    "by_stage": {
+      "2": {
+        "suggestions": 700,
+        "matched": 9,
+        "precision": 1.3,
+        "found": 8
+      },
+      "4": {
+        "suggestions": 627,
+        "matched": 1,
+        "precision": 0.2,
+        "found": 1
+      },
+      "0": {
+        "suggestions": 5,
+        "matched": 1,
+        "precision": 20.0,
+        "found": 1
+      },
+      "1": {
+        "suggestions": 2,
+        "matched": 1,
+        "precision": 50.0,
+        "found": 1
+      }
+    },
+    "expected_source": "reference parser over uploaded captions"
+  },
+  "headline": {
+    "wer": 0.3675,
+    "wer_source": "uploaded captions",
+    "ref_span_wer": 0.5686,
+    "vad_recall_pct": 93.7,
+    "vad_false_open_s": 60.2,
+    "hallucinations_per_10min": 0.0,
+    "refs_expected": 19,
+    "refs_precision_pct": 0.9,
+    "refs_recall_pct": 57.9,
+    "spoken_to_suggestion_median_s": 3.687,
+    "engine": "faster-whisper/base/cpu-int8"
+  }
+}
