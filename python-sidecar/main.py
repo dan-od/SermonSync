@@ -88,6 +88,11 @@ async def lifespan(app: FastAPI):
     vad.set_sensitivity(saved_vad_sensitivity)
     audio_state.vad_sensitivity = saved_vad_sensitivity
 
+    # Interim-transcription mode persisted from Settings (SS-067 groundwork).
+    from api.transcription import apply_persisted_partials
+
+    apply_persisted_partials()
+
     # Route VAD-passed speech chunks into the streaming transcriber.
     capture_manager.speech_sink = streaming_transcriber.feed
     await streaming_transcriber.start()

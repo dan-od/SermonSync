@@ -20,6 +20,9 @@ from .buffer import transcript_buffer
 
 logger = logging.getLogger("sermonsync.transcription.streaming")
 STALE_BUFFER_SECONDS = 3.0
+# Interim-pass modes: re-run the main model (default), skip interim passes, or
+# run them on a small model so they stop competing with finals for compute.
+PARTIAL_MODES = ("main", "off", "tiny.en", "base.en")
 
 # Whisper copies a prompt's style and spelling: written references and local
 # names, not instructions. Well under the 224-token prompt limit.
@@ -119,6 +122,7 @@ class StreamingTranscriber:
         # ~78% of a core sustained. The interim line only needs recent words.
         self.partial_max_seconds = partial_max_seconds
         self._last_partial_ts = 0.0
+        self.partial_mode = "main"
         # Pin the language (default English) so short/quiet clips aren't
         # mis-detected as another language. Set None to auto-detect.
         self.language = language
@@ -247,8 +251,21 @@ class StreamingTranscriber:
         """Why the buffer is being cut: the ceiling, or a speaker pause."""
         return "ceiling" if self._buffered_seconds() >= self.max_chunk_seconds else "pause"
 
+    def set_partial_mode(self, mode: str) -> None:
+        if mode not in PARTIAL_MODES:
+            raise ValueError(f"partial mode must be one of {PARTIAL_MODES}")
+        self.partial_mode = mode
+        logger.info("interim transcription: %s", mode)
+
+    def _partial_engine(self):
+        if self.partial_mode in ("main", "off"):
+            return whisper_engine.get_engine()
+        return whisper_engine.get_partial_engine(self.partial_mode)
+
     def _ready_for_partial(self, now: float | None = None) -> bool:
         """True when an interim hypothesis is worth emitting mid-utterance."""
+        if self.partial_mode == "off":
+            return False
         if self._buffered_seconds() < self.partial_min_seconds:
             return False
         now = now if now is not None else time.time()
@@ -289,7 +306,8 @@ class StreamingTranscriber:
     async def _emit_partial(self, pcm: bytes) -> None:
         """Broadcast an interim hypothesis (is_final=False). Never assembled
         into sentences and never matched — it will be revised."""
-        engine = whisper_engine.get_engine()
+        # Loading a small partial model can take seconds: never on the loop.
+        engine = await asyncio.to_thread(self._partial_engine)
         infer_start = time.time()
         try:
             segments = await asyncio.to_thread(
