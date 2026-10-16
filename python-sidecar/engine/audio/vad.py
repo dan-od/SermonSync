@@ -47,14 +47,20 @@ class EnergyVAD:
     def __init__(
         self,
         sensitivity: float = 0.5,
-        hangover_frames: int = 8,
-        window_frames: int = 150,  # ~4.5 s at 30 ms/frame
+        hangover_frames: int | None = None,
+        window_frames: int = 150,  # ~3 s at 20 ms/frame
         noise_ratio: float = 3.0,
         attack_frames: int = 3,
+        hangover_ms: float = 300.0,
+        frame_ms: float = 20.0,
     ) -> None:
         self.sensitivity = sensitivity
         self.threshold = sensitivity_to_threshold(sensitivity)
-        self.hangover_frames = hangover_frames
+        # Hangover is a duration; frames are only how process_rms counts it.
+        self.hangover_ms = hangover_ms
+        self.frame_ms = frame_ms
+        if hangover_frames is not None:
+            self.hangover_ms = hangover_frames * frame_ms
         self.noise_ratio = noise_ratio
         # A marginal frame must persist this long before the gate opens. Room
         # noise peaks in isolated blips; speech sustains. Costs nothing now
@@ -71,6 +77,10 @@ class EnergyVAD:
         self._recent: deque[float] = deque(maxlen=window_frames)
         self._min_window = 33  # ~1 s before the measured floor is trusted
         self._noise_floor = 0.002
+
+    @property
+    def hangover_frames(self) -> int:
+        return max(0, round(self.hangover_ms / self.frame_ms))
 
     def set_sensitivity(self, sensitivity: float) -> None:
         self.sensitivity = max(0.0, min(1.0, sensitivity))
@@ -155,7 +165,7 @@ class SileroVAD:
         self,
         session,
         sensitivity: float = 0.5,
-        hangover_frames: int = 8,
+        hangover_ms: float = 300.0,
         sample_rate: int = 16000,
     ) -> None:
         import numpy as np
@@ -164,14 +174,17 @@ class SileroVAD:
         self._sess = session
         self.sensitivity = sensitivity
         self.threshold = sensitivity_to_probability(sensitivity)
-        self.hangover_frames = hangover_frames
+        # Speech stays open until this much audio scores below threshold.
+        # Counted in samples, so it does not depend on the frame size.
+        self.hangover_ms = hangover_ms
+        self.sample_rate = sample_rate
         self._sr = np.array(sample_rate, dtype="int64")
         self._state = np.zeros((2, 1, 128), dtype="float32")
         # Capture delivers 480-sample chunks; hold the remainder between calls
         # so the model always sees exactly WINDOW samples.
         self._tail = np.zeros(0, dtype="float32")
         self._context = np.zeros(self.CONTEXT, dtype="float32")
-        self._silence_run = 0
+        self._silence_samples = 0
         self._is_speech = False
         self._last_prob = 0.0
 
@@ -200,7 +213,7 @@ class SileroVAD:
         self._state = self._np.zeros((2, 1, 128), dtype="float32")
         self._tail = self._np.zeros(0, dtype="float32")
         self._context = self._np.zeros(self.CONTEXT, dtype="float32")
-        self._silence_run = 0
+        self._silence_samples = 0
         self._is_speech = False
         self._last_prob = 0.0
 
@@ -223,11 +236,11 @@ class SileroVAD:
         self._last_prob = prob
 
         if prob >= self.threshold:
-            self._silence_run = 0
+            self._silence_samples = 0
             self._is_speech = True
         else:
-            self._silence_run += 1
-            if self._silence_run > self.hangover_frames:
+            self._silence_samples += arr.size
+            if self._silence_samples > self.hangover_ms * self.sample_rate / 1000:
                 self._is_speech = False
         return self._is_speech, round(prob, 4)
 
