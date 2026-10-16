@@ -81,6 +81,61 @@ def resample_to_transcription_rate(samples, source_rate: int, target_rate: int =
     return np.interp(target_positions, source_positions, arr).astype("float32")
 
 
+class StreamResampler:
+    """Stateful device-rate -> 16 kHz mono resampler for 20 ms frames.
+
+    `resample_to_transcription_rate` treats every frame on its own: it maps
+    the frame's last input sample onto its last output sample (a ~0.3 %
+    time-warp inside each frame and a phase jump at every boundary, i.e. a
+    50 Hz glitch) and has no anti-alias filter, so 8–24 kHz content folds
+    into the speech band. This keeps the fractional read position and the
+    filter history across frames, low-passes below the target Nyquist with a
+    windowed-sinc FIR, then reads at exact positions.
+    """
+
+    TAPS = 63
+
+    def __init__(self, source_rate: int, target_rate: int = 16000) -> None:
+        self.source_rate = int(source_rate)
+        self.target_rate = int(target_rate)
+        self.step = self.source_rate / self.target_rate
+        self._pos = 0.0  # read position, relative to the current frame start
+        self._kernel = None
+        self._history = None
+        if self.source_rate > self.target_rate:
+            cutoff = 0.45 * self.target_rate / self.source_rate  # cycles/sample
+            n = np.arange(self.TAPS) - (self.TAPS - 1) / 2
+            kernel = 2 * cutoff * np.sinc(2 * cutoff * n) * np.hamming(self.TAPS)
+            self._kernel = (kernel / kernel.sum()).astype("float32")
+            self._history = np.zeros(self.TAPS - 1, dtype="float32")
+        self._prev_last = 0.0
+
+    def process(self, samples):
+        arr = np.asarray(samples, dtype="float32")
+        arr = np.mean(arr, axis=1) if arr.ndim > 1 else arr.ravel()
+        if self.source_rate == self.target_rate or arr.size == 0:
+            return arr.astype("float32", copy=False)
+        if self._kernel is not None:
+            padded = np.concatenate([self._history, arr])
+            self._history = padded[-(self.TAPS - 1):]
+            # "valid" output is delayed by (TAPS-1)/2 samples; a constant
+            # delay, identical for every frame, so it never warps time.
+            filtered = np.convolve(padded, self._kernel, mode="valid").astype("float32")
+        else:
+            filtered = arr
+        # Read positions in this frame; index -1 is the previous frame's last
+        # sample, so interpolation across the boundary is seamless.
+        positions = np.arange(self._pos, filtered.size, self.step)
+        extended = np.concatenate([[self._prev_last], filtered]).astype("float32")
+        out = np.interp(positions + 1.0, np.arange(extended.size), extended)
+        if positions.size:
+            self._pos = positions[-1] + self.step - filtered.size
+        else:
+            self._pos -= filtered.size
+        self._prev_last = float(filtered[-1])
+        return out.astype("float32")
+
+
 # ---------------------------------------------------------------------------
 # Capture manager
 # ---------------------------------------------------------------------------
@@ -99,12 +154,19 @@ class CaptureManager:
         # Optional sink for VAD-passed speech chunks (set by transcription, SS-013).
         # Signature: sink(pcm_bytes: bytes) -> None
         self.speech_sink = None
-        # Pre-roll: the most recent chunks, replayed into the sink when speech
-        # opens. Energy VAD only fires once a word is already underway, so
-        # without this every utterance reaches Whisper with its first consonant
-        # sheared off — a reliable source of garbled transcripts.
-        self._preroll: deque[bytes] = deque(maxlen=8)  # ~240 ms
+        # Pre-roll: the most recent audio, replayed into the sink when speech
+        # opens. VAD only fires once a word is already underway, so without
+        # this every utterance reaches Whisper with its first consonant
+        # sheared off — a reliable source of garbled transcripts. Measured in
+        # milliseconds of 16 kHz audio, so it holds at any device rate.
+        self.preroll_ms = 300.0
+        self._preroll: deque[bytes] = deque()
+        self._preroll_bytes = 0
         self._forwarding = False
+        # "stream" (stateful, anti-aliased) or "legacy" (per-frame linear
+        # interpolation, kept for A/B runs in the eval harness).
+        self.resampler = "stream"
+        self._resampler: StreamResampler | None = None
 
     @property
     def is_capturing(self) -> bool:
@@ -198,7 +260,25 @@ class CaptureManager:
         """Forget per-stream frame state (pre-roll, gate edge, meter cadence)."""
         self._chunk_counter = 0
         self._preroll.clear()
+        self._preroll_bytes = 0
         self._forwarding = False
+        self._resampler = None
+
+    def _to_transcription_rate(self, samples, sample_rate: int):
+        if self.resampler == "legacy":
+            return resample_to_transcription_rate(samples, sample_rate)
+        r = self._resampler
+        if r is None or r.source_rate != int(sample_rate):
+            r = self._resampler = StreamResampler(sample_rate)
+        return r.process(samples)
+
+    def _push_preroll(self, pcm: bytes) -> None:
+        """Keep the current frame plus at least preroll_ms of audio before it."""
+        self._preroll.append(pcm)
+        self._preroll_bytes += len(pcm)
+        budget = int(self.preroll_ms * 16000 * 2 / 1000) + len(pcm)
+        while self._preroll and self._preroll_bytes - len(self._preroll[0]) >= budget:
+            self._preroll_bytes -= len(self._preroll.popleft())
 
     def _on_audio(self, indata, frames, time_info, status) -> None:
         """PortAudio callback (runs in a separate thread)."""
@@ -220,8 +300,14 @@ class CaptureManager:
         float32 at `sample_rate`, shaped (frames,) or (frames, channels).
         """
         try:
+            # The meter shows the device signal; everything that classifies
+            # audio sees the same 16 kHz mono array Whisper gets. Silero is a
+            # 16 kHz model: fed 48 kHz frames it reads speech three times too
+            # slow and an octave and a half too low, and misses most of it.
             rms, peak = compute_levels(samples)
-            pcm = float_to_pcm16(resample_to_transcription_rate(samples, sample_rate))
+            mono16 = self._to_transcription_rate(samples, sample_rate)
+            pcm = float_to_pcm16(mono16)
+            scene_rms, _ = compute_levels(mono16)
         except Exception as exc:  # pragma: no cover
             logger.error("audio processing error: %s", exc)
             return
@@ -231,14 +317,14 @@ class CaptureManager:
 
         # VAD gate (SS-010): classify the chunk; only speech reaches transcription.
         # Pass samples, not just RMS — Silero classifies the waveform itself.
-        is_speech, vad_conf = vad.get_detector().process(samples)
+        is_speech, vad_conf = vad.get_detector().process(mono16)
 
         # Worship/scene detection (SS-012): reduce/pause transcription on music.
-        flatness = worship_detector.spectral_flatness(samples)
-        scene, scene_conf = worship_detector.get_detector().update(rms, flatness)
+        flatness = worship_detector.spectral_flatness(mono16)
+        scene, scene_conf = worship_detector.get_detector().update(scene_rms, flatness)
         audio_state.acoustic_state = scene
 
-        self._preroll.append(pcm)
+        self._push_preroll(pcm)
 
         # Forward to transcription only when it's speech AND not worship/music.
         forward = is_speech and scene != worship_detector.WORSHIP
