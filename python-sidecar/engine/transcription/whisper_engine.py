@@ -42,6 +42,21 @@ def _pick_device() -> tuple[str, str]:
     return "cpu", "int8"
 
 
+# Decoding options, backend-agnostic in spirit: each backend maps what it
+# supports. beam_size stays 1 everywhere — mlx-whisper has no beam search, so
+# this keeps Mac results comparable with the Windows (faster-whisper) target.
+# condition_on_previous_text only links 30 s windows inside one call; our
+# chunks are a few seconds, so it never applied, but say so explicitly.
+DEFAULT_DECODE_OPTIONS = {
+    "beam_size": 1,
+    "condition_on_previous_text": False,
+    "temperature": [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+    "compression_ratio_threshold": 2.4,
+    "log_prob_threshold": -1.0,
+    "no_speech_threshold": 0.6,
+}
+
+
 def _logprob_to_confidence(avg_logprob: float) -> float:
     return round(max(0.0, min(1.0, math.exp(avg_logprob))), 4)
 
@@ -54,7 +69,7 @@ class MockWhisperEngine:
     device = "cpu"
     compute_type = "n/a"
 
-    def transcribe(self, audio, language: str | None = None) -> list[dict]:
+    def transcribe(self, audio, language: str | None = None, **hints) -> list[dict]:
         n = len(audio) if audio is not None else 0
         seconds = round(n / 16000.0, 2)
         return [
@@ -81,6 +96,7 @@ class WhisperEngine:
         # the fallback chain kicked in.
         self.requested_model = model_size
         self.degraded = False
+        self.decode_options = dict(DEFAULT_DECODE_OPTIONS)
 
     @classmethod
     def load(cls, candidates: list[str] | None = None) -> WhisperEngine:
@@ -115,13 +131,29 @@ class WhisperEngine:
                 logger.warning("failed to load Whisper '%s': %s", size, exc)
         raise RuntimeError(f"no Whisper model could be loaded (tried {tried})")
 
-    def transcribe(self, audio, language: str | None = None) -> list[dict]:
-        """Transcribe a float32 mono 16 kHz buffer; returns segment dicts."""
+    def transcribe(
+        self,
+        audio,
+        language: str | None = None,
+        prompt: str | None = None,
+        hotwords: str | None = None,
+    ) -> list[dict]:
+        """Transcribe a float32 mono 16 kHz buffer; returns segment dicts.
+
+        `prompt` becomes Whisper's initial_prompt: it copies the prompt's
+        style and spelling (it does not follow instructions in it).
+        `hotwords` is faster-whisper's lighter-weight bias for the same text.
+        """
+        options = dict(self.decode_options)
+        if prompt:
+            options["initial_prompt"] = prompt
+        if hotwords:
+            options["hotwords"] = hotwords
         segments, info = self._model.transcribe(
             audio,
             language=language,
-            beam_size=1,
             vad_filter=False,  # our own VAD already gates the stream
+            **options,
         )
         results = []
         for seg in segments:

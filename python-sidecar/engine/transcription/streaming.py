@@ -21,6 +21,52 @@ from .buffer import transcript_buffer
 logger = logging.getLogger("sermonsync.transcription.streaming")
 STALE_BUFFER_SECONDS = 3.0
 
+# Whisper copies a prompt's style and spelling: written references and local
+# names, not instructions. Well under the 224-token prompt limit.
+STYLE_PROMPT = (
+    "Turn with me to John 3:16, 1 Corinthians 13:4-7 and Philippians 4:13. "
+    "Foursquare Gospel Church."
+)
+FINAL_TAIL_CHARS = 200
+
+# Text Whisper produces from silence, music and noise (its training data's
+# subtitle credits). Dropped only when a chunk yields nothing else.
+HALLUCINATION_PHRASES = frozenset({
+    "thank you", "thank you very much", "thanks", "thanks for watching",
+    "thank you for watching", "thank you so much for watching", "please subscribe",
+    "like and subscribe", "you", "bye", "bye bye", "music", "applause",
+})
+HALLUCINATION_PREFIXES = ("subtitles by", "captions by", "transcription by", "translated by")
+# A chunk this short that decodes to one or two words is almost always noise
+# or music read as speech ("Three", "Zoom!", "haha"). Measured on six sermon
+# runs with the VAD fix: catches 13 of 28 caption-free finals and drops 12 of
+# 13,435 real words. A no_speech_prob/avg_logprob rule did far worse
+# (3 caught, 2.2% of real words lost): most hallucinations score as speech.
+# faster-whisper already skips segments with no_speech > 0.6 and logprob < -1.
+SHORT_CHUNK_SECONDS = 1.2
+SHORT_CHUNK_MAX_WORDS = 2
+
+
+def _bare(text: str) -> str:
+    return " ".join("".join(c if c.isalnum() or c == " " else " " for c in text.lower()).split())
+
+
+def hallucination_reason(
+    segment: dict, alone: bool, chunk_seconds: float | None = None
+) -> str | None:
+    """Why a segment should be dropped, or None to keep it."""
+    bare = _bare(segment.get("text") or "")
+    if (
+        alone
+        and chunk_seconds is not None
+        and chunk_seconds < SHORT_CHUNK_SECONDS
+        and len(bare.split()) <= SHORT_CHUNK_MAX_WORDS
+    ):
+        return "short_chunk"
+    if alone and (bare in HALLUCINATION_PHRASES or bare.startswith(HALLUCINATION_PREFIXES)):
+        return "blocklist"
+    return None
+
 try:
     import numpy as np
 except ImportError:  # pragma: no cover
@@ -75,6 +121,14 @@ class StreamingTranscriber:
         # mis-detected as another language. Set None to auto-detect.
         self.language = language
         self.matching_enabled = matching_enabled
+        # Decoding hints (fix C): "none", "final_tail" (last ~200 chars of
+        # final text) or "style" (STYLE_PROMPT); optionally passed as
+        # faster-whisper hotwords instead of initial_prompt.
+        self.prompt_mode = "none"
+        self.style_prompt = STYLE_PROMPT
+        self.prompt_as_hotwords = False
+        self.hallucination_filter = True
+        self._final_tail = ""
         self._buf = bytearray()
         self._lock = None  # created lazily on the loop's thread
         self._running = False
@@ -134,6 +188,7 @@ class StreamingTranscriber:
 
     def reset(self) -> None:
         """Drop buffered audio without stopping (a new, unrelated stream)."""
+        self._final_tail = ""
         self._buf.clear()
         self._buf_offset = self._fed_bytes
         self._first_chunk_ts = None
@@ -173,6 +228,18 @@ class StreamingTranscriber:
             return False
         now = now if now is not None else time.time()
         return (now - self._last_feed_ts) >= self.silence_flush_seconds
+
+    def _decode_hints(self) -> dict:
+        """Keyword arguments for engine.transcribe (only when set, so engines
+        without prompt support keep working)."""
+        text = None
+        if self.prompt_mode == "final_tail":
+            text = self._final_tail[-FINAL_TAIL_CHARS:].strip() or None
+        elif self.prompt_mode == "style":
+            text = self.style_prompt
+        if not text:
+            return {}
+        return {"hotwords": text} if self.prompt_as_hotwords else {"prompt": text}
 
     def _cut_reason(self) -> str:
         """Why the buffer is being cut: the ceiling, or a speaker pause."""
@@ -224,11 +291,14 @@ class StreamingTranscriber:
         infer_start = time.time()
         try:
             segments = await asyncio.to_thread(
-                engine.transcribe, pcm16_to_float(pcm), self.language
+                engine.transcribe, pcm16_to_float(pcm), self.language, **self._decode_hints()
             )
         except Exception as exc:  # pragma: no cover
             logger.debug("partial transcription failed: %s", exc)
             return
+        if self.hallucination_filter:
+            alone = len([s for s in segments if s["text"]]) == 1
+            segments = [s for s in segments if hallucination_reason(s, alone) is None]
         text = " ".join(seg["text"] for seg in segments if seg["text"]).strip()
         tap.emit(
             "partial", text=text, infer_ms=round((time.time() - infer_start) * 1000, 1),
@@ -254,7 +324,9 @@ class StreamingTranscriber:
         audio = pcm16_to_float(pcm)
         infer_start = time.time()
         try:
-            segments = await asyncio.to_thread(engine.transcribe, audio, self.language)
+            segments = await asyncio.to_thread(
+                engine.transcribe, audio, self.language, **self._decode_hints()
+            )
         except Exception as exc:  # pragma: no cover
             logger.error("transcription failed: %s", exc)
             monitor.flag_error("transcription")
@@ -265,6 +337,13 @@ class StreamingTranscriber:
         monitor.record_stage("transcription", (emit_ts - infer_start) * 1000)
         monitor.record_end_to_end(latency_ms)
         monitor.clear_error("transcription")
+        if self.hallucination_filter:
+            alone = len([s for s in segments if s["text"]]) == 1
+            for seg in segments:
+                reason = hallucination_reason(seg, alone, len(audio) / self.sample_rate)
+                if reason:
+                    seg["dropped"] = reason
+                    logger.info("dropped likely hallucination (%s): %r", reason, seg["text"])
         if tap.active():
             tap.emit(
                 "inference", seq=seq, infer_ms=round((emit_ts - infer_start) * 1000, 1),
@@ -272,14 +351,15 @@ class StreamingTranscriber:
                 segments=[
                     {k: seg.get(k) for k in (
                         "text", "start", "end", "confidence", "no_speech_prob",
-                        "avg_logprob", "compression_ratio",
+                        "avg_logprob", "compression_ratio", "dropped",
                     )}
                     for seg in segments
                 ],
             )
         for seg in segments:
-            if not seg["text"]:
+            if not seg["text"] or seg.get("dropped"):
                 continue
+            self._final_tail = (self._final_tail + " " + seg["text"])[-FINAL_TAIL_CHARS * 2:]
             payload = {
                 "type": "transcription",
                 "text": seg["text"],
