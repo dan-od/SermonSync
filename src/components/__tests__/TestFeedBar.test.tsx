@@ -21,14 +21,16 @@ describe("TestFeedBar (SS-072)", () => {
 
   it("shows the dev source input only when the sidecar enables it", () => {
     const html = renderToStaticMarkup(<TestFeedBarView enabled status={null} />);
-    expect(html).toContain("YouTube URL or file path");
+    expect(html).toContain("DEV feed: URL or path");
     expect(html).toContain("▶ FEED");
     expect(html).not.toContain("TEST FEED:");
   });
 
   it("badges an active feed with its title and position", () => {
     const html = renderToStaticMarkup(<TestFeedBarView enabled status={playing} />);
-    expect(html).toContain("TEST FEED: Faith that moves mountains · 12:34");
+    expect(html).toContain("TEST FEED:");
+    expect(html).toContain("Faith that moves mountains");
+    expect(html).toContain("· 12:34");
     expect(html).toContain("■ STOP");
   });
 
@@ -38,7 +40,7 @@ describe("TestFeedBar (SS-072)", () => {
     );
     expect(html).toContain("TEST FEED:");
     expect(html).toContain("LOADING");
-    expect(html).not.toContain("YouTube URL or file path");
+    expect(html).not.toContain("DEV feed: URL or path");
   });
 
   it("drops the badge once the feed stops", () => {

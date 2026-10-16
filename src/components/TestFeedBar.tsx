@@ -76,6 +76,9 @@ export function TestFeedBarView({ enabled, status }: TestFeedBarViewProps) {
           data-testid="test-feed-badge"
           title={status.source ?? undefined}
           style={{
+            display: "flex",
+            gap: "6px",
+            alignItems: "baseline",
             background: "var(--color-warning)",
             color: "#1a1200",
             borderRadius: "var(--radius-md)",
@@ -85,12 +88,16 @@ export function TestFeedBarView({ enabled, status }: TestFeedBarViewProps) {
             fontWeight: 700,
             letterSpacing: "0.04em",
             whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
           }}
         >
-          {`TEST FEED: ${status.title ?? status.source ?? "…"} · ${formatFeedPosition(status.position)}${stateLabel}`}
-          {status.speed !== 1 ? ` · ${status.speed}×` : ""}
+          {/* The position stays visible however narrow the column: only the title truncates. */}
+          <span style={{ flexShrink: 0 }}>TEST FEED:</span>
+          <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+            {status.title ?? status.source ?? "…"}
+          </span>
+          <span style={{ flexShrink: 0 }}>
+            {`· ${formatFeedPosition(status.position)}${stateLabel}${status.speed !== 1 ? ` · ${status.speed}×` : ""}`}
+          </span>
         </div>
       ) : null}
       {enabled ? (
@@ -105,7 +112,7 @@ export function TestFeedBarView({ enabled, status }: TestFeedBarViewProps) {
             value={source}
             onChange={(event) => setSource(event.target.value)}
             disabled={active}
-            placeholder="DEV: YouTube URL or file path"
+            placeholder="DEV feed: URL or path"
             aria-label="Test feed source"
             style={{ ...fieldStyle, flex: 1, minWidth: 0 }}
           />
