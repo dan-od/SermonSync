@@ -18,6 +18,7 @@ from collections import deque
 
 from ws_hub import manager
 
+from ..eval import tap
 from . import vad, worship_detector
 from .devices import AudioBackendError, backend_available, list_input_devices
 from .state import audio_state
@@ -131,10 +132,8 @@ class CaptureManager:
         audio_state.chunk_samples = round(audio_state.sample_rate * 0.02)
         audio_state.channels = min(audio_state.channels, selected_device["channels"])
 
-        self._loop = asyncio.get_running_loop()
-        self._chunk_counter = 0
-        self._preroll.clear()
-        self._forwarding = False
+        self.bind_loop(asyncio.get_running_loop())
+        self.reset_frame_state()
 
         def _open_stream():
             # Opening the PortAudio stream blocks until the OS resolves the
@@ -191,6 +190,16 @@ class CaptureManager:
                 logger.warning("error stopping stream: %s", exc)
         logger.info("capture stopped")
 
+    def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Event loop that receives the WS events raised by process_frame."""
+        self._loop = loop
+
+    def reset_frame_state(self) -> None:
+        """Forget per-stream frame state (pre-roll, gate edge, meter cadence)."""
+        self._chunk_counter = 0
+        self._preroll.clear()
+        self._forwarding = False
+
     def _on_audio(self, indata, frames, time_info, status) -> None:
         """PortAudio callback (runs in a separate thread)."""
         if status:
@@ -199,10 +208,20 @@ class CaptureManager:
             if getattr(status, "input_error", False) or "error" in str(status).lower():
                 self._schedule(self._handle_device_error(str(status)))
                 return
+        self.process_frame(indata.copy(), audio_state.sample_rate)
+
+    def process_frame(self, samples, sample_rate: int) -> None:
+        """Run one capture frame through metering, VAD, scene detection and the
+        speech gate, forwarding speech to the transcription sink.
+
+        The single entry point for audio: the PortAudio callback and the
+        evaluation file source (SS-072) both call this, so a test feed
+        exercises exactly the code path the microphone does. `samples` is
+        float32 at `sample_rate`, shaped (frames,) or (frames, channels).
+        """
         try:
-            samples = indata.copy()
             rms, peak = compute_levels(samples)
-            pcm = float_to_pcm16(resample_to_transcription_rate(samples, audio_state.sample_rate))
+            pcm = float_to_pcm16(resample_to_transcription_rate(samples, sample_rate))
         except Exception as exc:  # pragma: no cover
             logger.error("audio processing error: %s", exc)
             return
@@ -223,13 +242,24 @@ class CaptureManager:
 
         # Forward to transcription only when it's speech AND not worship/music.
         forward = is_speech and scene != worship_detector.WORSHIP
+        tapping = tap.active()
+        if tapping:
+            tap.emit(
+                "frame", is_speech=is_speech, vad_conf=vad_conf, scene=scene,
+                scene_conf=scene_conf, forward=forward, rms=rms,
+            )
         if forward and self.speech_sink is not None:
             try:
                 if not self._forwarding:
                     # Rising edge: replay the pre-roll so the word's onset is
                     # included (the current chunk is the deque's last entry).
-                    for past in list(self._preroll)[:-1]:
+                    replay = list(self._preroll)[:-1]
+                    for back, past in zip(range(len(replay), 0, -1), replay):
+                        if tapping:
+                            tap.emit("sink", back=back, nbytes=len(past))
                         self.speech_sink(past)
+                if tapping:
+                    tap.emit("sink", back=0, nbytes=len(pcm))
                 self.speech_sink(pcm)
             except Exception as exc:  # pragma: no cover
                 logger.error("speech sink error: %s", exc)

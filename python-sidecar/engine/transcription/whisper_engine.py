@@ -132,6 +132,8 @@ class WhisperEngine:
                     "end": round(seg.end, 3),
                     "confidence": _logprob_to_confidence(seg.avg_logprob),
                     "no_speech_prob": round(seg.no_speech_prob, 4),
+                    "avg_logprob": round(seg.avg_logprob, 4),
+                    "compression_ratio": round(seg.compression_ratio, 3),
                     "language": info.language,
                 }
             )

@@ -1,0 +1,52 @@
+# Live-feed harness test sources (SS-072).
+#
+# Run one with:   python scripts/run_feed.py <id> --base http://127.0.0.1:8010
+# (sidecar started with SERMONSYNC_DEV_FEED=1). `start` / `duration` are
+# seconds into the media; keep 10-minute windows (600 s) so runs compare.
+#
+# Hand-corrected references go in eval/references/<id>/:
+#   reference.txt        first line "# window: <start>-<end>" (source seconds),
+#                        then the verbatim transcript of that window
+#   expected_refs.json   [{"ref": "John 3:16", "t": 734.2}, ...]  (t = when
+#                        the reference is spoken, source seconds)
+# Both override what the scorer would otherwise take from YouTube captions.
+
+sources:
+  # A Nigerian preacher in English with HUMAN-MADE English captions, so WER
+  # is real accuracy rather than agreement with YouTube's own ASR.
+  - id: nigerian_human_captions
+    url:            # TODO
+    start: 0
+    duration: 600
+    notes: "Nigerian preacher, human English captions"
+
+  # Keyboard / organ playing under the preaching (exhortation, altar call).
+  # Exercises the worship gate during speech (fix F) and VAD under music.
+  - id: music_under_preaching
+    url:            # TODO
+    start: 0
+    duration: 600
+    notes: "keyboard/music under the preacher"
+
+  # Many explicit "turn with me to ..." references: detection precision,
+  # recall and spoken->suggestion latency.
+  - id: explicit_refs
+    url:            # TODO
+    start: 0
+    duration: 600
+    notes: "dense explicit references"
+
+  # Phone / camcorder room recording: reverb, crowd noise, distant mic.
+  - id: noisy_room
+    url:            # TODO
+    start: 0
+    duration: 600
+    notes: "noisy room recording"
+
+  # Worship / praise segment with no preaching. Every final here is a
+  # hallucination; the scorer counts them.
+  - id: worship_music
+    url:            # TODO
+    start: 0
+    duration: 600
+    notes: "silence/music: sung worship, no speech"

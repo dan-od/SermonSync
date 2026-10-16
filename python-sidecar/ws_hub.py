@@ -20,6 +20,9 @@ class ConnectionManager:
     def __init__(self) -> None:
         self._clients: set[WebSocket] = set()
         self._lock: asyncio.Lock | None = None
+        # In-process observers of every JSON broadcast (the SS-072 run
+        # recorder). Called synchronously, so they must be cheap.
+        self._listeners: list = []
 
     def _get_lock(self) -> asyncio.Lock:
         # Create the lock lazily so it binds to the running event loop rather
@@ -43,8 +46,20 @@ class ConnectionManager:
     def client_count(self) -> int:
         return len(self._clients)
 
+    def add_listener(self, listener) -> None:
+        self._listeners.append(listener)
+
+    def remove_listener(self, listener) -> None:
+        if listener in self._listeners:
+            self._listeners.remove(listener)
+
     async def broadcast_json(self, payload: dict[str, Any]) -> None:
         """Send a JSON payload to every connected client, dropping dead ones."""
+        for listener in list(self._listeners):
+            try:
+                listener(payload)
+            except Exception:
+                logger.exception("broadcast listener failed")
         dead: list[WebSocket] = []
         for ws in list(self._clients):
             try:
