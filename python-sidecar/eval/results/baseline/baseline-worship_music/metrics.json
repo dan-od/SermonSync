@@ -1,0 +1,139 @@
+{
+  "run": {
+    "dir": "20261016-003211_baseline-worship-music",
+    "label": "baseline-worship_music",
+    "title": "AFTERNOON WORSHIP ENCOUNTER || 8th December 2022",
+    "source": "https://www.youtube.com/watch?v=aeNAHcly6kE",
+    "window": [
+      1200.0,
+      1800.0
+    ],
+    "duration_s": 600.0,
+    "speed": 1.0,
+    "overrides": {},
+    "captions": "auto",
+    "engine": {
+      "model": "base",
+      "device": "cpu",
+      "compute_type": "int8",
+      "backend": "faster-whisper"
+    },
+    "vad": "SileroVAD",
+    "git": {
+      "branch": "feat/ss-072-live-feed-harness",
+      "commit": "eb1514c",
+      "dirty": false
+    },
+    "normalizer": "whisper EnglishTextNormalizer"
+  },
+  "wer": {
+    "captions": {
+      "source": "auto captions",
+      "label": "agreement with YouTube ASR (auto-captions), not accuracy",
+      "window": [
+        1200.0,
+        1800.0
+      ],
+      "ref_words": 156,
+      "hyp_words": 0,
+      "wer": 1.0,
+      "substitutions": 1,
+      "deletions": 155,
+      "insertions": 0,
+      "hits": 0
+    },
+    "primary": "captions",
+    "ref_spans": {
+      "ref_words": 0,
+      "wer": null,
+      "spans": 0
+    }
+  },
+  "worship_gate": {
+    "caption_speech_in_worship_s": 0,
+    "blocked_speech_s": 0,
+    "blocked_pct_of_speech": 0.0
+  },
+  "vad": {
+    "vad_open_s": 0.2,
+    "forwarded_s": 0.2,
+    "reached_whisper_s": 0,
+    "stale_dropped_s": 0.3,
+    "trimmed_s": 0,
+    "worship_s": 0,
+    "caption_speech_s": 77.9,
+    "recall": 0.0,
+    "recall_vad_only": 0.0,
+    "recall_gate": 0.0,
+    "false_open_s": 0.2,
+    "false_open_s_per_10min": 0.2,
+    "speech_lost_to_stale_drop_s": 0
+  },
+  "hallucinations": {
+    "count": 0,
+    "per_10min": 0.0,
+    "during_music": 0,
+    "words": 0
+  },
+  "chunks": {
+    "count": 0,
+    "median_s": null,
+    "mean_s": null,
+    "reasons": {
+      "stale_drop": 1
+    },
+    "histogram": {
+      "0-1s": 0,
+      "1-2s": 0,
+      "2-3s": 0,
+      "3-4s": 0,
+      "4-5s": 0,
+      "5-6s": 0,
+      "6-8s": 0,
+      "8-10s": 0,
+      "10-15s": 0,
+      "15s+": 0
+    }
+  },
+  "latency": {
+    "final_infer_ms_median": null,
+    "final_infer_ms_p90": null,
+    "speech_end_to_final_s_median": null,
+    "speech_end_to_final_s_p90": null
+  },
+  "compute": {
+    "final_inference_s": 0.0,
+    "partial_inference_s": 0.0,
+    "partial_count": 0,
+    "partial_infer_ms_median": null,
+    "partial_share_pct": null,
+    "inference_realtime_factor": 0.0
+  },
+  "detection": {
+    "expected": 0,
+    "found": 0,
+    "recall": null,
+    "suggestions": 0,
+    "suggestions_per_10min": 0.0,
+    "precision": null,
+    "precision_top1": null,
+    "latency_median_s": null,
+    "latency_mean_s": null,
+    "stages": {},
+    "by_stage": {},
+    "expected_source": "reference parser over auto captions"
+  },
+  "headline": {
+    "wer": 1.0,
+    "wer_source": "auto captions",
+    "ref_span_wer": null,
+    "vad_recall_pct": 0.0,
+    "vad_false_open_s": 0.2,
+    "hallucinations_per_10min": 0.0,
+    "refs_expected": 0,
+    "refs_precision_pct": null,
+    "refs_recall_pct": null,
+    "spoken_to_suggestion_median_s": null,
+    "engine": "faster-whisper/base/cpu-int8"
+  }
+}
