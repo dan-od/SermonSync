@@ -11,6 +11,8 @@
  *     quotes still resolve to the closest verse.
  */
 
+import bibleBooks from "../../python-sidecar/data/bible_books.json";
+
 const passageLibrary = [
   {
     reference: { book: "John", chapter: 1, verse: 1 },
@@ -56,74 +58,39 @@ const passageLibrary = [
   },
 ] as const;
 
-export const knownScriptureBooks = [
-  "Genesis",
-  "Exodus",
-  "Leviticus",
-  "Numbers",
-  "Deuteronomy",
-  "Joshua",
-  "Judges",
-  "Ruth",
-  "1 Samuel",
-  "2 Samuel",
-  "1 Kings",
-  "2 Kings",
-  "1 Chronicles",
-  "2 Chronicles",
-  "Ezra",
-  "Nehemiah",
-  "Esther",
-  "Job",
-  "Psalms",
-  "Proverbs",
-  "Ecclesiastes",
-  "Song of Solomon",
-  "Isaiah",
-  "Jeremiah",
-  "Lamentations",
-  "Ezekiel",
-  "Daniel",
-  "Hosea",
-  "Joel",
-  "Amos",
-  "Obadiah",
-  "Jonah",
-  "Micah",
-  "Nahum",
-  "Habakkuk",
-  "Zephaniah",
-  "Haggai",
-  "Zechariah",
-  "Malachi",
-  "Matthew",
-  "Mark",
-  "Luke",
-  "John",
-  "Acts",
-  "Romans",
-  "1 Corinthians",
-  "2 Corinthians",
-  "Galatians",
-  "Ephesians",
-  "Philippians",
-  "Colossians",
-  "1 Thessalonians",
-  "2 Thessalonians",
-  "1 Timothy",
-  "2 Timothy",
-  "Titus",
-  "Philemon",
-  "Hebrews",
-  "James",
-  "1 Peter",
-  "2 Peter",
-  "1 John",
-  "2 John",
-  "3 John",
-  "Jude",
-  "Revelation",
-];
+interface BookTableEntry {
+  name: string;
+  ordinal?: number;
+  aliases: string[];
+  homophones?: string[];
+  weak?: boolean;
+}
+
+// Shared with the sidecar's spoken-reference parser (Stage 0), so typed
+// search and live detection agree on book names and aliases.
+const bookTable = bibleBooks as { ordinals: Record<string, string[]>; books: BookTableEntry[] };
+
+export const knownScriptureBooks: string[] = bookTable.books.map((book) => book.name);
+
+/**
+ * Typed spellings per book: the canonical name plus its aliases, with ordinal
+ * prefixes for numbered books ("1st John", "First Corinthians", "II Kings").
+ * Homophones are ASR damage, not something an operator types, so they stay
+ * sidecar-only.
+ */
+const bookSpellings: Array<{ book: string; spellings: string[] }> = bookTable.books.map((book) => {
+  const spellings = new Set([book.name]);
+  for (const alias of book.aliases) {
+    if (book.ordinal) {
+      for (const ordinal of bookTable.ordinals[String(book.ordinal)] ?? []) {
+        spellings.add(`${ordinal} ${alias}`);
+      }
+    } else {
+      spellings.add(alias);
+    }
+  }
+  return { book: book.name, spellings: [...spellings] };
+});
 
 type Passage = (typeof passageLibrary)[number];
 
@@ -163,29 +130,32 @@ function makeReference(book: string, chapter: number, verse: number) {
 function matchBookPrefix(rawTokens: string[]): { book: string; tokensConsumed: number } | null {
   let best: { book: string; tokensConsumed: number; score: number } | null = null;
 
-  for (const book of knownScriptureBooks) {
-    const bookTokens = normalizeSearchText(book).split(" ").filter(Boolean);
-    if (bookTokens.length === 0 || bookTokens.length > rawTokens.length) {
-      continue;
-    }
+  for (const { book, spellings } of bookSpellings) {
+    for (const spelling of spellings) {
+      const bookTokens = normalizeSearchText(spelling).split(" ").filter(Boolean);
+      if (bookTokens.length === 0 || bookTokens.length > rawTokens.length) {
+        continue;
+      }
 
-    const candidate = rawTokens
-      .slice(0, bookTokens.length)
-      .map(normalizeSearchText)
-      .join(" ");
-    const bookNormalized = bookTokens.join(" ");
+      const candidate = rawTokens
+        .slice(0, bookTokens.length)
+        .map(normalizeSearchText)
+        .join(" ");
+      const bookNormalized = bookTokens.join(" ");
 
-    let score: number;
-    if (candidate === bookNormalized) {
-      score = 100 + bookTokens.length;
-    } else if (candidate.length >= 2 && bookNormalized.startsWith(candidate)) {
-      score = 50 + candidate.length;
-    } else {
-      continue;
-    }
+      let score: number;
+      if (candidate === bookNormalized) {
+        score = 100 + bookTokens.length;
+      } else if (spelling === book && candidate.length >= 2 && bookNormalized.startsWith(candidate)) {
+        // Prefix typing ("Phil", "Rev") only against the canonical name.
+        score = 50 + candidate.length;
+      } else {
+        continue;
+      }
 
-    if (!best || score > best.score) {
-      best = { book, tokensConsumed: bookTokens.length, score };
+      if (!best || score > best.score) {
+        best = { book, tokensConsumed: bookTokens.length, score };
+      }
     }
   }
 

@@ -1,16 +1,18 @@
-"""4-stage scripture-matching pipeline orchestrator (SS-021).
+"""Scripture-matching pipeline orchestrator (SS-021).
 
 Runs the stages in a cascade, short-circuiting as soon as a stage produces a
 result at or above its confidence threshold (cheap stages first, expensive LLM/
-semantic only as needed). Results from the stages that ran are merged and
-deduplicated (same verse -> highest confidence), tagged with their source stage,
-and sorted by confidence.
+semantic only as needed). Stage 0 — explicitly spoken references ("John 3:16",
+"Romans chapter eight verse twenty-eight") — runs before the four matchers.
+Results from the stages that ran are merged and deduplicated (same verse ->
+highest confidence), tagged with their source stage, and sorted by confidence.
 """
 
 from __future__ import annotations
 
 import logging
 import re
+import time
 from dataclasses import dataclass
 
 from ws_hub import manager
@@ -53,6 +55,7 @@ def has_substance(sentence: str) -> bool:
 
 @dataclass
 class PipelineThresholds:
+    spoken: float = 0.85    # Stage 0 short-circuit
     trie: float = 0.95      # Stage 1 short-circuit
     keyword: float = 0.85   # Stage 2 short-circuit
     llm: float = 0.75       # Stage 3 short-circuit
@@ -67,8 +70,10 @@ class PipelineOrchestrator:
         keyword=None,
         llm=None,
         semantic=None,
+        spoken=None,
     ) -> None:
         self.thresholds = thresholds or PipelineThresholds()
+        self._spoken = spoken
         self._trie = trie
         self._keyword = keyword
         self._llm = llm
@@ -86,6 +91,12 @@ class PipelineOrchestrator:
         return active
 
     # Lazy accessors so the (heavy) matchers build only when first used.
+    def _spoken_m(self):
+        if self._spoken is None:
+            from .spoken_matcher import get_matcher
+            self._spoken = get_matcher()
+        return self._spoken
+
     def _trie_m(self):
         if self._trie is None:
             from .trie_matcher import get_matcher
@@ -114,10 +125,24 @@ class PipelineOrchestrator:
     def _max_conf(results: list[dict]) -> float:
         return max((r["confidence"] for r in results), default=0.0)
 
-    def match(self, sentence: str, context: list[str] | None = None) -> list[dict]:
-        """Run the cascade and return merged, sorted suggestions."""
+    def match(
+        self, sentence: str, context: list[str] | None = None, spoken: list[dict] | None = None
+    ) -> list[dict]:
+        """Run the cascade and return merged, sorted suggestions.
+
+        `spoken` carries Stage 0 results already computed by the live path
+        (its rolling window); otherwise Stage 0 parses `sentence` with
+        carry-over from `context`.
+        """
         collected: list[dict] = []
         stages_run: list[int] = []
+
+        # Stage 0 — explicitly spoken references
+        s0 = spoken if spoken is not None else self._spoken_m().match(sentence, context)
+        collected.extend(s0)
+        stages_run.append(0)
+        if self._max_conf(s0) >= self.thresholds.spoken:
+            return self._finalize(collected, stages_run)
 
         # Stage 1 — Trie (explicit quotes)
         s1 = self._trie_m().match(sentence)
@@ -175,31 +200,62 @@ class PipelineOrchestrator:
         logger.debug("pipeline ran stages %s -> %d suggestions", stages_run, len(merged))
         return merged
 
-    def build_payload(self, sentence: str, context: list[str] | None = None) -> dict:
-        results = self.match(sentence, context)
+    def build_payload(
+        self, sentence: str, context: list[str] | None = None, spoken: list[dict] | None = None
+    ) -> dict:
+        results = self.match(sentence, context, spoken)
         return {
             "type": "suggestions",
             "sentence": sentence,
-            "results": [
-                {
-                    "reference": r["reference"],
-                    "book": r["book"],
-                    "chapter": r["chapter"],
-                    "verse": r["verse"],
-                    "text": r["text"],
-                    "version": r["version"],
-                    "confidence": r["confidence"],
-                    "confidence_pct": r["confidence_pct"],
-                    "stage": r["stage"],
-                    "source_stages": r["source_stages"],
-                }
-                for r in results
-            ],
+            "results": self._payload_results(results),
         }
 
-    async def match_and_emit(self, sentence: str, context: list[str] | None = None) -> dict | None:
+    @staticmethod
+    def _payload_results(results: list[dict]) -> list[dict]:
+        return [
+            {
+                "reference": r["reference"],
+                "book": r["book"],
+                "chapter": r["chapter"],
+                "verse": r["verse"],
+                "text": r["text"],
+                "version": r["version"],
+                "confidence": r["confidence"],
+                "confidence_pct": r["confidence_pct"],
+                "stage": r["stage"],
+                "source_stages": r["source_stages"],
+            }
+            for r in results
+        ]
+
+    async def match_and_emit(
+        self, sentence: str, context: list[str] | None = None, timestamp: float | None = None
+    ) -> dict | None:
         """Run the pipeline off-loop and broadcast suggestions over the WS hub."""
         import asyncio
+
+        # Stage 0 first, before the substance filter: "verse 17" is two words
+        # and still names a verse. The live window joins references split
+        # across sentences and suggests each spoken reference once; a sentence
+        # that names a verse already suggested yields nothing new, and it is
+        # not handed to the guessing stages either.
+        try:
+            spoken = self._spoken_m().feed(
+                sentence, timestamp if timestamp is not None else time.time()
+            )
+            names_verse = bool(spoken) or self._spoken_m().mentions_reference(sentence, context)
+        except Exception:
+            logger.exception("stage 0 (spoken references) failed")
+            spoken, names_verse = [], False
+        if names_verse:
+            payload = {
+                "type": "suggestions",
+                "sentence": sentence,
+                "results": self._payload_results(self._finalize(spoken, [0])),
+            }
+            if payload["results"]:
+                await self._emit(payload)
+            return payload
 
         if not has_substance(sentence):
             # Filler ("Thank you.", "Yeah") matches thanksgiving/affirmation
@@ -215,19 +271,22 @@ class PipelineOrchestrator:
             if self._async_match_lock is None:
                 self._async_match_lock = asyncio.Lock()
             async with self._async_match_lock:
-                payload = await asyncio.to_thread(self.build_payload, sentence, context)
+                payload = await asyncio.to_thread(self.build_payload, sentence, context, [])
         except Exception:
             # Fire-and-forget task — never let a matcher bug take down the
             # asyncio loop's exception logging for the whole session.
             logger.exception("scripture matching failed for sentence")
             return None
         if payload["results"]:
-            await manager.broadcast_json(payload)
-            # SS-044: tie generated suggestions to the active session.
-            from ..session.manager import get_manager
-
-            get_manager().record_event("suggestion", payload)
+            await self._emit(payload)
         return payload
+
+    async def _emit(self, payload: dict) -> None:
+        await manager.broadcast_json(payload)
+        # SS-044: tie generated suggestions to the active session.
+        from ..session.manager import get_manager
+
+        get_manager().record_event("suggestion", payload)
 
 
 _orchestrator = PipelineOrchestrator()

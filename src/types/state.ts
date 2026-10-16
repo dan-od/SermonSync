@@ -110,7 +110,8 @@ export interface ScriptureReference {
 }
 
 /** Which pipeline stage produced a suggestion (1=Trie … 4=Neural). */
-export type PipelineStage = 1 | 2 | 3 | 4;
+/** 0 = explicitly spoken reference ("John 3:16"); 1–4 = matcher stages. */
+export type PipelineStage = 0 | 1 | 2 | 3 | 4;
 
 export type SuggestionStatus = "pending" | "sent" | "dismissed" | "edited";
 
