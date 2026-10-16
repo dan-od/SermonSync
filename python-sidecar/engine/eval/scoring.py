@@ -192,7 +192,8 @@ def load_run(run_dir: str | Path) -> Run:
             continue
         chunk = chunks.get(e.get("seq"), {})
         for seg in e.get("segments", []):
-            if not (seg.get("text") or "").strip():
+            # Segments a hallucination filter dropped were never shown.
+            if not (seg.get("text") or "").strip() or seg.get("dropped"):
                 continue
             run.finals.append(
                 Final(
