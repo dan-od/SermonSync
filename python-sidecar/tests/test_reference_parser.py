@@ -49,7 +49,7 @@ def refs(text, ctx=None, chapters=False):
         ("second Timothy three sixteen", ["2 Timothy 3:16"]),
         ("2nd Timothy 1:7", ["2 Timothy 1:7"]),
         ("II Kings 2:9", ["2 Kings 2:9"]),
-        ("third John verse 2", []),  # no chapter: not a reference
+        ("third John verse 2", ["3 John 1:2"]),  # single chapter book
         ("Third John 1 2", ["3 John 1:2"]),
         # Whisper-style damage
         ("John 3, 16", ["John 3:16"]),
@@ -82,6 +82,12 @@ def refs(text, ctx=None, chapters=False):
         # Chapter-only and ambiguous collapsed numbers emit nothing
         ("Turn to Romans 8", []),
         ("Psalm 2312", []),
+        # Run-together verse ranges and single-chapter books
+        ("Jeremiah eight 2022", ["Jeremiah 8:20-22"]),
+        ("John 3 1617", ["John 3:16-17"]),
+        ("Jude verse 24", ["Jude 1:24"]),
+        ("third John verse two", ["3 John 1:2"]),
+        ("Philemon verse 6", ["Philemon 1:6"]),
     ],
 )
 def test_parse_table(text, expected):
@@ -159,3 +165,40 @@ def test_tracker_context_expires():
     tr.feed("John chapter 3", 0.0, 1.0)
     tr.feed("unrelated talk", 20.0, 21.0)
     assert tr.feed("verse 5", 100.0, 101.0) == []
+
+
+def test_book_without_chapter_breaks_carry_over():
+    ctx = RefContext()
+    assert refs("Jeremiah eight verse twenty-two", ctx) == ["Jeremiah 8:22"]
+    # "John verse two" (3 John with "third" lost): unknown chapter, so it must
+    # not become Jeremiah 8:2 ...
+    assert refs("John verse two, beloved, I wish above all things", ctx) == []
+    # ... and a later bare "verse" does not reach back to Jeremiah either.
+    assert refs("verse three", ctx) == []
+
+
+def test_tracker_waits_for_a_trailing_tens_word():
+    tr = ReferenceTracker()
+    assert tr.feed("Mathew thirteen fifty", 0.0, 2.0) == []
+    (ref,) = tr.feed("four, to a point I have to say", 2.0, 4.0)
+    assert ref.reference == "Matthew 13:54"
+
+
+def test_tracker_trailing_tens_with_punctuation_is_complete():
+    tr = ReferenceTracker()
+    (ref,) = tr.feed("Romans eight verse twenty.", 0.0, 2.0)
+    assert ref.reference == "Romans 8:20"
+
+
+def test_tracker_window_never_splits_a_reference():
+    """'John' leaving the window must not orphan 'verse two' (which would then
+    carry over to the previous passage)."""
+    tr = ReferenceTracker()
+    assert [r.reference for r in tr.feed("Jeremiah eight verse twenty-two.", 0.0, 1.0)] == [
+        "Jeremiah 8:22"
+    ]
+    assert tr.feed("daughter not recovered? John", 10.0, 12.0) == []
+    assert tr.feed("verse two, beloved, I wish", 12.5, 14.0) == []
+    for k in range(10):  # the window slides on long after
+        assert tr.feed(f"above all things, part {k}", 15.0 + 2 * k, 16.0 + 2 * k) == []
+    assert len(tr._segments) < 12
