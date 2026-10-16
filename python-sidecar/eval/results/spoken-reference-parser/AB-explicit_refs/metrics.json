@@ -1,0 +1,176 @@
+{
+  "run": {
+    "dir": "20261016-042552_ab-explicit-refs",
+    "label": "AB-explicit_refs",
+    "title": "Special Christmas Service - Dec. 25, 2021. Living Faith Church, King Jesus",
+    "source": "https://www.youtube.com/watch?v=i9jrxRIAq1Q",
+    "window": [
+      1590.0,
+      2190.0
+    ],
+    "duration_s": 600.0,
+    "speed": 1.0,
+    "overrides": {
+      "streaming.hallucination_filter": false
+    },
+    "captions": "uploaded",
+    "engine": {
+      "model": "base",
+      "device": "cpu",
+      "compute_type": "int8",
+      "backend": "faster-whisper"
+    },
+    "vad": "SileroVAD",
+    "git": {
+      "branch": "HEAD",
+      "commit": "abf3ab0",
+      "dirty": false
+    },
+    "normalizer": "whisper EnglishTextNormalizer"
+  },
+  "wer": {
+    "captions": {
+      "source": "uploaded captions",
+      "label": "agreement with uploaded captions of unverified origin (may be machine-made)",
+      "window": [
+        1590.0,
+        2190.0
+      ],
+      "ref_words": 1532,
+      "hyp_words": 1647,
+      "wer": 0.4151,
+      "substitutions": 415,
+      "deletions": 53,
+      "insertions": 168,
+      "hits": 1064
+    },
+    "primary": "captions",
+    "ref_spans": {
+      "ref_words": 102,
+      "spans": 19,
+      "wer": 0.549,
+      "substitutions": 45,
+      "deletions": 3,
+      "insertions": 8
+    }
+  },
+  "worship_gate": {
+    "caption_speech_in_worship_s": 0,
+    "blocked_speech_s": 0,
+    "blocked_pct_of_speech": 0.0
+  },
+  "vad": {
+    "vad_open_s": 523.4,
+    "forwarded_s": 523.4,
+    "reached_whisper_s": 555.7,
+    "stale_dropped_s": 0,
+    "trimmed_s": 4.0,
+    "worship_s": 0,
+    "caption_speech_s": 448.5,
+    "recall": 93.2,
+    "recall_vad_only": 87.6,
+    "recall_gate": 87.6,
+    "false_open_s": 60.2,
+    "false_open_s_per_10min": 60.15,
+    "speech_lost_to_stale_drop_s": 0
+  },
+  "hallucinations": {
+    "count": 0,
+    "per_10min": 0.0,
+    "during_music": 0,
+    "words": 0
+  },
+  "chunks": {
+    "count": 100,
+    "median_s": 6.14,
+    "mean_s": 5.69,
+    "reasons": {
+      "pause": 30,
+      "ceiling": 70,
+      "trim": 209
+    },
+    "histogram": {
+      "0-1s": 5,
+      "1-2s": 8,
+      "2-3s": 5,
+      "3-4s": 4,
+      "4-5s": 5,
+      "5-6s": 3,
+      "6-8s": 58,
+      "8-10s": 9,
+      "10-15s": 2,
+      "15s+": 1
+    }
+  },
+  "latency": {
+    "final_infer_ms_median": 426.5,
+    "final_infer_ms_p90": 1013.5,
+    "speech_end_to_final_s_median": 0.48,
+    "speech_end_to_final_s_p90": 1.46
+  },
+  "compute": {
+    "final_inference_s": 70.3,
+    "partial_inference_s": 275.5,
+    "partial_count": 329,
+    "partial_infer_ms_median": 361.6,
+    "partial_share_pct": 79.7,
+    "inference_realtime_factor": 0.576
+  },
+  "detection": {
+    "expected": 19,
+    "found": 13,
+    "recall": 68.4,
+    "suggestions": 1252,
+    "suggestions_per_10min": 1252.0,
+    "precision": 1.0,
+    "precision_top1": 7.8,
+    "latency_median_s": 3.533,
+    "latency_mean_s": 6.17,
+    "stages": {
+      "2": 671,
+      "4": 574,
+      "0": 6,
+      "1": 1
+    },
+    "by_stage": {
+      "2": {
+        "suggestions": 671,
+        "matched": 7,
+        "precision": 1.0,
+        "found": 7
+      },
+      "4": {
+        "suggestions": 574,
+        "matched": 0,
+        "precision": 0.0,
+        "found": 0
+      },
+      "0": {
+        "suggestions": 6,
+        "matched": 6,
+        "precision": 100.0,
+        "found": 6
+      },
+      "1": {
+        "suggestions": 1,
+        "matched": 0,
+        "precision": 0.0,
+        "found": 0
+      }
+    },
+    "expected_source": "reference parser over uploaded captions"
+  },
+  "headline": {
+    "wer": 0.4151,
+    "wer_source": "uploaded captions",
+    "ref_span_wer": 0.549,
+    "vad_recall_pct": 93.2,
+    "vad_false_open_s": 60.2,
+    "hallucinations_per_10min": 0.0,
+    "refs_expected": 19,
+    "refs_precision_pct": 1.0,
+    "refs_recall_pct": 68.4,
+    "spoken_to_suggestion_median_s": 3.533,
+    "engine": "faster-whisper/base/cpu-int8"
+  }
+}
