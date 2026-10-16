@@ -249,3 +249,11 @@ def test_parse_fragment_timed_captions(tmp_path):
     words = cap.parse_vtt(p).words
     assert [w.text for w in words] == ["you", "are", "good", "Ephesians", "two"]
     assert [w.t for w in words] == [1.935, 2.001, 2.068, 27.16, 27.5]
+
+
+def test_precision_by_stage(tmp_path):
+    run_dir = _write_run(tmp_path)
+    scoring.score_run_dir(run_dir)
+    by = json.loads((run_dir / "metrics.json").read_text())["detection"]["by_stage"]
+    assert by["0"] == {"suggestions": 1, "matched": 1, "precision": 100.0, "found": 1}
+    assert by["4"]["precision"] == 0.0
