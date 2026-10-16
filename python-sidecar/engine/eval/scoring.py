@@ -435,8 +435,16 @@ def detection(expected: list[Expected], preds: list[Prediction], window: float) 
     latencies = [x.hit_t - x.t for x in hits]
     top1 = [p for p in preds if p.rank == 0]
     stages: dict[str, int] = {}
+    by_stage: dict[str, dict] = {}
     for p in preds:
-        stages[str(p.stage)] = stages.get(str(p.stage), 0) + 1
+        key = str(p.stage)
+        stages[key] = stages.get(key, 0) + 1
+        entry = by_stage.setdefault(key, {"suggestions": 0, "matched": 0})
+        entry["suggestions"] += 1
+        entry["matched"] += int(p.matched)
+    for key, entry in by_stage.items():
+        entry["precision"] = _pct(entry["matched"], entry["suggestions"])
+        entry["found"] = sum(1 for x in hits if str(x.hit_stage) == key)
     return {
         "expected": len(verse_level),
         "found": len(hits),
@@ -448,6 +456,9 @@ def detection(expected: list[Expected], preds: list[Prediction], window: float) 
         "latency_median_s": _median(latencies),
         "latency_mean_s": round(sum(latencies) / len(latencies), 3) if latencies else None,
         "stages": stages,
+        # Precision per stage: Stage 0 names verses outright; stages 2-4
+        # suggest allusions, which explicit references cannot confirm.
+        "by_stage": by_stage,
     }
 
 
@@ -886,7 +897,13 @@ def render_report(metrics: dict, details: dict) -> str:
         f"{_fmt(d['precision'], '%')} (top-1 only: {_fmt(d['precision_top1'], '%')}). "
         f"Spoken → suggestion: median {_fmt(d['latency_median_s'], ' s')}, mean "
         f"{_fmt(d['latency_mean_s'], ' s')}. "
-        f"By stage: {d['stages']}.",
+        "By stage (suggestions / matched / precision / expected refs found first): "
+        + ", ".join(
+            f"stage {k}: {v['suggestions']} / {v['matched']} / "
+            f"{_fmt(v['precision'], '%')} / {v['found']}"
+            for k, v in sorted(d.get("by_stage", {}).items())
+        )
+        + ".",
         "",
         "Precision counts every distinct suggestion against explicitly spoken references only, so "
         "allusion matches from stages 2–4 count as misses even when they are reasonable.",
