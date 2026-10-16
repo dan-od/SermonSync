@@ -141,6 +141,26 @@ class WhisperEngine:
 
 
 _engine = None
+_partial_engines: dict[str, object] = {}
+
+# Models the interim ("partial") passes may use instead of the main model.
+PARTIAL_MODELS = ("tiny.en", "base.en")
+
+
+def get_partial_engine(model: str):
+    """A small model for interim passes (SS-067 groundwork). Loads lazily on
+    the main engine's device; falls back to the main engine if it fails."""
+    if model not in PARTIAL_MODELS:
+        raise ValueError(f"unsupported partial model {model!r}")
+    engine = _partial_engines.get(model)
+    if engine is None:
+        try:
+            engine = WhisperEngine.load([model])
+        except Exception as exc:
+            logger.warning("partial model %s unavailable (%s); using main model", model, exc)
+            engine = get_engine()
+        _partial_engines[model] = engine
+    return engine
 
 
 def get_engine():
