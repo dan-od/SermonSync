@@ -324,8 +324,11 @@ def _match_book(toks: list[_Tok], i: int) -> tuple[list[_BookEntry], int] | None
     return best
 
 
-def _verse_and_range(toks: list[_Tok], k: int) -> tuple[int, int | None, int, str] | None:
-    """After a chapter number at k: (verse, verse_end, next_index, separator)."""
+def _verse_and_range(
+    toks: list[_Tok], k: int
+) -> tuple[int, int | None, int, str, str | None] | None:
+    """After a chapter number at k:
+    (verse, verse_end, next_index, separator, verse_digit_string_or_None)."""
     w = _word(toks, k)
     sep, j = None, k
     if w in (":", "."):
@@ -347,7 +350,7 @@ def _verse_and_range(toks: list[_Tok], k: int) -> tuple[int, int | None, int, st
     num = _number(toks, j)
     if num is None:
         return None
-    verse, j, _digits = num
+    verse, j, verse_digits = num
     end = None
     w = _word(toks, j)
     if w in RANGE_WORDS or w == "and":
@@ -357,7 +360,7 @@ def _verse_and_range(toks: list[_Tok], k: int) -> tuple[int, int | None, int, st
         nxt = _number(toks, k2)
         if nxt is not None and verse < nxt[0] <= verse + (2 if w == "and" else MAX_RANGE):
             end, j = nxt[0], nxt[1]
-    return verse, end, j, sep
+    return verse, end, j, sep, verse_digits
 
 
 def _collapsed(
@@ -391,6 +394,19 @@ def _collapsed(
     return None
 
 
+def _collapsed_verses(book: str, chapter: int, digits: str) -> tuple[int, int] | None:
+    """Split run-together verse digits into a range ("2022" -> 20-22), if
+    exactly one split is a valid range in this chapter."""
+    found = []
+    for i in range(1, len(digits)):
+        a, b = digits[:i], digits[i:]
+        if b.startswith("0"):
+            continue
+        if is_valid(book, chapter, int(a), int(b)):
+            found.append((int(a), int(b)))
+    return found[0] if len(found) == 1 else None
+
+
 def _book_ref(toks: list[_Tok], i: int, ctx: RefContext | None) -> tuple[SpokenRef, int] | None:
     match = _match_book(toks, i)
     if match is None:
@@ -402,7 +418,7 @@ def _book_ref(toks: list[_Tok], i: int, ctx: RefContext | None) -> tuple[SpokenR
         j += 1
     num = _number(toks, j)
     if num is None:
-        return None
+        return _book_then_verse(toks, i, j, entry)
     chapter, k, digits = num
     start, book = toks[i].start, entry.name
     kind = "homophone" if entry.homophone else "weak" if entry.weak else "explicit"
@@ -421,7 +437,7 @@ def _book_ref(toks: list[_Tok], i: int, ctx: RefContext | None) -> tuple[SpokenR
     ):
         tail = None
     if tail is not None:
-        verse, verse_end, end_i, _sep = tail
+        verse, verse_end, end_i, _sep, verse_digits = tail
         if is_valid(book, chapter, verse, verse_end):
             return SpokenRef(
                 book, chapter, verse, verse_end, start, toks[end_i - 1].end, conf, kind
@@ -430,6 +446,14 @@ def _book_ref(toks: list[_Tok], i: int, ctx: RefContext | None) -> tuple[SpokenR
             return SpokenRef(
                 book, chapter, verse, None, start, toks[end_i - 1].end, conf, kind
             ), end_i
+        # A run-together verse range: "Jeremiah eight 2022" -> 8:20-22.
+        if verse_end is None and verse_digits is not None and len(verse_digits) >= 3:
+            split = _collapsed_verses(book, chapter, verse_digits)
+            if split is not None:
+                return SpokenRef(
+                    book, chapter, split[0], split[1], start, toks[end_i - 1].end,
+                    min(conf, CONF_COLLAPSED), "collapsed",
+                ), end_i
 
     if digits is not None and not chapter_word and not is_valid(book, chapter):
         split = _collapsed(book, digits, ctx)
@@ -447,6 +471,28 @@ def _book_ref(toks: list[_Tok], i: int, ctx: RefContext | None) -> tuple[SpokenR
     if is_valid(book, chapter):
         return SpokenRef(book, chapter, None, None, start, toks[k - 1].end, conf, kind), k
     return None
+
+
+def _book_then_verse(
+    toks: list[_Tok], i: int, j: int, entry: _BookEntry
+) -> tuple[SpokenRef, int] | None:
+    """A book named with a verse but no chapter ("Jude verse 24", "John verse
+    two"). Single-chapter books mean chapter 1. For any other book the chapter
+    is unknown: return a context-only marker so the verse is not wrongly
+    carried over to the previous passage."""
+    if entry.weak or _word(toks, j) not in VERSE_WORDS:
+        return None
+    tail = _verse_and_range(toks, j)
+    if tail is None:
+        return None
+    verse, verse_end, end_i, _sep, _digits = tail
+    chapters = verse_counts().get(entry.name, {})
+    if len(chapters) == 1 and is_valid(entry.name, 1, verse, verse_end):
+        return SpokenRef(
+            entry.name, 1, verse, verse_end, toks[i].start, toks[end_i - 1].end, CONF_EXPLICIT
+        ), end_i
+    # Unknown chapter: a "chapter 0" marker resets the context to this book.
+    return SpokenRef(entry.name, 0, None, None, toks[i].start, toks[end_i - 1].end, 0.0), end_i
 
 
 def _carry_ref(toks: list[_Tok], i: int, ctx: RefContext | None) -> tuple[SpokenRef, int] | None:
@@ -471,7 +517,7 @@ def _carry_ref(toks: list[_Tok], i: int, ctx: RefContext | None) -> tuple[Spoken
         chapter, k, _ = num
         tail = _verse_and_range(toks, k)
         if tail is not None and tail[3] != "bare":
-            verse, verse_end, end_i, _ = tail
+            verse, verse_end, end_i, _, _ = tail
             if is_valid(ctx.book, chapter, verse, verse_end):
                 return SpokenRef(
                     ctx.book,
@@ -492,7 +538,7 @@ def _carry_ref(toks: list[_Tok], i: int, ctx: RefContext | None) -> tuple[Spoken
     if w in VERSE_WORDS and ctx.chapter is not None:
         tail = _verse_and_range(toks, i)
         if tail is not None:
-            verse, verse_end, end_i, _ = tail
+            verse, verse_end, end_i, _, _ = tail
             if is_valid(ctx.book, ctx.chapter, verse, verse_end):
                 return SpokenRef(
                     ctx.book,
@@ -508,7 +554,10 @@ def _carry_ref(toks: list[_Tok], i: int, ctx: RefContext | None) -> tuple[Spoken
 
 
 def parse_references(
-    text: str, context: RefContext | None = None, include_chapters: bool = False
+    text: str,
+    context: RefContext | None = None,
+    include_chapters: bool = False,
+    include_markers: bool = False,
 ) -> list[SpokenRef]:
     """All references in `text`, left to right.
 
@@ -526,6 +575,11 @@ def parse_references(
             i += 1
             continue
         ref, i = hit
+        if ref.chapter == 0:  # book named, chapter unknown: break carry-over
+            ctx.book, ctx.chapter, ctx.verse = ref.book, None, None
+            if include_markers:
+                found.append(ref)
+            continue
         ctx.update(ref)
         if ref.verse is not None or include_chapters:
             found.append(ref)
@@ -561,8 +615,8 @@ class ReferenceTracker:
         self.context_ttl = context_ttl
         self._segments: list[_Segment] = []
         self._next_offset = 0
-        # (global_end, time, context_after) for every reference seen.
-        self._history: list[tuple[int, float, RefContext]] = []
+        # (global_start, global_end, time, context_after) for every reference seen.
+        self._history: list[tuple[int, int, float, RefContext]] = []
         self._emitted: list[SpokenRef] = []  # global spans, with spoken time
 
     def reset(self) -> None:
@@ -570,7 +624,7 @@ class ReferenceTracker:
 
     @property
     def context(self) -> RefContext | None:
-        return self._history[-1][2].copy() if self._history else None
+        return self._history[-1][3].copy() if self._history else None
 
     def _time_at(self, offset: int) -> float:
         for seg in self._segments:
@@ -588,28 +642,41 @@ class ReferenceTracker:
             return []
         self._segments.append(_Segment(self._next_offset, text, t_start, t_end))
         self._next_offset += len(text) + 1
-        while self._segments and t_end - self._segments[0].t_end > self.window_seconds:
-            self._segments.pop(0)
+        # Drop segments older than the window, but never cut the window inside
+        # a reference already seen ("John" | "verse two"): the orphaned tail
+        # would be re-read as a carry-over from the previous passage.
+        old = 0
+        while old < len(self._segments) and t_end - self._segments[old].t_end > self.window_seconds:
+            old += 1
+        while old > 0:
+            last = self._segments[old - 1]
+            cut = last.offset + len(last.text)
+            if not any(start <= cut < end for start, end, _, _ in self._history):
+                break
+            old -= 1
+        del self._segments[:old]
 
         window_start = self._segments[0].offset
         base = next(
             (
                 ctx.copy()
-                for end, t, ctx in reversed(self._history)
+                for _, end, t, ctx in reversed(self._history)
                 if end <= window_start and t_end - t <= self.context_ttl
             ),
             RefContext(),
         )
-        self._history = [h for h in self._history if h[0] <= window_start]
+        self._history = [h for h in self._history if h[1] <= window_start]
         joined = " ".join(seg.text for seg in self._segments)
         ctx = base
         new: list[SpokenRef] = []
-        for ref in parse_references(joined, ctx, include_chapters=True):
+        for ref in parse_references(joined, ctx, include_chapters=True, include_markers=True):
             g_start, g_end = window_start + ref.start, window_start + ref.end
             spoken = self._time_at(g_end)
-            self._history.append((g_end, spoken, self._context_after(ref)))
+            self._history.append((g_start, g_end, spoken, self._context_after(ref)))
             if ref.verse is None:
                 continue
+            if self._may_continue(joined, ref):
+                continue  # "thirteen fifty" may become "fifty four": wait
             ref = replace(
                 ref,
                 start=g_start,
@@ -626,7 +693,18 @@ class ReferenceTracker:
         return new
 
     @staticmethod
+    def _may_continue(joined: str, ref: SpokenRef) -> bool:
+        """A reference that ends the text on a tens word or "hundred" (no
+        punctuation after it) may still be growing in the next chunk."""
+        if joined[ref.end:].strip():
+            return False
+        toks = _tokenize(joined[ref.start : ref.end])
+        return bool(toks) and (toks[-1].text in TENS or toks[-1].text == "hundred")
+
+    @staticmethod
     def _context_after(ref: SpokenRef) -> RefContext:
+        if ref.chapter == 0:
+            return RefContext(ref.book, None, None)
         ctx = RefContext()
         ctx.update(ref)
         return ctx
