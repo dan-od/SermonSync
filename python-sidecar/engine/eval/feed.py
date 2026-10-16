@@ -67,10 +67,12 @@ def _git_info() -> dict:
 def _override_targets() -> dict:
     """Objects whose attributes a run may override (dev sweeps)."""
     from ..audio import vad, worship_detector
+    from ..audio.capture import capture_manager
     from ..transcription import whisper_engine
     from ..transcription.streaming import streaming_transcriber
 
     targets = {
+        "capture": capture_manager,
         "streaming": streaming_transcriber,
         "vad": vad.get_detector(),
         "worship": worship_detector.get_detector(),
@@ -104,6 +106,7 @@ def restore_overrides(undo: list[tuple[object, str, object]]) -> None:
 
 def _pipeline_config() -> dict:
     from ..audio import vad, worship_detector
+    from ..audio.capture import capture_manager
     from ..transcription.streaming import streaming_transcriber
 
     detector = vad.get_detector()
@@ -122,6 +125,10 @@ def _pipeline_config() -> dict:
                 )
                 if hasattr(detector, k)
             },
+        },
+        "capture": {
+            k: getattr(capture_manager, k) for k in ("preroll_ms", "resampler")
+            if hasattr(capture_manager, k)
         },
         "worship": {
             k: getattr(worship_detector.get_detector(), k)

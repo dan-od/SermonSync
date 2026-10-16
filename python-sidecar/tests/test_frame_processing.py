@@ -82,9 +82,8 @@ def test_rising_edge_replays_preroll(manager):
         manager.process_frame(frame, 48000)
     # 3 pre-roll frames replayed, then the current frame.
     assert len(manager.sent) == 4
-    expected = [
-        capture.float_to_pcm16(capture.resample_to_transcription_rate(f, 48000)) for f in frames
-    ]
+    resampler = capture.StreamResampler(48000)
+    expected = [capture.float_to_pcm16(resampler.process(f)) for f in frames]
     assert manager.sent == expected
 
 
@@ -130,3 +129,23 @@ def test_reset_frame_state_clears_preroll(manager):
     manager.reset_frame_state()
     manager.process_frame(frames[2], 48000)
     assert len(manager.sent) == 1
+
+
+def test_preroll_is_measured_in_milliseconds(manager):
+    manager.preroll_ms = 300
+    decisions = [False] * 30 + [True]
+    vad.set_detector(_ScriptedVAD(decisions))
+    for frame in _frames(31):
+        manager.process_frame(frame, 48000)
+    replayed = manager.sent[:-1]
+    # 300 ms of 16 kHz PCM16 = 9600 bytes, i.e. 15 frames of 20 ms.
+    assert sum(len(b) for b in replayed) == 9600
+
+
+def test_legacy_resampler_still_selectable(manager):
+    manager.resampler = "legacy"
+    vad.set_detector(_ScriptedVAD([True]))
+    frame = _frames(1)[0]
+    manager.process_frame(frame, 48000)
+    expected = capture.float_to_pcm16(capture.resample_to_transcription_rate(frame, 48000))
+    assert manager.sent == [expected]
