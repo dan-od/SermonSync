@@ -1,0 +1,161 @@
+{
+  "run": {
+    "dir": "20261016-032457_fixa-hang500-nigerian-human-captions",
+    "label": "fixA-hang500-nigerian_human_captions",
+    "title": "God Doesn't Joke About These 3 Things\u2014You Need to Beware of Them | Pastor E.A. Adeboye",
+    "source": "https://www.youtube.com/watch?v=ooaB4z653Aw",
+    "window": [
+      60.0,
+      660.0
+    ],
+    "duration_s": 600.0,
+    "speed": 1.0,
+    "overrides": {
+      "vad.hangover_ms": 500
+    },
+    "captions": "auto",
+    "engine": {
+      "model": "base",
+      "device": "cpu",
+      "compute_type": "int8",
+      "backend": "faster-whisper"
+    },
+    "vad": "SileroVAD",
+    "git": {
+      "branch": "fix/vad-sample-rate",
+      "commit": "3c9212a",
+      "dirty": false
+    },
+    "normalizer": "whisper EnglishTextNormalizer"
+  },
+  "wer": {
+    "captions": {
+      "source": "auto captions",
+      "label": "agreement with YouTube ASR (auto-captions), not accuracy",
+      "window": [
+        60.0,
+        660.0
+      ],
+      "ref_words": 849,
+      "hyp_words": 853,
+      "wer": 0.3015,
+      "substitutions": 166,
+      "deletions": 43,
+      "insertions": 47,
+      "hits": 640
+    },
+    "primary": "captions",
+    "ref_spans": {
+      "ref_words": 31,
+      "spans": 5,
+      "wer": 0.6129,
+      "substitutions": 12,
+      "deletions": 1,
+      "insertions": 6
+    }
+  },
+  "worship_gate": {
+    "caption_speech_in_worship_s": 0,
+    "blocked_speech_s": 0,
+    "blocked_pct_of_speech": 0.0
+  },
+  "vad": {
+    "vad_open_s": 370.4,
+    "forwarded_s": 370.4,
+    "reached_whisper_s": 408.5,
+    "stale_dropped_s": 0,
+    "trimmed_s": 0,
+    "worship_s": 0,
+    "caption_speech_s": 267.6,
+    "recall": 99.8,
+    "recall_vad_only": 94.5,
+    "recall_gate": 94.5,
+    "false_open_s": 78.0,
+    "false_open_s_per_10min": 77.95,
+    "speech_lost_to_stale_drop_s": 0
+  },
+  "hallucinations": {
+    "count": 5,
+    "per_10min": 5.0,
+    "during_music": 0,
+    "words": 10
+  },
+  "chunks": {
+    "count": 112,
+    "median_s": 3.38,
+    "mean_s": 3.69,
+    "reasons": {
+      "pause": 90,
+      "ceiling": 22
+    },
+    "histogram": {
+      "0-1s": 6,
+      "1-2s": 16,
+      "2-3s": 27,
+      "3-4s": 17,
+      "4-5s": 15,
+      "5-6s": 9,
+      "6-8s": 22,
+      "8-10s": 0,
+      "10-15s": 0,
+      "15s+": 0
+    }
+  },
+  "latency": {
+    "final_infer_ms_median": 350.65,
+    "final_infer_ms_p90": 487.4,
+    "speech_end_to_final_s_median": 0.95,
+    "speech_end_to_final_s_p90": 1.3
+  },
+  "compute": {
+    "final_inference_s": 53.4,
+    "partial_inference_s": 159.3,
+    "partial_count": 325,
+    "partial_infer_ms_median": 339.9,
+    "partial_share_pct": 74.9,
+    "inference_realtime_factor": 0.355
+  },
+  "detection": {
+    "expected": 5,
+    "found": 1,
+    "recall": 20.0,
+    "suggestions": 864,
+    "suggestions_per_10min": 864.0,
+    "precision": 0.1,
+    "precision_top1": 1.1,
+    "latency_median_s": 12.797,
+    "latency_mean_s": 12.797,
+    "stages": {
+      "4": 413,
+      "2": 451
+    },
+    "by_stage": {
+      "4": {
+        "suggestions": 413,
+        "matched": 0,
+        "precision": 0.0,
+        "found": 0
+      },
+      "2": {
+        "suggestions": 451,
+        "matched": 1,
+        "precision": 0.2,
+        "found": 1
+      }
+    },
+    "expected_source": "reference parser over auto captions"
+  },
+  "headline": {
+    "wer": 0.3015,
+    "wer_source": "auto captions",
+    "ref_span_wer": 0.6129,
+    "vad_recall_pct": 99.8,
+    "vad_false_open_s": 78.0,
+    "hallucinations_per_10min": 5.0,
+    "refs_expected": 5,
+    "refs_precision_pct": 0.1,
+    "refs_recall_pct": 20.0,
+    "spoken_to_suggestion_median_s": 12.797,
+    "engine": "faster-whisper/base/cpu-int8"
+  }
+}
