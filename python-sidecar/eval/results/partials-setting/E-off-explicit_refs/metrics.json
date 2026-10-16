@@ -1,0 +1,175 @@
+{
+  "run": {
+    "dir": "20261016-091014_e-off-explicit-refs",
+    "label": "E-off-explicit_refs",
+    "title": "Special Christmas Service - Dec. 25, 2021. Living Faith Church, King Jesus",
+    "source": "https://www.youtube.com/watch?v=i9jrxRIAq1Q",
+    "window": [
+      1590.0,
+      2190.0
+    ],
+    "duration_s": 600.0,
+    "speed": 1.0,
+    "overrides": {
+      "streaming.partial_mode": "off"
+    },
+    "captions": "uploaded",
+    "engine": {
+      "model": "base",
+      "device": "cpu",
+      "compute_type": "int8",
+      "backend": "faster-whisper"
+    },
+    "vad": "SileroVAD",
+    "git": {
+      "branch": "HEAD",
+      "commit": "abf3ab0",
+      "dirty": false
+    },
+    "normalizer": "whisper EnglishTextNormalizer"
+  },
+  "wer": {
+    "captions": {
+      "source": "uploaded captions",
+      "label": "agreement with uploaded captions of unverified origin (may be machine-made)",
+      "window": [
+        1590.0,
+        2190.0
+      ],
+      "ref_words": 1532,
+      "hyp_words": 1602,
+      "wer": 0.3975,
+      "substitutions": 401,
+      "deletions": 69,
+      "insertions": 139,
+      "hits": 1062
+    },
+    "primary": "captions",
+    "ref_spans": {
+      "ref_words": 102,
+      "spans": 19,
+      "wer": 0.6667,
+      "substitutions": 47,
+      "deletions": 4,
+      "insertions": 17
+    }
+  },
+  "worship_gate": {
+    "caption_speech_in_worship_s": 0,
+    "blocked_speech_s": 0,
+    "blocked_pct_of_speech": 0.0
+  },
+  "vad": {
+    "vad_open_s": 523.4,
+    "forwarded_s": 523.4,
+    "reached_whisper_s": 559.6,
+    "stale_dropped_s": 0,
+    "trimmed_s": 0,
+    "worship_s": 0,
+    "caption_speech_s": 448.5,
+    "recall": 93.7,
+    "recall_vad_only": 87.6,
+    "recall_gate": 87.6,
+    "false_open_s": 60.2,
+    "false_open_s_per_10min": 60.15,
+    "speech_lost_to_stale_drop_s": 0
+  },
+  "hallucinations": {
+    "count": 0,
+    "per_10min": 0.0,
+    "during_music": 0,
+    "words": 0
+  },
+  "chunks": {
+    "count": 115,
+    "median_s": 6.02,
+    "mean_s": 4.98,
+    "reasons": {
+      "pause": 49,
+      "ceiling": 66
+    },
+    "histogram": {
+      "0-1s": 1,
+      "1-2s": 13,
+      "2-3s": 9,
+      "3-4s": 8,
+      "4-5s": 9,
+      "5-6s": 9,
+      "6-8s": 64,
+      "8-10s": 2,
+      "10-15s": 0,
+      "15s+": 0
+    }
+  },
+  "latency": {
+    "final_infer_ms_median": 416.1,
+    "final_infer_ms_p90": 1338.8,
+    "speech_end_to_final_s_median": 0.78,
+    "speech_end_to_final_s_p90": 1.98
+  },
+  "compute": {
+    "final_inference_s": 101.5,
+    "partial_inference_s": 0.0,
+    "partial_count": 0,
+    "partial_infer_ms_median": null,
+    "partial_share_pct": 0.0,
+    "inference_realtime_factor": 0.169
+  },
+  "detection": {
+    "expected": 19,
+    "found": 14,
+    "recall": 73.7,
+    "suggestions": 1380,
+    "suggestions_per_10min": 1380.0,
+    "precision": 0.9,
+    "precision_top1": 6.3,
+    "latency_median_s": 4.739,
+    "latency_mean_s": 5.293,
+    "stages": {
+      "2": 728,
+      "4": 645,
+      "1": 2,
+      "0": 5
+    },
+    "by_stage": {
+      "2": {
+        "suggestions": 728,
+        "matched": 9,
+        "precision": 1.2,
+        "found": 10
+      },
+      "4": {
+        "suggestions": 645,
+        "matched": 0,
+        "precision": 0.0,
+        "found": 0
+      },
+      "1": {
+        "suggestions": 2,
+        "matched": 1,
+        "precision": 50.0,
+        "found": 1
+      },
+      "0": {
+        "suggestions": 5,
+        "matched": 3,
+        "precision": 60.0,
+        "found": 3
+      }
+    },
+    "expected_source": "reference parser over uploaded captions"
+  },
+  "headline": {
+    "wer": 0.3975,
+    "wer_source": "uploaded captions",
+    "ref_span_wer": 0.6667,
+    "vad_recall_pct": 93.7,
+    "vad_false_open_s": 60.2,
+    "hallucinations_per_10min": 0.0,
+    "refs_expected": 19,
+    "refs_precision_pct": 0.9,
+    "refs_recall_pct": 73.7,
+    "spoken_to_suggestion_median_s": 4.739,
+    "engine": "faster-whisper/base/cpu-int8"
+  }
+}
