@@ -25,6 +25,37 @@ describe("projectorStore", () => {
     expect(state.isLive).toBe(true);
   });
 
+  it("starts live audio immediately without looping by default", () => {
+    useProjectorStore.getState().sendLiveMedia({
+      path: "/media/choir.mp3",
+      name: "Choir intro",
+      category: "audio",
+      fit: "cover",
+      opacity: 1,
+      audioSettings: { volume: 0.8, trimStart: 0, trimEnd: null },
+    });
+
+    const state = useProjectorStore.getState();
+    expect(state.liveMedia?.category).toBe("audio");
+    expect(state.livePlayback.playing).toBe(true);
+    expect(state.livePlayback.looping).toBe(false);
+  });
+
+  it("stores the live audio waveform summary for the projector output", () => {
+    const store = useProjectorStore.getState();
+    store.sendLiveMedia({ path: "/media/choir.mp3", name: "Choir", category: "audio", fit: "cover", opacity: 1 });
+    store.setLiveAudioWaveform("/media/choir.mp3", [0.2, 0.8], 12, null, [-0.2, -0.7], [0.2, 0.8]);
+
+    expect(useProjectorStore.getState().liveMedia).toMatchObject({
+      path: "/media/choir.mp3",
+      audioWaveform: [0.2, 0.8],
+      audioWaveformMin: [-0.2, -0.7],
+      audioWaveformMax: [0.2, 0.8],
+      audioDuration: 12,
+      audioWaveformError: null,
+    });
+  });
+
   it("keeps overlays across slide changes and clears them with the screen", () => {
     const store = useProjectorStore.getState();
     const overlay = createOverlayDraft("timer");
@@ -103,6 +134,26 @@ describe("projectorStore", () => {
     expect(state.selectedDisplayId).toBe("display-hdmi");
     expect(state.outputDisplay).toBe("display-hdmi");
     expect(state.outputStatus).toBe("connected");
+  });
+
+  it("does not notify subscribers when a display poll reports no change", () => {
+    const display = {
+      id: "display-hdmi", name: "HDMI-1", friendlyName: "Projector",
+      width: 1920, height: 1080, refreshHz: 60, x: 1920, y: 0,
+      scaleFactor: 1, isPrimary: false, connected: true,
+    };
+    useProjectorStore.getState().setAvailableDisplays([display]);
+    const previous = useProjectorStore.getState().availableDisplays;
+    let notifications = 0;
+    const unsubscribe = useProjectorStore.subscribe(() => { notifications += 1; });
+
+    useProjectorStore.getState().setAvailableDisplays([{ ...display }]);
+    expect(useProjectorStore.getState().availableDisplays).toBe(previous);
+    expect(notifications).toBe(0);
+
+    useProjectorStore.getState().setAvailableDisplays([{ ...display, width: 1280 }]);
+    expect(notifications).toBe(1);
+    unsubscribe();
   });
 
   it("walks through the full output status lifecycle", () => {

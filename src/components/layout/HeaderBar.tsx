@@ -1,27 +1,32 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { MAC_TRAFFIC_LIGHT_INSET, USE_NATIVE_WINDOW_CONTROLS, isMacOS } from "../../lib/platform";
 import type { OverlayMode, SessionStatus, UiTheme } from "../../types/state";
 import { useProjectorStore } from "../../stores/projectorStore";
+import { useSessionStore } from "../../stores/sessionStore";
 import { Dropdown } from "../Settings/primitives";
 
 export interface HeaderBarProps {
-  activeTab: "suggestions" | "bible" | "notes" | "database" | "summary";
-  onTabChange: (tab: "suggestions" | "bible" | "notes" | "database" | "summary") => void;
   onOverlayModeChange: (mode: OverlayMode) => void;
   feedOverride: "live" | "logo" | "black" | "clear";
   onFeedOverrideChange: (mode: "live" | "logo" | "black" | "clear") => void;
   uiTheme: UiTheme;
   onUiThemeChange: (theme: UiTheme) => void;
   sessionStatus: SessionStatus;
-  sessionElapsedSeconds: number;
   onSessionStart: () => void;
   onSessionEnd: () => void;
   onSync?: () => void;
   onOpenSummary: () => void;
+  onOpenNotes: () => void;
   onOpenSettings: () => void;
+  onOpenPresetDownloads: () => void;
 }
+
+type HeaderMenuName = "File" | "Edit" | "View" | "Help";
+type HeaderMenuEntry =
+  | { kind: "separator" }
+  | { kind: "action"; label: string; shortcut?: string; checked?: boolean; onSelect: () => void };
 
 function formatElapsed(seconds: number) {
   const safeSeconds = Math.max(0, Math.floor(seconds));
@@ -31,6 +36,11 @@ function formatElapsed(seconds: number) {
   return `${hh}:${mm}:${ss}`;
 }
 
+function SessionClock() {
+  const elapsed = useSessionStore((state) => state.elapsed);
+  return formatElapsed(elapsed);
+}
+
 export function HeaderBar({
   onOverlayModeChange,
   feedOverride,
@@ -38,20 +48,40 @@ export function HeaderBar({
   uiTheme,
   onUiThemeChange,
   sessionStatus,
-  sessionElapsedSeconds,
   onSessionStart,
   onSessionEnd,
   onSync,
   onOpenSummary,
+  onOpenNotes,
   onOpenSettings,
+  onOpenPresetDownloads,
 }: HeaderBarProps) {
   const overlayMode = useProjectorStore((s) => s.overlayMode);
+  const [openMenu, setOpenMenu] = useState<HeaderMenuName | null>(null);
+  const menuBarRef = useRef<HTMLDivElement>(null);
   const [isTauriWindow] = useState(() => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window);
   const [isMaximized, setIsMaximized] = useState(false);
+  const sessionInProgress = sessionStatus === "active" || sessionStatus === "paused";
   // The OS now draws the window controls (native decorations per-OS), so the
   // app hides its own. On macOS the traffic lights overlay the bar's top-left.
   const showCustomControls = isTauriWindow && !USE_NATIVE_WINDOW_CONTROLS;
   const macInset = isTauriWindow && isMacOS();
+
+  useEffect(() => {
+    if (!openMenu) return;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!menuBarRef.current?.contains(event.target as Node)) setOpenMenu(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpenMenu(null);
+    };
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [openMenu]);
 
   useEffect(() => {
     if (!isTauriWindow) {
@@ -94,6 +124,51 @@ export function HeaderBar({
     { id: "black", label: "Black", preview: "▭" },
     { id: "clear", label: "Clear", preview: "⌾" },
   ];
+
+  const menuEntries: Record<HeaderMenuName, HeaderMenuEntry[]> = {
+    File: [
+      { kind: "action", label: "Session Summary", onSelect: onOpenSummary },
+      { kind: "separator" },
+      {
+        kind: "action",
+        label: sessionInProgress ? "End Session" : "Start Session",
+        onSelect: sessionInProgress ? onSessionEnd : onSessionStart,
+      },
+    ],
+    Edit: [
+      { kind: "action", label: "Open Notes", onSelect: onOpenNotes },
+      { kind: "action", label: "Settings", onSelect: onOpenSettings },
+    ],
+    View: [
+      ...([
+        ["widescreen", "Widescreen Slide"],
+        ["lower-third", "Lower Third"],
+        ["split-screen", "Split Screen"],
+      ] as const).map(([mode, label]) => ({
+        kind: "action" as const,
+        label,
+        checked: overlayMode === mode,
+        onSelect: () => onOverlayModeChange(mode),
+      })),
+      { kind: "separator" },
+      ...([
+        ["live", "Live Feed"],
+        ["logo", "Logo Feed"],
+        ["black", "Black Feed"],
+        ["clear", "Clear Feed"],
+      ] as const).map(([mode, label]) => ({
+        kind: "action" as const,
+        label,
+        checked: feedOverride === mode,
+        onSelect: () => onFeedOverrideChange(mode),
+      })),
+    ],
+    Help: [
+      { kind: "action", label: "Download App Presets", onSelect: onOpenPresetDownloads },
+      { kind: "separator" },
+      { kind: "action", label: "Help & About", onSelect: onOpenSettings },
+    ],
+  };
 
   const headerChrome = `
     .ss-header-win {
@@ -221,6 +296,73 @@ export function HeaderBar({
       background: var(--color-primary-muted);
       color: var(--fg-base);
     }
+
+    .ss-menubar-trigger {
+      height: 24px;
+      padding: 0 8px;
+      border: 0;
+      border-radius: 3px;
+      background: transparent;
+      color: var(--fg-base);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .ss-menubar-trigger:hover,
+    .ss-menubar-trigger[aria-expanded="true"] {
+      background: var(--bg-elevated);
+    }
+    .ss-menubar-popup {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      z-index: 2000;
+      min-width: 218px;
+      max-height: min(420px, calc(100vh - 48px));
+      overflow: auto;
+      padding: 4px;
+      border: none;
+      border-radius: 5px;
+      background: var(--bg-surface);
+      box-shadow: var(--shadow-md);
+    }
+    .ss-menubar-item {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      width: 100%;
+      height: 25px;
+      box-sizing: border-box;
+      padding: 0 8px;
+      border: 0;
+      border-radius: 3px;
+      background: transparent;
+      color: var(--fg-base);
+      text-align: left;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .ss-menubar-item:hover,
+    .ss-menubar-item:focus-visible {
+      outline: none;
+      background: var(--color-primary-muted);
+    }
+    .ss-menubar-check {
+      width: 12px;
+      flex: 0 0 12px;
+      color: var(--fg-muted);
+      text-align: center;
+    }
+    .ss-menubar-shortcut {
+      margin-left: auto;
+      color: var(--fg-subtle);
+      font-size: 10px;
+    }
+    .ss-menubar-separator {
+      height: 1px;
+      margin: 4px 4px;
+      background: var(--border-base);
+    }
   `;
 
   const handleHeaderMouseDown = async (event: React.MouseEvent<HTMLElement>) => {
@@ -320,38 +462,55 @@ export function HeaderBar({
           color: "var(--fg-base)",
         }}
       >
-        {[
-          "File",
-          "Edit",
-          "View",
-          "Help",
-        ].map((item) => (
-          <button
-            key={item}
-            type="button"
-            style={{
-              border: "none",
-              background: "transparent",
-              color: "var(--fg-base)",
-              padding: "2px 0",
-              fontSize: "10px",
-              fontWeight: 500,
-              letterSpacing: "0.01em",
-              opacity: 0.88,
-              cursor: "pointer",
-            }}
-          >
-            {item}
-          </button>
-        ))}
+        <div ref={menuBarRef} style={{ display: "flex", alignItems: "center", gap: 2 }}>
+          {(["File", "Edit", "View", "Help"] as const).map((menu) => (
+            <div key={menu} style={{ position: "relative" }} onMouseEnter={() => {
+              if (openMenu) setOpenMenu(menu);
+            }}>
+              <button
+                type="button"
+                className="ss-menubar-trigger"
+                data-no-drag="true"
+                aria-haspopup="menu"
+                aria-expanded={openMenu === menu}
+                onClick={() => setOpenMenu((current) => current === menu ? null : menu)}
+              >
+                {menu}
+              </button>
+              {openMenu === menu ? (
+                <div className="ss-compact-menu ss-menubar-popup" role="menu" aria-label={menu}>
+                  {menuEntries[menu].map((entry, index) => entry.kind === "separator" ? (
+                    <div key={`${menu}-separator-${index}`} className="ss-menubar-separator" role="separator" />
+                  ) : (
+                    <button
+                      key={`${menu}-${entry.label}`}
+                      type="button"
+                      role="menuitem"
+                      className="ss-compact-menu-item ss-menubar-item"
+                      data-no-drag="true"
+                      onClick={() => {
+                        setOpenMenu(null);
+                        entry.onSelect();
+                      }}
+                    >
+                      <span className="ss-menubar-check" aria-hidden="true">{entry.checked ? "✓" : ""}</span>
+                      <span>{entry.label}</span>
+                      {entry.shortcut ? <span className="ss-menubar-shortcut">{entry.shortcut}</span> : null}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
         <span style={{ width: "1px", height: "14px", background: "var(--border-base)", flexShrink: 0 }} />
         <button
           type="button"
           data-no-drag="true"
-          className={`ss-header-session${sessionStatus === "active" ? " active" : ""}`}
-          onClick={sessionStatus === "active" ? onSessionEnd : onSessionStart}
+          className={`ss-header-session${sessionInProgress ? " active" : ""}`}
+          onClick={sessionInProgress ? onSessionEnd : onSessionStart}
         >
-          {sessionStatus === "active" ? "END SESSION" : "START SESSION"}
+          {sessionInProgress ? "END SESSION" : "START SESSION"}
         </button>
         <span
           data-no-drag="true"
@@ -369,7 +528,7 @@ export function HeaderBar({
           aria-label="Session timer"
           title="Session elapsed"
         >
-          {formatElapsed(sessionElapsedSeconds)}
+          <SessionClock />
         </span>
         <button
           type="button"
@@ -465,14 +624,13 @@ export function HeaderBar({
               fontSize: "9px",
               fontFamily: "var(--font-mono)",
               fontWeight: 600,
-              padding: "2px 6px",
-              height: "22px",
+              padding: "0 8px",
+              height: "25px",
               minWidth: "125px",
             }}
             optionStyle={{
               fontFamily: "var(--font-mono)",
               fontSize: "10px",
-              padding: "5px 8px",
             }}
           />
         </div>

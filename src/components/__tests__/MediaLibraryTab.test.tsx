@@ -3,18 +3,28 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { openDialog, invokeCommand, listenEvent, progressCallbacks } = vi.hoisted(() => ({
+const { openDialog, invokeCommand, listenEvent, progressCallbacks, startAudioPlayback, pauseAudioPlayback } = vi.hoisted(() => ({
   openDialog: vi.fn(),
   invokeCommand: vi.fn().mockResolvedValue("/cached/thumbnail.jpg"),
   listenEvent: vi.fn(),
   progressCallbacks: [] as Array<(event: { payload: { requestId: string; state: string; percent: number | null; assetId?: string } }) => void>,
+  startAudioPlayback: vi.fn(() => Promise.resolve()),
+  pauseAudioPlayback: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({ convertFileSrc: (path: string) => path, invoke: invokeCommand }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: listenEvent }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: openDialog }));
+vi.mock("../../lib/audioPlayback", () => ({ startSharedAudioPlayback: startAudioPlayback, pauseSharedAudioPlayback: pauseAudioPlayback, getSharedAudioElement: vi.fn(), audioPlaybackErrorMessage: vi.fn() }));
+
+const audioId = `${"b".repeat(64)}-sermonsync-audio-v1`;
+const audioPath = `/managed/media/audio/assets/${audioId}/playback.mp3`;
+const audioUrl = `http://127.0.0.1:8000/api/media-audio/${audioId}/playback.mp3`;
 
 import { LocalLibraryPanel, type LibraryTab } from "../LocalLibraryPanel";
+import { createEmptyTemplate } from "../../lib/templateStorage";
+import { createEmptyStudioDocument } from "../../types/studioDocument";
+import { useTemplateStore } from "../../stores/templateStore";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -57,9 +67,19 @@ describe("media library tab", () => {
     invokeCommand.mockReset();
     invokeCommand.mockImplementation(async (command: string) => command === "import_video_asset"
       ? { id: `${"a".repeat(64)}-sermonsync-playback-v1`, path: `/managed/media/videos/assets/${"a".repeat(64)}-sermonsync-playback-v1/playback.mp4`, posterPath: "/managed/poster.jpg", durationMs: 1000, sourceSha256: "a".repeat(64), profile: "sermonsync-playback-v1" }
+      : command === "import_audio_asset" ? { id: audioId, path: audioPath }
       : "/cached/thumbnail.jpg");
     onPreviewMedia.mockClear();
     onSendMedia.mockClear();
+    startAudioPlayback.mockClear();
+    pauseAudioPlayback.mockClear();
+    useTemplateStore.setState({
+      templates: [],
+      defaults: {
+        scriptures: { widescreen: null, "lower-third": null, "split-screen": null },
+        songs: { widescreen: null, "lower-third": null, "split-screen": null },
+      },
+    });
     activeTab = "media";
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -90,6 +110,31 @@ describe("media library tab", () => {
     expect(window.localStorage.getItem("sermonsync-media-library-v1")).toContain("/managed/media/videos/assets/");
   });
 
+  it("starts multiple audio imports and video preparation without waiting for the first audio file", async () => {
+    const audioResolvers = new Map<string, (asset: { id: string; path: string }) => void>();
+    invokeCommand.mockImplementation((command: string, args: { path: string }) => {
+      if (command === "import_audio_asset") return new Promise((resolve) => audioResolvers.set(args.path, resolve));
+      if (command === "import_video_asset") return Promise.resolve({ id: `${"a".repeat(64)}-sermonsync-playback-v1`, path: `/managed/media/videos/assets/${"a".repeat(64)}-sermonsync-playback-v1/playback.mp4`, posterPath: "/managed/poster.jpg", durationMs: 1000, sourceSha256: "a".repeat(64), profile: "sermonsync-playback-v1" });
+      return Promise.resolve("/cached/thumbnail.jpg");
+    });
+    openDialog.mockResolvedValue(["/media/one.mp3", "/media/two.mp3", "/media/three.mp3", "/media/intro.mp4"]);
+    await act(async () => render());
+    await act(async () => button("+")?.click());
+
+    expect([...audioResolvers.keys()]).toEqual(["/media/one.mp3", "/media/two.mp3", "/media/three.mp3"]);
+    expect(invokeCommand).toHaveBeenCalledWith("import_video_asset", expect.objectContaining({ path: "/media/intro.mp4" }));
+
+    await act(async () => {
+      let index = 0;
+      for (const resolve of audioResolvers.values()) {
+        const id = `${String.fromCharCode(99 + index).repeat(64)}-sermonsync-audio-v1`;
+        resolve({ id, path: `/managed/media/audio/assets/${id}/playback.mp3` });
+        index += 1;
+      }
+    });
+    await vi.waitFor(() => expect([...container.querySelectorAll("button")].some((entry) => /^Audio\s*3$/.test(entry.textContent?.trim() ?? ""))).toBe(true));
+  });
+
   it("probes a video even when its extension is unfamiliar", async () => {
     openDialog.mockResolvedValue(["/media/recording.mxf"]);
     await act(async () => render());
@@ -104,6 +149,7 @@ describe("media library tab", () => {
     let finishImport!: (asset: unknown) => void;
     invokeCommand.mockImplementation(async (command: string) => command === "import_video_asset"
       ? new Promise((resolve) => { finishImport = resolve; })
+      : command === "import_audio_asset" ? { id: audioId, path: audioPath }
       : "/cached/thumbnail.jpg");
     openDialog.mockResolvedValue(["/media/choir.mp3", "/media/intro.mxf"]);
     await act(async () => render());
@@ -138,6 +184,62 @@ describe("media library tab", () => {
     const snapshot = container.querySelector('[role="button"][aria-label="Send live Welcome loop"] img');
     expect(snapshot?.getAttribute("src")).toBe(`http://127.0.0.1:8000/api/media-video/${hash}-sermonsync-playback-v1/poster.jpg`);
     expect(snapshot?.parentElement?.style.aspectRatio).toBe("16 / 9");
+  });
+
+  it("sends audio assets and their playback settings to the live projector", async () => {
+    window.localStorage.setItem("sermonsync-media-library-v1", JSON.stringify([{
+      id: "audio-one",
+      name: "Choir intro",
+      path: audioPath,
+      category: "audio",
+      audioSettings: { volume: 0.4, trimStart: 2, trimEnd: 8 },
+    }]));
+    await act(async () => render());
+    await act(async () => button("Audio1")?.click());
+
+    const tile = container.querySelector<HTMLElement>('[role="button"][aria-label="Send live Choir intro"]');
+    expect(tile).not.toBeNull();
+    await act(async () => tile?.click());
+    expect(startAudioPlayback).toHaveBeenCalledWith(audioUrl, { volume: 0.4, trimStart: 2, trimEnd: 8, loop: false }, "live");
+    expect(onSendMedia).toHaveBeenCalledWith({
+      path: audioPath,
+      name: "Choir intro",
+      category: "audio",
+      fit: "cover",
+      opacity: 1,
+      audioSettings: { volume: 0.4, trimStart: 2, trimEnd: 8 },
+    });
+  });
+
+  it("migrates an existing audio item without losing its name or settings", async () => {
+    const settings = { volume: 0.4, trimStart: 2, trimEnd: 8 };
+    window.localStorage.setItem("sermonsync-media-library-v1", JSON.stringify([{
+      id: "legacy-audio", name: "Choir intro", path: "/media/choir.mp3", category: "audio", audioSettings: settings,
+    }]));
+    await act(async () => render());
+    await vi.waitFor(() => {
+      const entries = JSON.parse(window.localStorage.getItem("sermonsync-media-library-v1") ?? "[]") as Array<{ id: string; name: string; path: string; audioSettings: typeof settings }>;
+      expect(entries[0]).toEqual({ id: "legacy-audio", name: "Choir intro", path: audioPath, category: "audio", audioSettings: settings });
+    });
+    expect(invokeCommand).toHaveBeenCalledWith("import_audio_asset", { path: "/media/choir.mp3" });
+  });
+
+  it("shows the generated audio cover thumbnail instead of a waveform", async () => {
+    window.localStorage.setItem("sermonsync-media-library-v1", JSON.stringify([{
+      id: "audio-cover",
+      name: "I dey wonder.mp3",
+      path: audioPath,
+      category: "audio",
+    }]));
+    await act(async () => render());
+    await act(async () => button("Audio1")?.click());
+
+    const tile = container.querySelector('[role="button"][aria-label="Send live I dey wonder.mp3"]');
+    await act(async () => {
+      await vi.waitFor(() => expect(tile?.querySelector('img[alt="I dey wonder.mp3 cover"]')?.getAttribute("src")).toBe("/cached/thumbnail.jpg"));
+    });
+    expect(tile?.querySelector("canvas")).toBeNull();
+    expect(invokeCommand).toHaveBeenCalledWith("create_media_thumbnail", { path: audioPath, category: "audio" });
   });
 
   it("keeps an image thumbnail loaded across parent rerenders", async () => {
@@ -249,5 +351,44 @@ describe("media library tab", () => {
     const restoredTile = container.querySelector('[role="button"][aria-label="Preview Poster"]') as HTMLElement;
     expect(restoredTile).toBeTruthy();
     expect(restoredTile.style.border).toBe("2px solid var(--color-primary)");
+  });
+
+  it("sets an image as the background for assigned Scripture defaults only", async () => {
+    const scriptureWide = createEmptyTemplate("scriptures", 1);
+    const scriptureLower = { ...createEmptyTemplate("scriptures", 2), layout: "lower-third" as const };
+    const songWide = createEmptyTemplate("songs", 1);
+    const editorDocument = createEmptyStudioDocument("scriptures", scriptureWide.name);
+    scriptureWide.studioDocument = editorDocument;
+    scriptureLower.studioDocument = createEmptyStudioDocument("scriptures", scriptureLower.name);
+    songWide.studioDocument = createEmptyStudioDocument("songs", songWide.name);
+    useTemplateStore.setState({
+      templates: [scriptureWide, scriptureLower, songWide],
+      defaults: {
+        scriptures: { widescreen: scriptureWide.id, "lower-third": scriptureLower.id, "split-screen": null },
+        songs: { widescreen: songWide.id, "lower-third": null, "split-screen": null },
+      },
+    });
+    window.localStorage.setItem("sermonsync-media-library-v1", JSON.stringify([
+      { id: "image-1", name: "Poster", path: "/media/poster.png", category: "images" },
+    ]));
+    await act(async () => render());
+    const tile = container.querySelector('[role="button"][aria-label="Send live Poster"]') as HTMLElement;
+    await act(async () => tile.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })));
+
+    const menu = document.querySelector<HTMLElement>('[role="menu"]');
+    expect(menu?.textContent?.indexOf("Set as background")).toBeLessThan(menu?.textContent?.indexOf("Delete") ?? -1);
+    await act(async () => menu?.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')?.click());
+    const backgroundMenu = document.querySelector<HTMLElement>('[role="menu"][aria-label="Set as background"]');
+    await act(async () => {
+      [...(backgroundMenu?.querySelectorAll("button") ?? [])].find((entry) => entry.textContent?.trim() === "Scriptures")?.click();
+    });
+
+    const templates = useTemplateStore.getState().templates;
+    for (const template of templates.filter((entry) => entry.category === "scriptures")) {
+      expect(template.scene.backgroundMedia).toMatchObject({ type: "image", src: "/media/poster.png", name: "Poster" });
+      expect(template.studioDocument?.backgroundMode).toBe("media");
+      expect(template.studioDocument?.backgroundMedia?.src).toBe("/media/poster.png");
+    }
+    expect(templates.find((entry) => entry.id === songWide.id)?.scene.backgroundMedia).toBeNull();
   });
 });

@@ -1,22 +1,17 @@
+import { invoke } from "@tauri-apps/api/core";
+import { useProjectorStore } from "../../stores/projectorStore";
+import { normalizeTransitions } from "../../lib/transitions";
 import { DEFAULT_SETTINGS_PANEL_STATE, type SettingsPanelState } from "./types";
 
 export const SETTINGS_STORAGE_KEY = "sermonsync-settings-panel";
 
 export function normalizeSettingsPanelState(value: unknown, base = DEFAULT_SETTINGS_PANEL_STATE): SettingsPanelState {
   const saved = value && typeof value === "object" ? value as Partial<SettingsPanelState> : {};
-  const savedTransitions = saved.transitions ?? {} as Partial<SettingsPanelState["transitions"]>;
   return {
     ...base,
     ...saved,
     logo: { ...base.logo, ...(saved.logo ?? {}) },
-    transitions: {
-      scriptures: { ...base.transitions.scriptures, ...savedTransitions.scriptures },
-      songs: { ...base.transitions.songs, ...savedTransitions.songs },
-      layout: { ...base.transitions.layout, ...savedTransitions.layout },
-      logo: { ...base.transitions.logo, ...savedTransitions.logo },
-      black: { ...base.transitions.black, ...savedTransitions.black },
-      clear: { ...base.transitions.clear, ...savedTransitions.clear },
-    },
+    transitions: normalizeTransitions(saved.transitions),
   };
 }
 
@@ -28,4 +23,22 @@ export function loadPanelState(): SettingsPanelState {
   } catch {
     return DEFAULT_SETTINGS_PANEL_STATE;
   }
+}
+
+// The settings panel is lazy-loaded, so logo and transitions must reach the
+// projector store at startup rather than when Settings is first opened.
+export function hydrateProjectorSettings(): () => void {
+  let active = true;
+  const apply = (state: SettingsPanelState) => {
+    const store = useProjectorStore.getState();
+    store.setTransitions(state.transitions);
+    store.setLogo(state.logo);
+  };
+  apply(loadPanelState());
+  if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+    void invoke<string | null>("load_app_settings").then((payload) => {
+      if (active && payload) apply(normalizeSettingsPanelState(JSON.parse(payload)));
+    }).catch((error: unknown) => console.warn("Native settings could not be loaded", error));
+  }
+  return () => { active = false; };
 }

@@ -1,71 +1,21 @@
-# SermonSync — Packaging & Installer (SS-056)
+# Packaging SermonSync
 
-Goal: a single installer (`.msi`/`.exe` on Windows) that bundles the Tauri app,
-the frozen Python sidecar, the Bible DB, and model weights — no separate Python
-install required.
+The app needs a Python sidecar, a Bible database, and a Whisper model at runtime. The Tauri build configuration differs by platform.
 
-> **Status:** the freeze recipe + CI wiring below are in place. The final
-> Windows `.msi` must be **built on Windows** (cross-building a Windows installer
-> from macOS is not supported) — this is the one remaining step and it runs in
-> the `build-tauri (windows-latest)` CI job. See "Remaining" at the bottom.
+## Linux RPM
 
-## 1. Freeze the sidecar (per OS)
+The Linux configuration runs a PyInstaller `onedir` sidecar from Tauri resources. Build and stage it before packaging:
 
 ```bash
-cd python-sidecar
-pip install pyinstaller -r requirements.txt
-pyinstaller sidecar.spec --noconfirm
-# → dist/python-sidecar[.exe]
+npm ci
+npm run build:sidecar
+npm run tauri build -- --config src-tauri/tauri.linux.conf.json
 ```
 
-The spec bundles `data/bible.db` and collects hidden imports for
-faster-whisper / ctranslate2 / chromadb / uvicorn / sounddevice.
+`build:sidecar` creates `src-tauri/resources/sidecar/` and downloads the Whisper base model into `src-tauri/resources/whisper/`. Both directories are generated and ignored by Git. The RPM declares WebKitGTK, PortAudio, and GStreamer codec dependencies for media playback.
 
-## 2. Place it where Tauri expects (target-triple suffix)
+## Windows and macOS
 
-Tauri's `externalBin` resolves `binaries/python-sidecar-<triple>`:
+The default Tauri configuration expects a frozen sidecar at `src-tauri/binaries/python-sidecar-<target-triple>` (with `.exe` on Windows). Build `python-sidecar/sidecar.spec` on the target OS, then stage the executable and its `onedir` support files in a layout that the Tauri launcher can resolve. The current spec produces a `dist/sidecar/` directory; copying only its executable will leave dependencies behind.
 
-| OS | triple | file |
-|---|---|---|
-| Windows | `x86_64-pc-windows-msvc` | `python-sidecar-x86_64-pc-windows-msvc.exe` |
-| macOS (ARM) | `aarch64-apple-darwin` | `python-sidecar-aarch64-apple-darwin` |
-| Linux | `x86_64-unknown-linux-gnu` | `python-sidecar-x86_64-unknown-linux-gnu` |
-
-```bash
-TARGET=$(rustc -vV | sed -n 's/^host: //p')
-cp dist/python-sidecar "../src-tauri/binaries/python-sidecar-$TARGET"   # .exe on Windows
-```
-
-## 3. Build the installer
-
-```bash
-npm run tauri build     # produces the .msi/.exe (Windows), .dmg (macOS), .deb/.AppImage (Linux)
-```
-
-## 4. Models
-
-`WHISPER_MODEL` / `LLM_MODEL_PATH` control model loading (README). Options:
-
-- **Bundle** the frozen models into the installer (largest, fully offline).
-- **First-run download wizard** (SS-057) — smaller installer, downloads on first
-  launch with a skip option for pre-bundled models.
-- **Cloud LLM** — ship only Whisper locally, use the Groq fallback (SS-050) for
-  Stage 3.
-
-ChromaDB embeddings are rebuilt on first run via
-`scripts/build_embeddings.py` (or bundled if pre-built).
-
-## CI
-
-`.github/workflows/ci.yml` `build-tauri` currently stages a *placeholder*
-sidecar so the Tauri build/bundle is exercised. To produce a real installer,
-swap that step for the freeze in §1 before `npm run tauri build`, and upload the
-bundle as a CI artifact.
-
-## Remaining (blocked here)
-
-- The real `.msi` build + install/uninstall smoke test must run on **Windows**
-  (CI `windows-latest` or a Windows box). PyInstaller + faster-whisper/chromadb
-  can need hidden-import tweaks that only surface when freezing on the target OS.
-- GPU driver detection at install time is a Windows-installer concern (NSIS/WiX
-  custom action) — to be added to the Tauri bundler config on Windows.
+The CI Tauri jobs use placeholder sidecars to check compilation and bundling. They don't produce usable installers. A release build still needs a frozen sidecar, model files, and an install test on each target OS.

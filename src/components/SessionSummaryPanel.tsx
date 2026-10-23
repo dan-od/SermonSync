@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 
 import { getSessionHistory, getSessionSummary, getSidecarHttpBase, saveSessionSummary, type SessionHistoryItem } from "../lib/sidecarClient";
+import { useSessionStore } from "../stores/sessionStore";
 import type { SuggestionCard, TranscriptItem } from "../types/state";
 import { Dropdown } from "./Settings/primitives";
 
@@ -11,7 +12,6 @@ interface SessionSummaryPanelProps {
   items: TranscriptItem[];
   cards: SuggestionCard[];
   sessionStatus: "idle" | "active" | "paused" | "ended";
-  sessionElapsedSeconds: number;
   sessionId?: string | null;
 }
 
@@ -23,7 +23,8 @@ function formatElapsed(seconds: number) {
   return `${minutes} min`;
 }
 
-export function SessionSummaryPanel({ items, cards, sessionStatus, sessionElapsedSeconds, sessionId }: SessionSummaryPanelProps) {
+export function SessionSummaryPanel({ items, cards, sessionStatus, sessionId }: SessionSummaryPanelProps) {
+  const sessionElapsedSeconds = useSessionStore((state) => state.elapsed);
   const [view, setView] = useState<SummaryView>("draft");
   const storageKey = `sermonsync-summary:${sessionId ?? sessionStatus}`;
   const [savedSummary] = useState(() => {
@@ -248,8 +249,8 @@ export function SessionSummaryPanel({ items, cards, sessionStatus, sessionElapse
                   options={[{ value: "md", label: ".md Markdown" }, { value: "txt", label: ".txt Plain text" }]}
                   onChange={(value) => setExportFormat(value as ExportFormat)}
                   containerStyle={{ width: "150px" }}
-                  triggerStyle={{ background: "var(--color-primary)", border: "none", borderRadius: "var(--radius-md)", color: "var(--fg-on-accent)", fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 800, height: "32px", padding: "9px 13px" }}
-                  optionStyle={{ fontFamily: "var(--font-mono)", fontSize: "10px", padding: "9px 13px" }}
+                  triggerStyle={{ background: "var(--color-primary)", border: "none", borderRadius: "4px", color: "var(--fg-on-accent)", fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 800, height: "25px", padding: "0 8px" }}
+                  optionStyle={{ fontFamily: "var(--font-mono)", fontSize: "10px" }}
                 />
               </div>
               <button type="button" onClick={() => void saveToDevice()} disabled={isSaving} style={{ border: "none", background: "var(--color-primary)", color: "var(--fg-on-accent)", padding: "9px 13px", fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 800, cursor: isSaving ? "wait" : "pointer", opacity: isSaving ? 0.65 : 1 }}>

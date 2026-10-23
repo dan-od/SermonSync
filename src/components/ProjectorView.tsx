@@ -1,28 +1,31 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { managedVideoUrl } from "../lib/videoImport";
+import { managedAudioUrl } from "../lib/audioImport";
 
 import { resolveRichTextTokens } from "../lib/richText";
 import { isVideoDataUrl } from "../lib/media";
 import { projectionScene } from "../lib/projectionScene";
+import { useAudioPeaks } from "../lib/waveform";
+import { audioPlaybackErrorMessage, getSharedAudioElement, getSharedAudioOwner, pauseSharedAudioPlayback, startSharedAudioPlayback } from "../lib/audioPlayback";
+import { postProjectorChannelMessage } from "../lib/projectorChannel";
+import { fadeTransition, getTransitionSetting, isInstant } from "../lib/transitions";
 import { useTemplateStore } from "../stores/templateStore";
 import { useProjectorStore } from "../stores/projectorStore";
 import { CameraViewport } from "./CameraViewport";
 import { ResilientImage } from "./ResilientImage";
 import { ResilientVideo } from "./ResilientVideo";
+import { WaveformCanvas } from "./Media/Waveform";
+import { LiveWaveform } from "./Media/LiveWaveform";
 import { OverlayVisual } from "./Overlays/OverlayVisual";
 import type { ActiveOverlay } from "../types/overlays";
 import type { TemplateLayer, TemplateScene, TemplateTextScript } from "../types/templates";
-import type { LogoConfig, OverlayMode, ProjectorMedia, ProjectorPlaybackState, ProjectorSlide, TransitionCategory, TransitionEasing, TransitionsConfig, VerseTheme } from "../types/state";
+import type { LogoConfig, OverlayMode, ProjectorAudioProgress, ProjectorMedia, ProjectorPlaybackState, ProjectorSlide, TransitionCategory, TransitionSetting, TransitionsConfig, VerseTheme } from "../types/state";
 
 const OVERLAY_WIDTH = 1920;
 const OVERLAY_HEIGHT = 1080;
 const VIEWPORT_SAFE_INSET = 2;
 const autoFitSizeCache = new WeakMap<Extract<TemplateLayer, { type: "text" }>, Map<string, number>>();
-
-function cssEasingFor(easing: TransitionEasing | undefined): string {
-  return easing === "spring" ? "cubic-bezier(0.34, 1.56, 0.64, 1)" : (easing ?? "ease");
-}
 
 function referenceLabel(slide: ProjectorSlide) {
   return `${slide.reference.book} ${slide.reference.chapter}:${slide.reference.verse}`;
@@ -466,7 +469,8 @@ export const TemplateSceneOverlay = memo(function TemplateSceneOverlay({
   /** Leaves static canvas elements visible while suppressing dynamic slide layers. */
   hideDynamicLayers?: boolean;
   /** Fade timing for dynamic layers appearing/disappearing under hideDynamicLayers (the "Clear" override). */
-  clearTransition?: { durationMs: number; easing: TransitionEasing };
+  clearTransition?: TransitionSetting;
+  sceneTransition?: TransitionSetting;
   /** When true, renders a static snapshot of the template (paused video at frame 0, no loop playback, no dynamic text scrolling). */
   isThumbnail?: boolean;
   onBackgroundReady?: () => void;
@@ -477,11 +481,12 @@ export const TemplateSceneOverlay = memo(function TemplateSceneOverlay({
   const viewportRef = useRef<HTMLDivElement>(null);
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const ordered = useMemo(() => [...scene.layers].sort((a, b) => a.zIndex - b.zIndex), [scene.layers]);
-  const media = scene.backgroundMedia;
+  const media = scene.backgroundMedia?.type === "camera" ? null : scene.backgroundMedia;
+  const cameraMedia = scene.cameraMedia ?? (scene.backgroundMedia?.type === "camera" ? scene.backgroundMedia : null);
 
   useEffect(() => {
-    if (!media || (media.type !== "camera" && !media.src)) onBackgroundReady?.();
-  }, [media, onBackgroundReady]);
+    if ((!media || !media.src) && !cameraMedia) onBackgroundReady?.();
+  }, [cameraMedia, media, onBackgroundReady]);
 
   const layerAnimKeys: LayerAnimKeys = {
     bookChapter: `${slide.reference.book}-${slide.reference.chapter}`,
@@ -518,7 +523,7 @@ export const TemplateSceneOverlay = memo(function TemplateSceneOverlay({
 
   const sceneContent = (
     <div style={sceneStyle}>
-      {media && (media.type === "camera" || (typeof media.src === "string" && media.src.length > 0)) ? (
+      {media && typeof media.src === "string" && media.src.length > 0 ? (
         <div
           style={{
             position: "absolute",
@@ -531,9 +536,7 @@ export const TemplateSceneOverlay = memo(function TemplateSceneOverlay({
             overflow: "hidden",
           }}
         >
-          {media.type === "camera" ? (
-            <CameraViewport media={media} thumbnail={isThumbnail} paused={cameraPaused} onReady={onBackgroundReady} onError={onBackgroundReady ? () => onBackgroundReady() : undefined} />
-          ) : media.type === "video" ? (
+          {media.type === "video" ? (
             isThumbnail ? (
               media.poster ? (
                 <img
@@ -562,6 +565,22 @@ export const TemplateSceneOverlay = memo(function TemplateSceneOverlay({
           ) : (
             <img src={media.src} alt="" loading={isThumbnail ? "lazy" : "eager"} onLoad={onBackgroundReady} onError={(event) => { event.currentTarget.style.display = "none"; onBackgroundReady?.(); }} style={{ width: "100%", height: "100%", objectFit: media.fit, opacity: media.opacity, mixBlendMode: media.blendMode as CSSProperties["mixBlendMode"], transform: `scale(${media.flipX ? -1 : 1}, ${media.flipY ? -1 : 1})`, filter: `hue-rotate(${media.hueRotate ?? 0}deg) invert(${media.invert ?? 0}%) blur(${media.blur ?? 0}px) grayscale(${media.grayscale ?? 0}%) sepia(${media.sepia ?? 0}%) brightness(${media.brightness ?? 100}%) contrast(${media.contrast ?? 100}%) saturate(${media.saturate ?? 100}%)`, clipPath: `inset(${media.cropTop ?? 0}% ${media.cropRight ?? 0}% ${media.cropBottom ?? 0}% ${media.cropLeft ?? 0}%)` }} />
           )}
+        </div>
+      ) : null}
+      {cameraMedia?.type === "camera" ? (
+        <div
+          style={{
+            position: "absolute",
+            left: `${cameraMedia.x}%`,
+            top: `${cameraMedia.y}%`,
+            width: `${cameraMedia.width}%`,
+            height: `${cameraMedia.height}%`,
+            opacity: cameraMedia.opacity,
+            zIndex: 0,
+            overflow: "hidden",
+          }}
+        >
+          <CameraViewport media={cameraMedia} thumbnail={isThumbnail} paused={cameraPaused} onReady={onBackgroundReady} onError={onBackgroundReady ? () => onBackgroundReady() : undefined} />
         </div>
       ) : null}
 
@@ -608,7 +627,7 @@ export const TemplateSceneOverlay = memo(function TemplateSceneOverlay({
                     width: "100%",
                     height: "100%",
                     opacity: clearHidden ? 0 : 1,
-                    transition: `opacity ${(clearTransition?.durationMs ?? 350) / 1000}s ${cssEasingFor(clearTransition?.easing)}`,
+                    transition: fadeTransition(clearTransition),
                   }}
                 >
                   {layerContent}
@@ -665,24 +684,31 @@ interface PreparedScene {
 
 function sceneBackgroundKey(scene: TemplateScene): string {
   const media = scene.backgroundMedia;
-  if (!media) return "static";
-  if (media.type === "camera") {
-    return `camera:${media.cameraSourceType}:${media.cameraDeviceId}:${media.cameraLabel}:${media.cameraUrl}`;
-  }
-  return `${media.type}:${media.src}`;
+  const camera = scene.cameraMedia ?? (media?.type === "camera" ? media : null);
+  const mediaKey = !media || media.type === "camera"
+    ? "none"
+    : `${media.type}:${media.src}`;
+  const cameraKey = camera
+    ? `camera:${camera.cameraSourceType}:${camera.cameraDeviceId}:${camera.cameraLabel}:${camera.cameraUrl}`
+    : "none";
+  return mediaKey === "none" && cameraKey === "none" ? "static" : `${mediaKey}|${cameraKey}`;
 }
 
 /** Keep the complete outgoing slide visible while the next canvas background gets its first frame. */
 function PreparedSceneHandoff({
   scene, slide, category, hideDynamicLayers, clearTransition, animateDynamicLayers,
+  sceneTransition, onForegroundReady, retain,
   videoPlayback, cameraPaused, animationStyle,
 }: {
   scene: TemplateScene | null;
   slide: ProjectorSlide | null;
   category: "scriptures" | "songs";
   hideDynamicLayers: boolean;
-  clearTransition?: { durationMs: number; easing: TransitionEasing };
+  clearTransition?: TransitionSetting;
   animateDynamicLayers: boolean;
+  sceneTransition?: TransitionSetting;
+  onForegroundReady: () => void;
+  retain: boolean;
   videoPlayback: { playing: boolean; loop: boolean; onVideoElementChange: (video: HTMLVideoElement | null, removedVideo?: HTMLVideoElement) => void };
   cameraPaused: boolean;
   animationStyle?: CSSProperties;
@@ -696,10 +722,7 @@ function PreparedSceneHandoff({
     // A new choice supersedes the fading scene from the previous handoff.
     // Keep at most the current player and one incoming player alive.
     if (outgoing) setOutgoing(null);
-    if (!target) {
-      setDisplayed(null);
-      setOutgoing(null);
-    } else if (displayed?.backgroundKey === target.backgroundKey) {
+    if (target && displayed?.backgroundKey === target.backgroundKey) {
       setDisplayed(target);
     }
   }
@@ -712,21 +735,35 @@ function PreparedSceneHandoff({
     return () => window.clearTimeout(timeout);
   }, [outgoing]);
 
+  useEffect(() => {
+    if (retain || (!displayed && !outgoing)) return;
+    const timeout = window.setTimeout(() => {
+      setDisplayed(null);
+      setOutgoing(null);
+    }, 180);
+    return () => window.clearTimeout(timeout);
+  }, [displayed, outgoing, retain]);
+
   const reveal = useCallback(() => {
     if (!pending) return;
-    if (shown && shown.backgroundKey !== pending.backgroundKey) setOutgoing(shown);
+    if (shown && shown.backgroundKey !== pending.backgroundKey && !isInstant(sceneTransition)) setOutgoing(shown);
     setDisplayed(pending);
-  }, [pending, shown]);
+    onForegroundReady();
+  }, [onForegroundReady, pending, shown, sceneTransition]);
+
+  useEffect(() => {
+    if (target && !pending) onForegroundReady();
+  }, [onForegroundReady, pending, target]);
 
   useEffect(() => {
     if (!pending) return;
     // A camera or WebKit media load can stall without an error event. A scene
     // switch must never leave the external display on the previous layout.
-    const timeout = window.setTimeout(reveal, pending.scene.backgroundMedia?.type === "camera" ? 2500 : 6000);
+    const timeout = window.setTimeout(reveal, pending.scene.cameraMedia?.type === "camera" || pending.scene.backgroundMedia?.type === "camera" ? 2500 : 6000);
     return () => window.clearTimeout(timeout);
   }, [pending, reveal]);
 
-  if (!target) return null;
+  if (!shown && !pending && !outgoing) return null;
   const renderScene = (entry: PreparedScene, ready?: () => void, backgroundOnly = false) => (
     <TemplateSceneOverlay
       scene={entry.scene}
@@ -744,11 +781,29 @@ function PreparedSceneHandoff({
     />
   );
 
+  const entries = [outgoing, shown, pending].filter((entry, index, all): entry is PreparedScene =>
+    entry !== null && all.findIndex((candidate) => candidate?.backgroundKey === entry.backgroundKey) === index,
+  );
+
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
-      {shown ? <div key={shown.backgroundKey} data-projector-scene="visible" style={{ position: "absolute", inset: 0 }}>{renderScene(shown)}</div> : null}
-      {pending ? <div key={pending.backgroundKey} data-projector-scene="preparing" style={{ position: "absolute", inset: 0, opacity: 0.001, pointerEvents: "none" }}>{renderScene(pending, reveal, true)}</div> : null}
-      {outgoing && outgoing.backgroundKey !== shown?.backgroundKey && outgoing.backgroundKey !== pending?.backgroundKey ? <div key={outgoing.backgroundKey} data-projector-scene="outgoing" style={{ position: "absolute", inset: 0, pointerEvents: "none", animation: "projFadeOut 180ms ease-out forwards" }}>{renderScene(outgoing)}</div> : null}
+      {entries.map((entry) => {
+        const isPending = entry.backgroundKey === pending?.backgroundKey;
+        const isOutgoing = !isPending && entry.backgroundKey === outgoing?.backgroundKey && entry.backgroundKey !== shown?.backgroundKey;
+        const isVisible = !isPending && !isOutgoing && entry.backgroundKey === shown?.backgroundKey;
+        const role = isPending ? "preparing" : isOutgoing ? "outgoing" : isVisible ? "visible" : null;
+        if (!role) return null;
+        const layerStyle: CSSProperties = isPending
+          ? { position: "absolute", inset: 0, opacity: 0.001, pointerEvents: "none" }
+          : isOutgoing
+          ? { position: "absolute", inset: 0, pointerEvents: "none", animation: `projFadeOut ${sceneTransition?.durationMs ?? 180}ms ease-out forwards` }
+          : { position: "absolute", inset: 0 };
+        return (
+          <div key={entry.backgroundKey} data-projector-scene={role} style={layerStyle}>
+            {renderScene(entry, isPending ? reveal : undefined, isPending)}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -759,15 +814,192 @@ interface PreparedMedia {
   key: string;
 }
 
-function PreparedMediaLayer({ entry, visible, preparing, outgoing, playing, loop, onReady, onVideoElementChange }: {
+function ProjectedAudioLayer({ entry, visible, playing, loop, enabled, muted, owner, outputProgress, peaks, minPeaks, maxPeaks, waveformDuration, loading, error, onReady, onAudioElementChange, onPlaybackChange, onSeek, onProgress }: {
+  entry: PreparedMedia;
+  visible: boolean;
+  playing: boolean;
+  loop: boolean;
+  enabled: boolean;
+  muted: boolean;
+  owner: "live" | "preview";
+  outputProgress?: ProjectorAudioProgress | null;
+  peaks: number[];
+  minPeaks: number[];
+  maxPeaks: number[];
+  waveformDuration: number;
+  loading: boolean;
+  error: string | null;
+  onReady: () => void;
+  onAudioElementChange: (audio: HTMLAudioElement | null, removedAudio?: HTMLAudioElement) => void;
+  onPlaybackChange?: (patch: Partial<Pick<ProjectorPlaybackState, "playing" | "looping">>) => void;
+  onSeek?: (time: number) => void;
+  onProgress: (time: number, duration: number) => void;
+}) {
+  const trimStart = entry.media.audioSettings?.trimStart ?? 0;
+  const trimEnd = entry.media.audioSettings?.trimEnd ?? null;
+  const volume = Math.max(0, Math.min(1, entry.media.audioSettings?.volume ?? 1));
+  const playbackError = entry.media.audioPlaybackError ?? null;
+  const [currentTime, setCurrentTime] = useState(trimStart);
+  const [elementDuration, setElementDuration] = useState(0);
+  const [localPlaybackError, setLocalPlaybackError] = useState<string | null>(null);
+  const syncedOutput = muted && outputProgress?.path === entry.media.path ? outputProgress : null;
+  const displayTime = syncedOutput?.time ?? currentTime;
+  const totalDuration = waveformDuration || syncedOutput?.duration || elementDuration;
+
+  useEffect(() => onReady(), [onReady]);
+
+  useEffect(() => {
+    if (muted) return;
+
+    const sharedAudio = getSharedAudioElement();
+    if (!enabled || !playing) {
+      if (sharedAudio.src === entry.source) pauseSharedAudioPlayback(owner);
+      return;
+    }
+    if (!visible) return;
+
+    const desiredLoop = loop && trimEnd == null;
+    if (getSharedAudioOwner() === owner && sharedAudio.src === entry.source && !sharedAudio.paused && sharedAudio.volume === volume && sharedAudio.loop === desiredLoop) return;
+    let active = true;
+    void startSharedAudioPlayback(entry.source, { volume, trimStart, trimEnd, loop }, owner).then((started) => {
+      if (!active || !started) return;
+      setLocalPlaybackError(null);
+      if (owner === "live") useProjectorStore.getState().setLiveAudioPlaybackError(entry.media.path, null);
+    }).catch((playError: unknown) => {
+      if (!active || getSharedAudioOwner() !== owner) return;
+      const message = audioPlaybackErrorMessage(playError, sharedAudio);
+      console.error(`[ProjectorView] audio playback failed for ${entry.media.name}: ${message}`, playError);
+      setLocalPlaybackError(message);
+      if (owner === "live") useProjectorStore.getState().setLiveAudioPlaybackError(entry.media.path, message);
+      onPlaybackChange?.({ playing: false });
+    });
+    return () => { active = false; };
+  }, [enabled, entry.media.name, entry.media.path, entry.source, loop, muted, onPlaybackChange, owner, playing, trimEnd, trimStart, visible, volume]);
+
+  const seek = (time: number) => {
+    if (getSharedAudioOwner() !== owner) return;
+    const audio = muted ? null : getSharedAudioElement();
+    if (!audio || !Number.isFinite(time)) return;
+    seekAudioElement(audio, time);
+    setCurrentTime(time);
+    onSeek?.(time);
+  };
+
+  const syncAudio = useCallback((audio: HTMLAudioElement) => {
+    if (getSharedAudioOwner() !== owner) return;
+    const time = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+    const length = Number.isFinite(audio.duration) ? audio.duration : 0;
+    setCurrentTime(time);
+    setElementDuration(length);
+    onProgress(time, length);
+  }, [onProgress, owner]);
+
+  const handleTimeUpdate = useCallback((audio: HTMLAudioElement) => {
+    if (getSharedAudioOwner() !== owner) return;
+    syncAudio(audio);
+    if (trimEnd == null || audio.currentTime < trimEnd) return;
+    if (loop) {
+      audio.currentTime = trimStart;
+      if (enabled && playing) void audio.play().catch(() => undefined);
+    } else {
+      audio.pause();
+      onPlaybackChange?.({ playing: false });
+    }
+  }, [enabled, loop, onPlaybackChange, owner, playing, syncAudio, trimEnd, trimStart]);
+
+  useEffect(() => {
+    if (muted) return;
+    const audio = getSharedAudioElement();
+    if (visible && getSharedAudioOwner() === owner) onAudioElementChange(audio);
+    const handleLoadedMetadata = () => {
+      if (getSharedAudioOwner() !== owner) return;
+      syncAudio(audio);
+      if (audio.currentTime < trimStart || (trimEnd != null && audio.currentTime >= trimEnd)) {
+        try { audio.currentTime = trimStart; } catch { /* Metadata may still be settling. */ }
+      }
+      onReady();
+    };
+    const handleDurationChange = () => syncAudio(audio);
+    const handleTimeUpdateEvent = () => handleTimeUpdate(audio);
+    const handleEnded = () => {
+      if (getSharedAudioOwner() !== owner) return;
+      if (loop) {
+        audio.currentTime = trimStart;
+        if (enabled && playing) void audio.play().catch(() => undefined);
+      } else {
+        onPlaybackChange?.({ playing: false });
+      }
+    };
+    const handleError = () => {
+      if (getSharedAudioOwner() !== owner) return;
+      const message = audioPlaybackErrorMessage(audio.error, audio);
+      setLocalPlaybackError(message);
+      if (owner === "live") useProjectorStore.getState().setLiveAudioPlaybackError(entry.media.path, message);
+      onPlaybackChange?.({ playing: false });
+    };
+    audio.addEventListener("loadedmetadata", handleLoadedMetadata);
+    audio.addEventListener("durationchange", handleDurationChange);
+    audio.addEventListener("timeupdate", handleTimeUpdateEvent);
+    audio.addEventListener("ended", handleEnded);
+    audio.addEventListener("error", handleError);
+    return () => {
+      audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
+      audio.removeEventListener("durationchange", handleDurationChange);
+      audio.removeEventListener("timeupdate", handleTimeUpdateEvent);
+      audio.removeEventListener("ended", handleEnded);
+      audio.removeEventListener("error", handleError);
+    };
+  }, [enabled, entry.media.path, handleTimeUpdate, loop, muted, onAudioElementChange, onPlaybackChange, onReady, owner, playing, syncAudio, trimEnd, trimStart, visible]);
+
+  return (
+    <div data-projector-audio="" aria-label={`Audio track ${entry.media.name}`} style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "3vh", padding: "8%", boxSizing: "border-box", color: "#fff", background: "#111" }}>
+      <div style={{ width: "100%", maxWidth: 1500, color: "rgba(255,255,255,.86)", fontFamily: "var(--font-sans)", fontSize: "clamp(18px, 3vw, 42px)", fontWeight: 600, textAlign: "center", overflowWrap: "anywhere" }}>{entry.media.name}</div>
+      {loading ? <div style={{ width: "100%", maxWidth: 1500, height: 180, display: "grid", placeItems: "center", color: "rgba(255,255,255,.55)", fontSize: 16 }}>Loading waveform...</div> : error ? <div role="status" style={{ color: "rgba(255,255,255,.65)", fontSize: 16 }}>Waveform unavailable</div> : (
+        minPeaks.length > 0 && minPeaks.length === maxPeaks.length ? (
+          <LiveWaveform minPeaks={minPeaks} maxPeaks={maxPeaks} duration={totalDuration} currentTime={displayTime} playing={playing} getCurrentTime={muted ? undefined : () => getSharedAudioOwner() === owner ? getSharedAudioElement().currentTime : currentTime} onSeek={muted ? undefined : seek} height={180} style={{ width: "100%", maxWidth: 1500 }} />
+        ) : (
+          <WaveformCanvas peaks={peaks} duration={totalDuration} currentTime={displayTime} trimStart={trimStart} trimEnd={trimEnd} height={180} barColor="rgba(255,255,255,.38)" progressColor="#56d6b0" onSeek={seek} style={{ width: "100%", maxWidth: 1500 }} />
+        )
+      )}
+      <div style={{ color: "rgba(255,255,255,.58)", fontFamily: "var(--font-mono)", fontSize: 14, fontVariantNumeric: "tabular-nums" }}>{formatMediaTime(displayTime)} / {formatMediaTime(totalDuration)}</div>
+      {playbackError || localPlaybackError ? <div role="alert" style={{ maxWidth: 720, color: "#ffb3b3", fontFamily: "var(--font-mono)", fontSize: 12, textAlign: "center", overflowWrap: "anywhere" }}>Playback failed: {playbackError ?? localPlaybackError}</div> : null}
+    </div>
+  );
+}
+
+function formatMediaTime(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+  const wholeSeconds = Math.floor(seconds);
+  return `${Math.floor(wholeSeconds / 60)}:${String(wholeSeconds % 60).padStart(2, "0")}`;
+}
+
+function seekAudioElement(audio: HTMLAudioElement, time: number) {
+  audio.currentTime = time;
+}
+
+function PreparedMediaLayer({ entry, visible, preparing, outgoing, playing, loop, audioEnabled, muted, audioOwner, outputProgress, audioPeaks, audioMinPeaks, audioMaxPeaks, audioDuration, audioLoading, audioError, onReady, onVideoElementChange, onAudioElementChange, onPlaybackChange, onSeek, onAudioProgress }: {
   entry: PreparedMedia;
   visible: boolean;
   preparing: boolean;
   outgoing: boolean;
   playing: boolean;
   loop: boolean;
+  audioEnabled: boolean;
+  muted: boolean;
+  audioOwner: "live" | "preview";
+  outputProgress?: ProjectorAudioProgress | null;
+  audioPeaks: number[];
+  audioMinPeaks: number[];
+  audioMaxPeaks: number[];
+  audioDuration: number;
+  audioLoading: boolean;
+  audioError: string | null;
   onReady: () => void;
   onVideoElementChange: (video: HTMLVideoElement | null, removedVideo?: HTMLVideoElement) => void;
+  onAudioElementChange: (audio: HTMLAudioElement | null, removedAudio?: HTMLAudioElement) => void;
+  onPlaybackChange?: (patch: Partial<Pick<ProjectorPlaybackState, "playing" | "looping">>) => void;
+  onSeek?: (time: number) => void;
+  onAudioProgress: (time: number, duration: number) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const visibleRef = useRef(visible);
@@ -781,6 +1013,17 @@ function PreparedMediaLayer({ entry, visible, preparing, outgoing, playing, loop
   useLayoutEffect(() => {
     if (visible && entry.media.category === "videos") onVideoElementChange(videoRef.current);
   }, [entry.media.category, onVideoElementChange, visible]);
+
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const captureAudio = useCallback((audio: HTMLAudioElement | null, removedAudio?: HTMLAudioElement) => {
+    if (!audio && removedAudio && audioRef.current !== removedAudio) return;
+    audioRef.current = audio;
+    if (visibleRef.current) onAudioElementChange(audio, removedAudio);
+  }, [onAudioElementChange]);
+
+  useLayoutEffect(() => {
+    if (visible && entry.media.category === "audio") onAudioElementChange(audioRef.current);
+  }, [entry.media.category, onAudioElementChange, visible]);
 
   return (
     <div
@@ -801,6 +1044,8 @@ function PreparedMediaLayer({ entry, visible, preparing, outgoing, playing, loop
           presentationVisible={visible}
           onVideoElementChange={captureVideo}
         />
+      ) : entry.media.category === "audio" ? (
+        <ProjectedAudioLayer entry={entry} visible={visible} playing={playing} loop={loop} enabled={audioEnabled} muted={muted} owner={audioOwner} outputProgress={outputProgress} peaks={audioPeaks} minPeaks={audioMinPeaks} maxPeaks={audioMaxPeaks} waveformDuration={audioDuration} loading={audioLoading} error={audioError} onReady={preparing ? onReady : () => undefined} onAudioElementChange={captureAudio} onPlaybackChange={onPlaybackChange} onSeek={onSeek} onProgress={onAudioProgress} />
       ) : (
         <ResilientImage src={entry.source} sourcePath={entry.media.path} alt={entry.media.name} onLoad={preparing ? onReady : undefined} onUnavailable={preparing ? onReady : undefined} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: entry.media.fit, opacity: entry.media.opacity }} />
       )}
@@ -809,26 +1054,47 @@ function PreparedMediaLayer({ entry, visible, preparing, outgoing, playing, loop
 }
 
 /** Decode the incoming media behind the current frame, then reveal it. */
-function PreparedMediaHandoff({ media, source, hidden, clearTransition, playing, loop, onVideoElementChange }: {
-  media: ProjectorMedia;
+function PreparedMediaHandoff({ media, source, hidden, clearTransition, playing, loop, audioEnabled, muted, audioOwner, outputProgress, audioPeaks, audioMinPeaks, audioMaxPeaks, audioDuration, audioLoading, audioError, onVideoElementChange, onAudioElementChange, onPlaybackChange, onSeek, onAudioProgress, onForegroundReady, retain }: {
+  media: ProjectorMedia | null;
   source: string;
   hidden: boolean;
-  clearTransition?: { durationMs: number; easing: TransitionEasing };
+  clearTransition?: TransitionSetting;
   playing: boolean;
   loop: boolean;
+  audioEnabled: boolean;
+  muted: boolean;
+  audioOwner: "live" | "preview";
+  outputProgress?: ProjectorAudioProgress | null;
+  audioPeaks: number[];
+  audioMinPeaks: number[];
+  audioMaxPeaks: number[];
+  audioDuration: number;
+  audioLoading: boolean;
+  audioError: string | null;
   onVideoElementChange: (video: HTMLVideoElement | null, removedVideo?: HTMLVideoElement) => void;
+  onAudioElementChange: (audio: HTMLAudioElement | null, removedAudio?: HTMLAudioElement) => void;
+  onPlaybackChange?: (patch: Partial<Pick<ProjectorPlaybackState, "playing" | "looping">>) => void;
+  onSeek?: (time: number) => void;
+  onAudioProgress: (time: number, duration: number) => void;
+  onForegroundReady: () => void;
+  retain: boolean;
 }) {
-  const target = useMemo<PreparedMedia>(() => ({ media, source, key: `${media.category}:${source}` }), [media, source]);
+  const target = useMemo<PreparedMedia | null>(() => media && source ? ({ media, source, key: `${media.category}:${source}` }) : null, [media, source]);
   const [displayed, setDisplayed] = useState<PreparedMedia | null>(null);
   const [outgoing, setOutgoing] = useState<PreparedMedia | null>(null);
-  const shown = displayed?.key === target.key ? target : displayed;
-  const pending = shown?.key === target.key ? null : target;
+  const shown = target && displayed?.key === target.key ? target : displayed;
+  const pending = target && shown?.key !== target.key ? target : null;
 
   const reveal = useCallback(() => {
     if (!pending) return;
     setOutgoing(shown);
     setDisplayed(pending);
-  }, [pending, shown]);
+    onForegroundReady();
+  }, [onForegroundReady, pending, shown]);
+
+  useEffect(() => {
+    if (target && !pending) onForegroundReady();
+  }, [onForegroundReady, pending, target]);
 
   useEffect(() => {
     if (!outgoing) return;
@@ -836,12 +1102,23 @@ function PreparedMediaHandoff({ media, source, hidden, clearTransition, playing,
     return () => window.clearTimeout(timeout);
   }, [outgoing]);
 
+  useEffect(() => {
+    if (retain || (!displayed && !outgoing)) return;
+    const timeout = window.setTimeout(() => {
+      setDisplayed(null);
+      setOutgoing(null);
+    }, 180);
+    return () => window.clearTimeout(timeout);
+  }, [displayed, outgoing, retain]);
+
   const entries = [outgoing, shown, pending].filter((entry, index, all): entry is PreparedMedia =>
     entry !== null && all.findIndex((candidate) => candidate?.key === entry.key) === index,
   );
 
+  if (entries.length === 0) return null;
+
   return (
-    <div data-projector-media="" aria-hidden={hidden} style={{ position: "absolute", inset: 0, opacity: hidden ? 0 : 1, transition: `opacity ${(clearTransition?.durationMs ?? 350) / 1000}s ${cssEasingFor(clearTransition?.easing)}` }}>
+    <div data-projector-media="" aria-hidden={hidden} style={{ position: "absolute", inset: 0, opacity: hidden ? 0 : 1, transition: fadeTransition(clearTransition) }}>
       {entries.map((entry) => (
         <PreparedMediaLayer
           key={entry.key}
@@ -851,8 +1128,22 @@ function PreparedMediaHandoff({ media, source, hidden, clearTransition, playing,
           outgoing={entry.key === outgoing?.key}
           playing={playing}
           loop={loop}
+          audioEnabled={audioEnabled && entry.key === target?.key}
+          muted={muted}
+          audioOwner={audioOwner}
+          outputProgress={outputProgress}
+          audioPeaks={audioPeaks}
+          audioMinPeaks={audioMinPeaks}
+          audioMaxPeaks={audioMaxPeaks}
+          audioDuration={audioDuration}
+          audioLoading={audioLoading}
+          audioError={audioError}
           onReady={reveal}
           onVideoElementChange={onVideoElementChange}
+          onAudioElementChange={onAudioElementChange}
+          onPlaybackChange={onPlaybackChange}
+          onSeek={onSeek}
+          onAudioProgress={onAudioProgress}
         />
       ))}
     </div>
@@ -873,17 +1164,21 @@ interface ProjectorViewProps {
   transitions?: TransitionsConfig;
   logo?: LogoConfig;
   playback?: ProjectorPlaybackState;
+  audioProgress?: ProjectorAudioProgress | null;
   onPlaybackChange?: (patch: Partial<Pick<ProjectorPlaybackState, "playing" | "looping">>) => void;
   onSeek?: (time: number) => void;
 }
 
-export function ProjectorView({ title, slide, media = null, overlays = [], feedOverride, overlayMode, isLive, fontSizePx, chrome = true, transitions: transitionsOverride, logo: logoOverride, playback, onPlaybackChange, onSeek }: ProjectorViewProps) {
+export function ProjectorView({ title, slide, media = null, overlays = [], feedOverride, overlayMode, isLive, fontSizePx, chrome = true, transitions: transitionsOverride, logo: logoOverride, playback, audioProgress, onPlaybackChange, onSeek }: ProjectorViewProps) {
   const activeOverlay = overlays.at(-1) ?? null;
   const stageRef = useRef<HTMLDivElement>(null);
   const backgroundVideoRef = useRef<HTMLVideoElement | null>(null);
   const logoVideoRef = useRef<HTMLVideoElement | null>(null);
   const mediaVideoRef = useRef<HTMLVideoElement | null>(null);
+  const mediaAudioRef = useRef<HTMLAudioElement | null>(null);
   const playbackRef = useRef(playback);
+  const lastAudioProgressSentRef = useRef(0);
+  const liveAudioActive = useProjectorStore((state) => state.feedOverride === "live" && state.liveMedia?.category === "audio" && state.livePlayback.playing);
   useEffect(() => { playbackRef.current = playback; }, [playback]);
   const [viewportSize, setViewportSize] = useState({ width: OVERLAY_WIDTH, height: OVERLAY_HEIGHT });
   const [backgroundVideo, setBackgroundVideo] = useState<HTMLVideoElement | null>(null);
@@ -895,6 +1190,9 @@ export function ProjectorView({ title, slide, media = null, overlays = [], feedO
   const [mediaVideo, setMediaVideo] = useState<HTMLVideoElement | null>(null);
   const [isMediaVideoPlaying, setIsMediaVideoPlaying] = useState(true);
   const [isMediaVideoLooping, setIsMediaVideoLooping] = useState(true);
+  const [mediaAudio, setMediaAudio] = useState<HTMLAudioElement | null>(null);
+  const [isMediaAudioPlaying, setIsMediaAudioPlaying] = useState(true);
+  const [isMediaAudioLooping, setIsMediaAudioLooping] = useState(false);
   const [isCameraPreviewPaused, setIsCameraPreviewPaused] = useState(false);
   const [videoProgress, setVideoProgress] = useState(0);
   const [videoDuration, setVideoDuration] = useState(0);
@@ -948,7 +1246,7 @@ export function ProjectorView({ title, slide, media = null, overlays = [], feedO
   const mediaSource = useMemo(() => {
     if (!media) return "";
     try {
-      return managedVideoUrl(media.path) ?? convertFileSrc(media.path);
+      return (media.category === "audio" ? managedAudioUrl(media.path) : managedVideoUrl(media.path)) ?? convertFileSrc(media.path);
     } catch {
       return "";
     }
@@ -968,19 +1266,68 @@ export function ProjectorView({ title, slide, media = null, overlays = [], feedO
   const storeLogo = useProjectorStore((s) => s.logo);
   const logo = logoOverride ?? storeLogo;
   const hasBackgroundVideo = activeProjectionScene?.backgroundMedia?.type === "video" && showSlide && !media && Boolean(slide);
-  const hasCameraPreview = chrome && !isLive && !media && Boolean(slide) && showSlide && activeProjectionScene?.backgroundMedia?.type === "camera";
+  const hasCameraPreview = chrome && !isLive && !media && Boolean(slide) && showSlide && (activeProjectionScene?.cameraMedia?.type === "camera" || activeProjectionScene?.backgroundMedia?.type === "camera");
   const hasLogoVideo = isLogoOverride && isVideoDataUrl(logo.src);
   const hasMediaVideo = media?.category === "videos" && Boolean(mediaSource);
+  const hasMediaAudio = media?.category === "audio" && Boolean(mediaSource);
+  const presentationMode = media ? "media" : slide ? "scene" : "empty";
+  const previousPresentationModeRef = useRef<typeof presentationMode | null>(null);
+  const [outgoingPresentationMode, setOutgoingPresentationMode] = useState<"scene" | "media" | null>(null);
+
+  useLayoutEffect(() => {
+    const previousMode = previousPresentationModeRef.current;
+    if (previousMode !== null && previousMode !== presentationMode) {
+      setOutgoingPresentationMode(presentationMode === "empty" || previousMode === "empty" ? null : previousMode);
+    }
+    previousPresentationModeRef.current = presentationMode;
+  }, [presentationMode]);
+
+  const handleForegroundReady = useCallback(() => setOutgoingPresentationMode(null), []);
+
+  useEffect(() => {
+    if (presentationMode !== "scene" || !showSlide || !templatesInitialized || activeProjectionScene) return;
+    const timeout = window.setTimeout(handleForegroundReady, 180);
+    return () => window.clearTimeout(timeout);
+  }, [activeProjectionScene, handleForegroundReady, presentationMode, showSlide, templatesInitialized]);
+
+  const audioWaveformState = useAudioPeaks(
+    chrome && hasMediaAudio && media?.audioWaveform === undefined ? mediaSource : null,
+    220,
+    media?.category === "audio" ? media.path : undefined,
+  );
+  const audioPeaks = media?.audioWaveform ?? audioWaveformState.peaks;
+  const audioMinPeaks = media?.audioWaveformMin ?? audioWaveformState.minPeaks;
+  const audioMaxPeaks = media?.audioWaveformMax ?? audioWaveformState.maxPeaks;
+  const audioDuration = media?.audioDuration ?? audioWaveformState.duration;
+  const audioError = media?.audioWaveformError ?? audioWaveformState.error;
+  const audioLoading = hasMediaAudio && media?.audioWaveform === undefined
+    && (!chrome || audioWaveformState.loading);
+  const controlMediaName = hasMediaAudio ? "audio" : "video";
+
+  useEffect(() => {
+    if (!chrome || !isLive || !hasMediaAudio || !media || media.audioWaveform !== undefined || audioWaveformState.loading) return;
+    if (audioWaveformState.peaks.length === 0 && !audioWaveformState.error) return;
+    useProjectorStore.getState().setLiveAudioWaveform(
+      media.path,
+      audioWaveformState.peaks,
+      audioWaveformState.duration,
+      audioWaveformState.error,
+      audioWaveformState.minPeaks,
+      audioWaveformState.maxPeaks,
+    );
+  }, [audioWaveformState, chrome, hasMediaAudio, isLive, media]);
   // Only one of the background/logo/media videos is ever the active foreground
   // layer, so they share one progress bar and one set of controls.
   const hasVideoControl = chrome && (hasLogoVideo || hasBackgroundVideo || hasMediaVideo);
-  const controlVideo = hasLogoVideo ? logoVideo : hasBackgroundVideo ? backgroundVideo : hasMediaVideo ? mediaVideo : null;
-  const controlVideoRef = hasLogoVideo ? logoVideoRef : hasBackgroundVideo ? backgroundVideoRef : mediaVideoRef;
-  const isControlVideoPlaying = hasLogoVideo ? isLogoVideoPlaying : hasBackgroundVideo ? isBackgroundVideoPlaying : isMediaVideoPlaying;
-  const isControlVideoLooping = hasLogoVideo ? isLogoVideoLooping : hasBackgroundVideo ? isBackgroundVideoLooping : isMediaVideoLooping;
-  const setControlVideoPlaying = hasLogoVideo ? setIsLogoVideoPlaying : hasBackgroundVideo ? setIsBackgroundVideoPlaying : setIsMediaVideoPlaying;
-  const setControlVideoLooping = hasLogoVideo ? setIsLogoVideoLooping : hasBackgroundVideo ? setIsBackgroundVideoLooping : setIsMediaVideoLooping;
-  const controlPlaying = playback?.playing ?? isControlVideoPlaying;
+  const hasPlaybackControl = hasVideoControl || (chrome && hasMediaAudio);
+  const previewAudioBlocked = hasMediaAudio && !isLive && liveAudioActive;
+  const controlVideo = hasLogoVideo ? logoVideo : hasBackgroundVideo ? backgroundVideo : hasMediaAudio ? mediaAudio : hasMediaVideo ? mediaVideo : null;
+  const controlVideoRef = hasLogoVideo ? logoVideoRef : hasBackgroundVideo ? backgroundVideoRef : hasMediaAudio ? mediaAudioRef : mediaVideoRef;
+  const isControlVideoPlaying = hasLogoVideo ? isLogoVideoPlaying : hasBackgroundVideo ? isBackgroundVideoPlaying : hasMediaAudio ? isMediaAudioPlaying : isMediaVideoPlaying;
+  const isControlVideoLooping = hasLogoVideo ? isLogoVideoLooping : hasBackgroundVideo ? isBackgroundVideoLooping : hasMediaAudio ? isMediaAudioLooping : isMediaVideoLooping;
+  const setControlVideoPlaying = hasLogoVideo ? setIsLogoVideoPlaying : hasBackgroundVideo ? setIsBackgroundVideoPlaying : hasMediaAudio ? setIsMediaAudioPlaying : setIsMediaVideoPlaying;
+  const setControlVideoLooping = hasLogoVideo ? setIsLogoVideoLooping : hasBackgroundVideo ? setIsBackgroundVideoLooping : hasMediaAudio ? setIsMediaAudioLooping : setIsMediaVideoLooping;
+  const controlPlaying = previewAudioBlocked ? false : (playback?.playing ?? isControlVideoPlaying);
   const controlLooping = playback?.looping ?? isControlVideoLooping;
 
   useEffect(() => {
@@ -1060,11 +1407,45 @@ export function ProjectorView({ title, slide, media = null, overlays = [], feedO
     setVideoDuration(Number.isFinite(video.duration) ? video.duration : 0);
   }, [chrome]);
 
+  const updateMediaAudioElement = useCallback((audio: HTMLAudioElement | null, removedAudio?: HTMLAudioElement) => {
+    if (!audio && removedAudio && mediaAudioRef.current !== removedAudio) return;
+    mediaAudioRef.current = audio;
+    if (audio && playbackRef.current?.seekTime != null) {
+      try { audio.currentTime = playbackRef.current.seekTime; } catch { /* The source may still be loading. */ }
+    }
+    if (!chrome) return;
+    setMediaAudio(audio);
+    if (!audio) {
+      setVideoProgress(0);
+      setVideoDuration(0);
+      return;
+    }
+    setVideoProgress(Number.isFinite(audio.currentTime) ? audio.currentTime : 0);
+    setVideoDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
+  }, [chrome]);
+
+  const updateAudioProgress = useCallback((time: number, duration: number) => {
+    if (!chrome) return;
+    setVideoProgress(time);
+    setVideoDuration(duration);
+    if (!isLive || media?.category !== "audio") return;
+    const now = Date.now();
+    if (now - lastAudioProgressSentRef.current < 200) return;
+    lastAudioProgressSentRef.current = now;
+    postProjectorChannelMessage({ type: "audio-progress", progress: { path: media.path, time, duration } });
+  }, [chrome, isLive, media]);
+
+  const updateMediaAudioPlayback = useCallback((patch: Partial<Pick<ProjectorPlaybackState, "playing" | "looping">>) => {
+    onPlaybackChange?.(patch);
+    if (patch.playing !== undefined) setIsMediaAudioPlaying(patch.playing);
+    if (patch.looping !== undefined) setIsMediaAudioLooping(patch.looping);
+  }, [onPlaybackChange]);
+
   const videoPlayback = useMemo(() => ({
-    playing: playback?.playing ?? isBackgroundVideoPlaying,
+    playing: (presentationMode === "scene" || outgoingPresentationMode === "scene") && (playback?.playing ?? isBackgroundVideoPlaying),
     loop: playback?.looping ?? isBackgroundVideoLooping,
     onVideoElementChange: updateBackgroundVideoElement,
-  }), [isBackgroundVideoLooping, isBackgroundVideoPlaying, playback?.looping, playback?.playing, updateBackgroundVideoElement]);
+  }), [isBackgroundVideoLooping, isBackgroundVideoPlaying, outgoingPresentationMode, playback?.looping, playback?.playing, presentationMode, updateBackgroundVideoElement]);
 
   const storeTransitions = useProjectorStore((s) => s.transitions);
   const transitions = transitionsOverride ?? storeTransitions;
@@ -1076,7 +1457,7 @@ export function ProjectorView({ title, slide, media = null, overlays = [], feedO
     ? "logo"
     : (templateCategory ?? "scriptures");
 
-  const contentKey = `${feedOverride}-${slide?.reference?.book ?? ""}-${slide?.reference?.chapter ?? ""}-${slide?.reference?.verse ?? ""}-${slide?.version ?? ""}-${slide?.text ?? ""}-${overlayMode}`;
+  const contentKey = `${slide?.reference?.book ?? ""}-${slide?.reference?.chapter ?? ""}-${slide?.reference?.verse ?? ""}-${slide?.version ?? ""}-${slide?.text ?? ""}-${overlayMode}`;
 
   const [transitionFrame, setTransitionFrame] = useState<{ contentKey: string; overlayMode: OverlayMode; category: TransitionCategory; key: number }>(() => ({
     contentKey, overlayMode, category: activeCategory, key: 0,
@@ -1093,10 +1474,9 @@ export function ProjectorView({ title, slide, media = null, overlays = [], feedO
     // previous transition and then starts its entrance a second time.
     setTransitionFrame(currentFrame);
   }
-  const animKey = currentFrame.key;
   const transitionCategory = currentFrame.category;
 
-  const transitionSetting = transitions?.[transitionCategory];
+  const transitionSetting = getTransitionSetting(transitions, transitionCategory);
   const isScreenLayoutTransition = transitionCategory === "layout";
 
   const cssEasing = transitionSetting?.easing === "spring"
@@ -1104,7 +1484,7 @@ export function ProjectorView({ title, slide, media = null, overlays = [], feedO
     : (transitionSetting?.easing ?? "ease");
 
   const durationSec = (transitionSetting?.durationMs ?? 350) / 1000;
-  const filterBlur = transitionSetting?.motionBlur ? "blur(3px)" : "none";
+  const filterBlur = "none";
 
   const getAnimationName = () => {
     if (!transitionSetting || transitionSetting.effect === "cut" || transitionSetting.durationMs === 0) {
@@ -1112,22 +1492,14 @@ export function ProjectorView({ title, slide, media = null, overlays = [], feedO
     }
     switch (transitionSetting.effect) {
       case "fade":
-      case "dissolve":
-        return "projFadeIn";
       case "slide-left":
-      case "push-left":
-      case "wipe-left":
-        return transitionSetting.crossfade ? "projSlideLeftCrossfade" : "projSlideLeft";
+        return "projSlideLeft";
       case "slide-right":
-      case "push-right":
-      case "wipe-right":
-        return transitionSetting.crossfade ? "projSlideRightCrossfade" : "projSlideRight";
+        return "projSlideRight";
       case "slide-up":
-        return transitionSetting.crossfade ? "projSlideUpCrossfade" : "projSlideUp";
+        return "projSlideUp";
       case "slide-down":
-        return transitionSetting.crossfade ? "projSlideDownCrossfade" : "projSlideDown";
-      case "push-up-crossfade":
-        return "projPushUpCrossfade";
+        return "projSlideDown";
       case "zoom-in":
         return "projZoomIn";
       case "zoom-out":
@@ -1241,9 +1613,9 @@ export function ProjectorView({ title, slide, media = null, overlays = [], feedO
             }}
           >
             <OneShotTransition
-              key={media ? "media" : activeProjectionScene ? "template-scene" : animKey}
               animationStyle={media || activeProjectionScene ? undefined : dynamicLayerAnimationStyle}
               style={{
+                position: "relative",
                 width: "100%",
                 height: "100%",
                 boxSizing: "border-box",
@@ -1254,41 +1626,60 @@ export function ProjectorView({ title, slide, media = null, overlays = [], feedO
                 textAlign: "left",
               }}
             >
-            {activeProjectionScene && slide && !media ? (
+            <div style={{ position: "absolute", inset: 0, zIndex: presentationMode === "scene" ? 3 : outgoingPresentationMode === "scene" ? 2 : 1, opacity: presentationMode === "scene" || outgoingPresentationMode === "scene" ? 1 : 0, transition: "opacity 180ms ease-out", pointerEvents: "none" }}>
               <PreparedSceneHandoff
-                scene={activeProjectionScene}
-                slide={slide}
+                scene={!media ? activeProjectionScene : null}
+                slide={!media ? slide : null}
                 category={templateCategory ?? "scriptures"}
                 hideDynamicLayers={isClearOverride}
-                clearTransition={transitions?.clear}
-                animateDynamicLayers={!isScreenLayoutTransition}
+                clearTransition={getTransitionSetting(transitions, "clear")}
+                sceneTransition={transitionSetting}
+                animateDynamicLayers={!isScreenLayoutTransition && (templateCategory ?? "scriptures") !== "scriptures"}
                 videoPlayback={videoPlayback}
                 cameraPaused={hasCameraPreview && isCameraPreviewPaused}
                 animationStyle={dynamicLayerAnimationStyle}
+                onForegroundReady={handleForegroundReady}
+                retain={presentationMode === "scene" || outgoingPresentationMode === "scene"}
               />
-            ) : null}
-            {templatesInitialized && slide && showSlide && !media && !activeProjectionScene ? (
-              <div data-projector-template-fallback="" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", padding: "8%", color: "#fff", background: "#000", textAlign: "center", fontFamily: "Inter, system-ui, sans-serif" }}>
-                <div><div style={{ fontSize: 54, fontWeight: 700, lineHeight: 1.2, whiteSpace: "pre-wrap" }}>{slide.text}</div><div style={{ marginTop: 28, fontSize: 27 }}>{referenceLabel(slide)}</div></div>
-              </div>
-            ) : null}
-            {media && mediaSource ? (
+            </div>
+            <div style={{ position: "absolute", inset: 0, zIndex: presentationMode === "media" ? 3 : outgoingPresentationMode === "media" ? 2 : 1, opacity: presentationMode === "media" || outgoingPresentationMode === "media" ? 1 : 0, transition: "opacity 180ms ease-out", pointerEvents: "none" }}>
               <PreparedMediaHandoff
                 media={media}
                 source={mediaSource}
                 hidden={isClearOverride}
-                clearTransition={transitions?.clear}
-                playing={playback?.playing ?? isMediaVideoPlaying}
-                loop={playback?.looping ?? isMediaVideoLooping}
+                clearTransition={getTransitionSetting(transitions, "clear")}
+                playing={presentationMode === "media" && Boolean(media) && (playback?.playing ?? (hasMediaAudio ? isMediaAudioPlaying : isMediaVideoPlaying))}
+                loop={Boolean(media) && (playback?.looping ?? (hasMediaAudio ? isMediaAudioLooping : isMediaVideoLooping))}
+                audioEnabled={presentationMode === "media" && Boolean(media) && chrome && showSlide && (isLive || !liveAudioActive)}
+                muted={!chrome}
+                audioOwner={isLive ? "live" : "preview"}
+                outputProgress={audioProgress}
+                audioPeaks={audioPeaks}
+                audioMinPeaks={audioMinPeaks}
+                audioMaxPeaks={audioMaxPeaks}
+                audioDuration={audioDuration}
+                audioLoading={audioLoading}
+                audioError={audioError}
                 onVideoElementChange={updateMediaVideoElement}
+                onAudioElementChange={updateMediaAudioElement}
+                onPlaybackChange={updateMediaAudioPlayback}
+                onSeek={onSeek}
+                onAudioProgress={updateAudioProgress}
+                onForegroundReady={handleForegroundReady}
+                retain={presentationMode === "media" || outgoingPresentationMode === "media"}
               />
+            </div>
+            {templatesInitialized && slide && showSlide && !media && !activeProjectionScene ? (
+              <div data-projector-template-fallback="" style={{ position: "absolute", inset: 0, zIndex: 4, display: "grid", placeItems: "center", padding: "8%", color: "#fff", background: "#000", textAlign: "center", fontFamily: "Inter, system-ui, sans-serif" }}>
+                <div><div style={{ fontSize: 54, fontWeight: 700, lineHeight: 1.2, whiteSpace: "pre-wrap" }}>{slide.text}</div><div style={{ marginTop: 28, fontSize: 27 }}>{referenceLabel(slide)}</div></div>
+              </div>
             ) : null}
             </OneShotTransition>
             {activeOverlay ? (
               <div
                 data-projector-overlays=""
                 aria-hidden={isClearOverride}
-                style={{ position: "absolute", inset: 0, opacity: isClearOverride ? 0 : 1, transition: `opacity ${(transitions?.clear?.durationMs ?? 350) / 1000}s ${cssEasingFor(transitions?.clear?.easing)}`, pointerEvents: "none" }}
+                style={{ position: "absolute", inset: 0, opacity: isClearOverride ? 0 : 1, transition: fadeTransition(getTransitionSetting(transitions, "clear")), pointerEvents: "none" }}
               >
                 <OverlayVisual key={activeOverlay.definition.id} overlay={activeOverlay.definition} startedAt={activeOverlay.startedAt} />
               </div>
@@ -1302,7 +1693,7 @@ export function ProjectorView({ title, slide, media = null, overlays = [], feedO
               zIndex: 1,
               background: "rgb(0, 0, 0)",
               opacity: isBlackOverride ? 1 : 0,
-              transition: `opacity ${(transitions?.black?.durationMs ?? 350) / 1000}s ${cssEasingFor(transitions?.black?.easing)}`,
+              transition: fadeTransition(getTransitionSetting(transitions, "black")),
               pointerEvents: "none",
             }}
           />
@@ -1317,7 +1708,7 @@ export function ProjectorView({ title, slide, media = null, overlays = [], feedO
               alignItems: "center",
               justifyContent: "center",
               opacity: isLogoOverride ? 1 : 0,
-              transition: `opacity ${(transitions?.logo?.durationMs ?? 350) / 1000}s ${cssEasingFor(transitions?.logo?.easing)}`,
+              transition: fadeTransition(getTransitionSetting(transitions, "logo")),
               pointerEvents: "none",
             }}
           >
@@ -1363,14 +1754,38 @@ export function ProjectorView({ title, slide, media = null, overlays = [], feedO
         <button
           type="button"
           onClick={() => {
+            if (previewAudioBlocked) return;
             if (hasCameraPreview) setIsCameraPreviewPaused((current) => !current);
+            else if (hasMediaAudio) {
+              if (controlPlaying) {
+                pauseSharedAudioPlayback(isLive ? "live" : "preview");
+                updateMediaAudioPlayback({ playing: false });
+              } else {
+                const settings = media?.audioSettings;
+                void startSharedAudioPlayback(mediaSource, {
+                  volume: settings?.volume ?? 1,
+                  trimStart: settings?.trimStart ?? 0,
+                  trimEnd: settings?.trimEnd ?? null,
+                  loop: controlLooping,
+                }, isLive ? "live" : "preview").then((started) => {
+                  if (!started) return;
+                  if (isLive && media) useProjectorStore.getState().setLiveAudioPlaybackError(media.path, null);
+                  updateMediaAudioPlayback({ playing: true });
+                }).catch((error: unknown) => {
+                  const message = audioPlaybackErrorMessage(error, getSharedAudioElement());
+                  console.warn(`[ProjectorView] audio playback was blocked for ${media?.name ?? title}: ${message}`, error);
+                  if (isLive && media) useProjectorStore.getState().setLiveAudioPlaybackError(media.path, message);
+                  updateMediaAudioPlayback({ playing: false });
+                });
+              }
+            }
             else if (onPlaybackChange) onPlaybackChange({ playing: !controlPlaying });
             else setControlVideoPlaying((current) => !current);
           }}
-          disabled={!hasVideoControl && !hasCameraPreview}
-          aria-label={hasCameraPreview ? `${isCameraPreviewPaused ? "Resume" : "Pause"} ${title} camera` : controlPlaying ? `Pause ${title} video` : `Play ${title} video`}
-          title={hasCameraPreview ? (isCameraPreviewPaused ? "Resume camera preview" : "Pause camera preview") : controlPlaying ? "Pause video" : "Play video"}
-          style={{ width: "24px", height: "22px", border: "none", borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", color: "var(--fg-base)", cursor: hasVideoControl || hasCameraPreview ? "pointer" : "not-allowed", opacity: hasVideoControl || hasCameraPreview ? 1 : 0.42, fontSize: "12px", lineHeight: 1 }}
+          disabled={previewAudioBlocked || (!hasPlaybackControl && !hasCameraPreview)}
+          aria-label={hasCameraPreview ? `${isCameraPreviewPaused ? "Resume" : "Pause"} ${title} camera` : controlPlaying ? `Pause ${title} ${controlMediaName}` : `Play ${title} ${controlMediaName}`}
+          title={previewAudioBlocked ? "Live audio has priority" : hasCameraPreview ? (isCameraPreviewPaused ? "Resume camera preview" : "Pause camera preview") : controlPlaying ? `Pause ${controlMediaName}` : `Play ${controlMediaName}`}
+          style={{ width: "24px", height: "22px", border: "none", borderRadius: "var(--radius-sm)", background: "var(--bg-elevated)", color: "var(--fg-base)", cursor: !previewAudioBlocked && (hasPlaybackControl || hasCameraPreview) ? "pointer" : "not-allowed", opacity: !previewAudioBlocked && (hasPlaybackControl || hasCameraPreview) ? 1 : 0.42, fontSize: "12px", lineHeight: 1 }}
         >
           {(hasCameraPreview ? !isCameraPreviewPaused : controlPlaying) ? "Ⅱ" : "▶"}
         </button>
@@ -1380,25 +1795,26 @@ export function ProjectorView({ title, slide, media = null, overlays = [], feedO
           max={videoDuration || 1}
           step="0.01"
           value={Math.min(videoProgress, videoDuration || 1)}
-          disabled={!hasVideoControl || videoDuration <= 0}
+          disabled={previewAudioBlocked || !hasPlaybackControl || videoDuration <= 0}
           onChange={(event) => {
+            if (previewAudioBlocked) return;
             const time = Number(event.target.value);
             const video = controlVideoRef.current;
             if (video && Number.isFinite(time)) video.currentTime = time;
             setVideoProgress(time);
             onSeek?.(time);
           }}
-          aria-label={`${title} video progress`}
-          style={{ flex: 1, minWidth: 0, accentColor: "var(--color-primary)", cursor: hasVideoControl ? "pointer" : "not-allowed", opacity: hasVideoControl ? 1 : 0.42 }}
+          aria-label={`${title} ${controlMediaName} progress`}
+          style={{ flex: 1, minWidth: 0, accentColor: "var(--color-primary)", cursor: hasPlaybackControl && !previewAudioBlocked ? "pointer" : "not-allowed", opacity: hasPlaybackControl && !previewAudioBlocked ? 1 : 0.42 }}
         />}
         <button
           type="button"
           onClick={() => onPlaybackChange ? onPlaybackChange({ looping: !controlLooping }) : setControlVideoLooping((current) => !current)}
-          disabled={!hasVideoControl || hasCameraPreview}
+          disabled={previewAudioBlocked || !hasPlaybackControl || hasCameraPreview}
           aria-pressed={controlLooping}
-          aria-label={`${controlLooping ? "Disable" : "Enable"} loop for ${title} video`}
+          aria-label={`${controlLooping ? "Disable" : "Enable"} loop for ${title} ${controlMediaName}`}
           title={controlLooping ? "Loop on" : "Loop off"}
-          style={{ width: "24px", height: "22px", border: "none", borderRadius: "var(--radius-sm)", background: controlLooping ? "var(--color-primary-muted)" : "var(--bg-elevated)", color: controlLooping ? "var(--color-primary)" : "var(--fg-muted)", cursor: hasVideoControl ? "pointer" : "not-allowed", opacity: hasVideoControl ? 1 : 0.42, fontSize: "15px", lineHeight: 1 }}
+          style={{ width: "24px", height: "22px", border: "none", borderRadius: "var(--radius-sm)", background: controlLooping ? "var(--color-primary-muted)" : "var(--bg-elevated)", color: controlLooping ? "var(--color-primary)" : "var(--fg-muted)", cursor: hasPlaybackControl ? "pointer" : "not-allowed", opacity: hasPlaybackControl ? 1 : 0.42, fontSize: "15px", lineHeight: 1 }}
         >
           ↻
         </button>

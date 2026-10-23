@@ -7,625 +7,19 @@
  * events are used here only for what Fabric itself owns (selection); object
  * creation and mutation are plain imperative calls, not event-driven.
  */
-import { useEffect, useImperativeHandle, useRef, useState, type CSSProperties, type Ref } from "react";
-import { ActiveSelection, Canvas, Control, Ellipse, FabricImage, FabricObject, Group, Line, Pattern, Polygon, Rect, Textbox, Triangle, controlsUtils } from "fabric";
-
-import { STUDIO_ACCENT_COLOR, createStudioCanvas } from "../../lib/fabricDefaults";
-import type { StudioBackgroundMode, StudioDocument, StudioFabricObjectData } from "../../types/studioDocument";
+import { useEffect, useImperativeHandle, useRef, useState, type CSSProperties } from "react";
+import { ActiveSelection, Canvas, FabricImage, FabricObject, Group, Pattern, Polygon, Rect, Textbox } from "fabric";
+import { createStudioCanvas } from "../../lib/fabricDefaults";
 import { CameraViewport } from "../CameraViewport";
 import { ResilientVideo } from "../ResilientVideo";
-import { managedVideoUrl } from "../../lib/videoImport";
-import type { TemplateBackgroundMedia } from "../../types/templates";
+import { type TemplateBackgroundMedia } from "../../types/templates";
 import { CameraFrameControls } from "./CameraFrameControls";
-import type { CameraEditMode } from "../../lib/cameraFrame";
-
-export type StudioShapeKind = "rectangle" | "square" | "circle" | "triangle" | "line" | "arrow" | "polygon" | "star";
-
-export interface StudioCanvasHandle {
-  addText: (box: { x: number; y: number; width: number; height: number }) => void;
-  addShape: (kind: StudioShapeKind, box: { x: number; y: number; width: number; height: number }) => void;
-  addImage: (source: string, name?: string, mediaType?: "image" | "video") => Promise<void>;
-  setShapeMedia: (studioId: string, source: string | null, name?: string, mediaType?: "image" | "video") => Promise<void>;
-  copySelection: () => Promise<boolean>;
-  pasteSelection: () => Promise<boolean>;
-  groupSelection: () => boolean;
-  ungroupSelection: () => boolean;
-  deleteSelection: () => void;
-  selectById: (studioId: string) => void;
-  setVisible: (studioId: string, visible: boolean) => void;
-  setLocked: (studioId: string, locked: boolean) => void;
-  toDocument: () => StudioDocument;
-  getCanvas: () => Canvas | null;
-  undo: () => Promise<void>;
-  redo: () => Promise<void>;
-  setBackground: (background: string) => void;
-  setBackgroundConfig: (config: { mode: StudioBackgroundMode; color?: string; gradientStart?: string; gradientEnd?: string; gradientAngle?: number; gradientStyle?: StudioDocument["backgroundGradientStyle"]; backgroundBlur?: number; media?: StudioDocument["backgroundMedia"] }) => void;
-  updateObject: (studioId: string, props: Record<string, unknown>) => void;
-  reorderObject: (studioId: string, direction: "front" | "forward" | "backward" | "back") => void;
-}
-
-export interface StudioTextSelection {
-  studioId: string;
-  start: number;
-  end: number;
-  /** Only properties with one effective value across the range are included. */
-  styles: Record<string, unknown>;
-}
-
-interface FabricStudioCanvasProps {
-  document: StudioDocument;
-  cameraEditMode?: CameraEditMode;
-  onSelectionChange: (studioIds: string[]) => void;
-  onTextSelectionChange: (selection: StudioTextSelection | null) => void;
-  onDocumentChange: (patch: Partial<Pick<StudioDocument, "objects" | "background" | "backgroundMode" | "backgroundColor" | "backgroundGradientStart" | "backgroundGradientEnd" | "backgroundGradientAngle" | "backgroundGradientStyle" | "backgroundBlur" | "backgroundMedia" | "updatedAt">>) => void;
-  onHistoryChange: (history: { canUndo: boolean; canRedo: boolean }) => void;
-  handleRef?: Ref<StudioCanvasHandle>;
-}
-
-interface StudioCanvasSnapshot {
-  objects: StudioFabricObjectData[];
-  background: string;
-  backgroundMode?: StudioBackgroundMode;
-  backgroundMedia?: TemplateBackgroundMedia | null;
-}
-
-// Fabric's Pattern serializer includes the complete image data URI in `fill`.
-// Media shapes already keep their source in studioShapeFillMediaSource, so a
-// tiny placeholder is enough for the serialized Fabric fill. This keeps history
-// and save operations from copying the same image payload twice.
-const STUDIO_MEDIA_PATTERN_PLACEHOLDER = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAwUBAQJk7uUAAAAASUVORK5CYII=";
-
-function compactSnapshotObject(object: StudioFabricObjectData): StudioFabricObjectData {
-  const fill = object.fill;
-  if (!object.studioShapeFillMediaSource || !fill || typeof fill !== "object" || (fill as Record<string, unknown>).type !== "pattern") {
-    return object;
-  }
-  return {
-    ...object,
-    fill: {
-      ...(fill as Record<string, unknown>),
-      source: STUDIO_MEDIA_PATTERN_PLACEHOLDER,
-    },
-  };
-}
-
-function canvasSnapshot(canvas: Canvas, document: StudioDocument): StudioCanvasSnapshot {
-  const exported = canvas.toObject();
-  return {
-    objects: (exported.objects as StudioFabricObjectData[]).map(compactSnapshotObject),
-    background: typeof exported.background === "string" ? exported.background : "",
-    backgroundMode: document.backgroundMode,
-    backgroundMedia: document.backgroundMedia,
-  };
-}
-
-function snapshotsEqual(left: StudioCanvasSnapshot, right: StudioCanvasSnapshot): boolean {
-  // Do not stringify media sources or Fabric pattern payloads just to decide
-  // whether an edit created a history entry. Compare a compact projection with
-  // a short source signature so replacing media still creates an undo point.
-  const sourceSignature = (source: unknown) => {
-    if (typeof source !== "string") return source;
-    if (source.length <= 160) return source;
-    return `${source.length}:${source.slice(0, 64)}:${source.slice(-64)}`;
-  };
-  const compact = (snapshot: StudioCanvasSnapshot) => snapshot.objects.map((object) => {
-    const rest = { ...object };
-    if ("studioShapeFillMediaSource" in rest) {
-      rest.studioShapeFillMediaSource = sourceSignature(rest.studioShapeFillMediaSource);
-    }
-    const fill = rest.fill;
-    const compactFill = fill && typeof fill === "object"
-      ? { ...(fill as Record<string, unknown>), source: undefined }
-      : fill;
-    return { ...rest, fill: compactFill };
-  });
-  const media = (snapshot: StudioCanvasSnapshot) => snapshot.backgroundMedia
-    ? { ...snapshot.backgroundMedia, src: sourceSignature(snapshot.backgroundMedia.src) }
-    : null;
-  return left.background === right.background
-    && left.backgroundMode === right.backgroundMode
-    && JSON.stringify(media(left)) === JSON.stringify(media(right))
-    && JSON.stringify(compact(left)) === JSON.stringify(compact(right));
-}
-
-let studioObjectSequence = 0;
-function nextStudioId(prefix: string): string {
-  studioObjectSequence += 1;
-  return `${prefix}-${Date.now()}-${studioObjectSequence}`;
-}
-
-function nextStudioName(canvas: Canvas, label: string): string {
-  const count = canvas.getObjects().filter((object) => object.studioName?.startsWith(label)).length;
-  return `${label} ${count + 1}`;
-}
-
-function findByStudioId(canvas: Canvas, studioId: string): FabricObject | undefined {
-  return canvas.getObjects().find((object) => object.studioId === studioId);
-}
-
-type ShapeFillFit = "cover" | "contain" | "tile";
-
-function isShapeObject(object: FabricObject): boolean {
-  return ["rectangle", "square", "circle", "triangle", "line", "arrow", "polygon", "star"].includes(String(object.studioShapeKind))
-    || ["rect", "ellipse", "triangle", "line", "polygon"].includes(String(object.type).toLowerCase());
-}
-
-function sourceDimensions(source: CanvasImageSource): { width: number; height: number } {
-  if (source instanceof HTMLImageElement) {
-    return { width: source.naturalWidth || source.width, height: source.naturalHeight || source.height };
-  }
-  if (source instanceof HTMLVideoElement) {
-    return { width: source.videoWidth || source.width, height: source.videoHeight || source.height };
-  }
-  const drawable = source as CanvasImageSource & { width?: number; height?: number };
-  return { width: drawable.width ?? 1, height: drawable.height ?? 1 };
-}
-
-function dataUriToBlob(dataUri: string): Blob | null {
-  const commaIndex = dataUri.indexOf(",");
-  if (commaIndex < 0) return null;
-  const header = dataUri.slice(5, commaIndex);
-  const payload = dataUri.slice(commaIndex + 1);
-  const mime = header.replace(/;base64$/i, "").split(";")[0] || "video/mp4";
-  try {
-    if (/;base64$/i.test(header)) {
-      const binary = atob(payload);
-      const bytes = new Uint8Array(binary.length);
-      for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-      return new Blob([bytes], { type: mime });
-    }
-    return new Blob([decodeURIComponent(payload)], { type: mime });
-  } catch {
-    return null;
-  }
-}
-
-async function videoFrameSource(source: string): Promise<string | null> {
-  const video = document.createElement("video");
-  video.muted = true;
-  video.crossOrigin = "anonymous";
-  video.playsInline = true;
-  video.preload = "auto";
-  const objectUrl = source.startsWith("data:") ? (() => {
-    const blob = dataUriToBlob(source);
-    return blob ? URL.createObjectURL(blob) : null;
-  })() : null;
-  try {
-    video.src = objectUrl ?? managedVideoUrl(source) ?? source;
-    // Some codecs never fire "loadeddata" or "error" in this webview (they just
-    // stall), which would otherwise hang this await forever with nothing to catch.
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("Timed out loading the video.")), 4000);
-      const settle = (run: () => void) => { clearTimeout(timer); run(); };
-      video.addEventListener("loadeddata", () => settle(resolve), { once: true });
-      video.addEventListener("error", () => settle(() => reject(new Error("The video could not be loaded."))), { once: true });
-      video.load();
-    });
-    const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth || 1;
-    canvas.height = video.videoHeight || 1;
-    const context = canvas.getContext("2d");
-    if (!context) return null;
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL("image/png");
-  } catch {
-    // Some codecs cannot be decoded by the editor webview even though the
-    // projector's resilient video path can normalize and play them. Keep the
-    // original source and use a neutral editor preview in that case.
-    return null;
-  } finally {
-    if (objectUrl) URL.revokeObjectURL(objectUrl);
-  }
-}
-
-function shapeMediaFallbackPreview(color: string): HTMLCanvasElement {
-  const canvas = document.createElement("canvas");
-  canvas.width = 2;
-  canvas.height = 2;
-  const context = canvas.getContext("2d");
-  if (context) {
-    context.fillStyle = color;
-    context.fillRect(0, 0, canvas.width, canvas.height);
-  }
-  return canvas;
-}
-
-function shapeMediaPattern(object: FabricObject, source: CanvasImageSource, fit: ShapeFillFit, scalePercent: number, offsetXPercent: number, offsetYPercent: number): Pattern {
-  const sourceSize = sourceDimensions(source);
-  const shapeWidth = Math.max(1, object.width);
-  const shapeHeight = Math.max(1, object.height);
-  const sourceWidth = Math.max(1, sourceSize.width);
-  const sourceHeight = Math.max(1, sourceSize.height);
-  const fitScale = fit === "tile" ? 1 : fit === "contain"
-    ? Math.min(shapeWidth / sourceWidth, shapeHeight / sourceHeight)
-    : Math.max(shapeWidth / sourceWidth, shapeHeight / sourceHeight);
-  const scale = fitScale * Math.max(0.1, scalePercent / 100);
-  const renderedWidth = sourceWidth * scale;
-  const renderedHeight = sourceHeight * scale;
-  const offsetX = (shapeWidth - renderedWidth) / 2 + (offsetXPercent / 100) * shapeWidth;
-  const offsetY = (shapeHeight - renderedHeight) / 2 + (offsetYPercent / 100) * shapeHeight;
-
-  return new Pattern({
-    source,
-    repeat: fit === "tile" ? "repeat" : "no-repeat",
-    patternTransform: [scale, 0, 0, scale, offsetX, offsetY],
-  });
-}
-
-function refreshShapeMediaPattern(object: FabricObject): void {
-  if (!isShapeObject(object) || !(object.fill instanceof Pattern)) return;
-  object.set("fill", shapeMediaPattern(
-    object,
-    object.fill.source,
-    object.studioShapeFillFit ?? "cover",
-    object.studioShapeFillScale ?? 100,
-    object.studioShapeFillX ?? 0,
-    object.studioShapeFillY ?? 0,
-  ));
-}
-
-function shapeMediaVideo(source: string): HTMLVideoElement {
-  const video = document.createElement("video");
-  video.crossOrigin = "anonymous";
-  video.src = managedVideoUrl(source) ?? source;
-  video.muted = true;
-  video.loop = true;
-  video.playsInline = true;
-  video.autoplay = true;
-  video.preload = "auto";
-  return video;
-}
-
-function attachShapeMediaVideo(canvas: Canvas, object: FabricObject, source: string, videos: Map<string, HTMLVideoElement>, onReady: () => void) {
-  if (!object.studioId) return;
-  const video = shapeMediaVideo(source);
-  videos.set(object.studioId, video);
-  video.addEventListener("loadeddata", () => {
-    if (!isShapeObject(object)) return;
-    object.set("fill", shapeMediaPattern(object, video, object.studioShapeFillFit ?? "cover", object.studioShapeFillScale ?? 100, object.studioShapeFillX ?? 0, object.studioShapeFillY ?? 0));
-    void video.play().catch(() => undefined);
-    canvas.requestRenderAll();
-    onReady();
-  }, { once: true });
-  video.addEventListener("timeupdate", () => canvas.requestRenderAll());
-  video.load();
-}
-
-async function attachShapeMediaImage(canvas: Canvas, object: FabricObject, source: string): Promise<void> {
-  try {
-    const image = await FabricImage.fromURL(source);
-    if (!isShapeObject(object) || !canvas.getObjects().includes(object)) return;
-    object.set("fill", shapeMediaPattern(
-      object,
-      image.getElement(),
-      object.studioShapeFillFit ?? "cover",
-      object.studioShapeFillScale ?? 100,
-      object.studioShapeFillX ?? 0,
-      object.studioShapeFillY ?? 0,
-    ));
-    canvas.requestRenderAll();
-  } catch {
-    // The compact placeholder remains visible when a persisted image cannot
-    // be decoded. The source metadata is kept so it can be retried later.
-  }
-}
-
-async function hydrateShapeMedia(canvas: Canvas, videos: Map<string, HTMLVideoElement>, onReady: () => void): Promise<void> {
-  await Promise.all(canvas.getObjects().map(async (object) => {
-    const source = object.studioShapeFillMediaSource;
-    if (typeof source !== "string" || !source) return;
-    if (object.studioShapeFillMediaType === "video") {
-      attachShapeMediaVideo(canvas, object, source, videos, onReady);
-      return;
-    }
-    await attachShapeMediaImage(canvas, object, source);
-    onReady();
-  }));
-}
-
-function radialPoints(pointCount: number, outerRadius: number, innerRadius = outerRadius, rotation = -Math.PI / 2) {
-  return Array.from({ length: pointCount }, (_, index) => {
-    const angle = rotation + index * Math.PI * 2 / pointCount;
-    const radius = index % 2 === 0 ? outerRadius : innerRadius;
-    return { x: outerRadius + Math.cos(angle) * radius, y: outerRadius + Math.sin(angle) * radius };
-  });
-}
-
-function shapeFactory(kind: StudioShapeKind, width: number, height: number): FabricObject {
-  const common = { width, height, fill: "#101319", stroke: STUDIO_ACCENT_COLOR, strokeWidth: 1 };
-  const shape = kind === "circle"
-    ? new Ellipse({ ...common, rx: width / 2, ry: height / 2 })
-    : kind === "triangle"
-      ? new Triangle(common)
-      : kind === "line"
-        ? new Line([0, 0, width, height], { ...common, fill: "", strokeLineCap: "round" })
-        : kind === "arrow"
-          ? new Polygon([{ x: 0, y: height * 0.35 }, { x: width * 0.72, y: height * 0.35 }, { x: width * 0.72, y: 0 }, { x: width, y: height / 2 }, { x: width * 0.72, y: height }, { x: width * 0.72, y: height * 0.65 }, { x: 0, y: height * 0.65 }], common)
-          : kind === "polygon"
-            ? new Polygon(radialPoints(6, Math.min(width, height) / 2), common)
-            : kind === "star"
-              ? new Polygon(radialPoints(10, Math.min(width, height) / 2, Math.min(width, height) * 0.22), common)
-              : new Rect({ ...common, rx: 8, ry: 8 });
-  shape.studioShapeKind = kind;
-  if (kind === "polygon") shape.polygonSides = 6;
-  if (kind === "star") {
-    shape.starPoints = 5;
-    shape.starInnerRadius = 0.44;
-  }
-  return shape;
-}
-
-function createStudioTextboxControls() {
-  const controls = Textbox.createControls().controls;
-  // Fabric's regular corner controls change scaleX/scaleY, which scales the
-  // glyphs. Textboxes use dimension controls instead: width changes wrapping,
-  // height changes the box, and the text keeps its original font metrics.
-  delete controls.tl;
-  delete controls.tr;
-  delete controls.bl;
-  delete controls.br;
-  controls.mt = new Control({ x: 0, y: -0.5, actionHandler: controlsUtils.changeHeight });
-  controls.mb = new Control({ x: 0, y: 0.5, actionHandler: controlsUtils.changeHeight });
-  return controls;
-}
-
-function configureStudioTextbox(textbox: Textbox, boxHeight?: number): void {
-  textbox.controls = createStudioTextboxControls();
-  const width = textbox.width * textbox.scaleX;
-  const height = (boxHeight ?? textbox.height) * textbox.scaleY;
-  // Normalize any legacy/scaled textbox to dimensions. This preserves the
-  // visible box size while ensuring future resizing cannot distort the text.
-  textbox.set({ width, scaleX: 1, scaleY: 1 });
-  textbox.set({ lockScalingX: true, lockScalingY: true });
-  if (Number.isFinite(height)) {
-    textbox.studioBoxHeight = Math.max(1, height);
-    textbox.initDimensions();
-  }
-}
-
-type StudioAutoSize = "None" | "Grow to fit" | "Shrink to fit";
-type StudioScript = "none" | "superscript" | "subscript";
-type StudioTextCase = "none" | "uppercase" | "lowercase" | "sentence" | "title";
-type TextRange = { start: number; end: number };
-
-const SCRIPT_SCHEMAS: Record<Exclude<StudioScript, "none">, { size: number; baseline: number }> = {
-  superscript: { size: 0.6, baseline: -0.35 },
-  subscript: { size: 0.6, baseline: 0.11 },
-};
-
-function normalizeStudioScript(value: unknown): StudioScript {
-  return value === "superscript" || value === "subscript" ? value : "none";
-}
-
-function normalizeStudioTextCase(value: unknown): StudioTextCase {
-  return value === "uppercase" || value === "lowercase" || value === "sentence" || value === "title" ? value : "none";
-}
-
-function applyTextCase(text: string, mode: StudioTextCase): string {
-  if (mode === "uppercase") return text.toLocaleUpperCase();
-  if (mode === "lowercase") return text.toLocaleLowerCase();
-  const lower = text.toLocaleLowerCase();
-  if (mode === "title") return lower.replace(/(^|[\s\-_])([\p{L}\p{N}])/gu, (_match, prefix: string, character: string) => `${prefix}${character.toLocaleUpperCase()}`);
-  if (mode !== "sentence") return text;
-
-  let capitalizeNext = true;
-  return Array.from(lower, (character) => {
-    if (/[^\p{L}\p{N}]/u.test(character)) {
-      if (/[.!?]/u.test(character)) capitalizeNext = true;
-      return character;
-    }
-    if (!capitalizeNext) return character;
-    capitalizeNext = false;
-    return character.toLocaleUpperCase();
-  }).join("");
-}
-
-function scriptRange(textbox: Textbox): TextRange {
-  return { start: 0, end: textbox.text.length };
-}
-
-function applyTextScript(textbox: Textbox, mode: StudioScript, range: TextRange): void {
-  const start = Math.max(0, Math.min(range.start, textbox.text.length));
-  const end = Math.max(start, Math.min(range.end, textbox.text.length));
-  const schema = mode === "none" ? null : SCRIPT_SCHEMAS[mode];
-
-  for (let index = start; index < end; index += 1) {
-    const style = textbox.getSelectionStyles(index, index + 1, true)[0] as Record<string, unknown> | undefined;
-    const currentMode = normalizeStudioScript(style?.studioScript);
-    if (currentMode === mode) continue;
-
-    const currentFontSize = Number(style?.fontSize ?? textbox.fontSize);
-    const currentDeltaY = Number(style?.deltaY ?? 0);
-    let baseFontSize = Number(style?.studioScriptBaseFontSize);
-    let baseDeltaY = Number(style?.studioScriptBaseDeltaY);
-
-    if (!Number.isFinite(baseFontSize) || baseFontSize <= 0) {
-      baseFontSize = currentMode === "none" ? currentFontSize : currentFontSize / SCRIPT_SCHEMAS[currentMode].size;
-    }
-    if (!Number.isFinite(baseDeltaY)) {
-      baseDeltaY = currentMode === "none"
-        ? currentDeltaY
-        : currentDeltaY - baseFontSize * SCRIPT_SCHEMAS[currentMode].baseline;
-    }
-
-    if (!schema) {
-      textbox.setSelectionStyles({
-        fontSize: baseFontSize,
-        deltaY: baseDeltaY,
-        studioScript: "none",
-        studioScriptBaseFontSize: null,
-        studioScriptBaseDeltaY: null,
-      }, index, index + 1);
-    } else {
-      textbox.setSelectionStyles({
-        fontSize: baseFontSize * schema.size,
-        deltaY: baseDeltaY + baseFontSize * schema.baseline,
-        studioScript: mode,
-        studioScriptBaseFontSize: baseFontSize,
-        studioScriptBaseDeltaY: baseDeltaY,
-      }, index, index + 1);
-    }
-  }
-}
-
-function updateScriptFontSize(textbox: Textbox, range: TextRange, fontSize: number): void {
-  if (!Number.isFinite(fontSize) || fontSize <= 0) return;
-  const start = Math.max(0, Math.min(range.start, textbox.text.length));
-  const end = Math.max(start, Math.min(range.end, textbox.text.length));
-  for (let index = start; index < end; index += 1) {
-    const style = textbox.getSelectionStyles(index, index + 1, true)[0] as Record<string, unknown> | undefined;
-    const mode = normalizeStudioScript(style?.studioScript);
-    if (mode === "none") continue;
-    textbox.setSelectionStyles({
-      fontSize,
-      studioScriptBaseFontSize: fontSize / SCRIPT_SCHEMAS[mode].size,
-    }, index, index + 1);
-  }
-}
-
-function textRangeBounds(textbox: Textbox, range: TextRange): { width: number; height: number } {
-  const start = Math.max(0, Math.min(range.start, textbox.text.length));
-  const end = Math.max(start, Math.min(range.end, textbox.text.length));
-  if (end <= start) return { width: 0, height: 0 };
-
-  if (start === 0 && end >= textbox.text.length) {
-    let height = 0;
-    let width = 0;
-    textbox._textLines.forEach((_line, lineIndex) => {
-      width = Math.max(width, textbox.getLineWidth(lineIndex));
-      height += textbox.getHeightOfLine(lineIndex);
-    });
-    return { width, height };
-  }
-
-  const first = textbox.get2DCursorLocation(start);
-  const last = textbox.get2DCursorLocation(end - 1);
-  const charBounds = textbox.__charBounds;
-  let top = 0;
-  let firstTop = 0;
-  let left = Number.POSITIVE_INFINITY;
-  let right = 0;
-  let bottom = 0;
-
-  for (let lineIndex = 0; lineIndex < textbox._textLines.length; lineIndex += 1) {
-    const line = textbox._textLines[lineIndex];
-    const lineStart = lineIndex === first.lineIndex ? first.charIndex : 0;
-    const lineEnd = lineIndex === last.lineIndex ? Math.min(last.charIndex + 1, line.length) : line.length;
-    if (lineIndex === first.lineIndex) firstTop = top;
-    if (lineIndex >= first.lineIndex && lineIndex <= last.lineIndex && lineEnd > lineStart) {
-      const bounds = charBounds[lineIndex];
-      const firstChar = bounds?.[lineStart];
-      const lastChar = bounds?.[lineEnd - 1];
-      if (firstChar && lastChar) {
-        left = Math.min(left, firstChar.left);
-        right = Math.max(right, lastChar.left + lastChar.width);
-        bottom = Math.max(bottom, top + textbox.getHeightOfLine(lineIndex));
-      }
-    }
-    top += textbox.getHeightOfLine(lineIndex);
-  }
-
-  return {
-    width: Number.isFinite(left) ? Math.max(0, right - left) : 0,
-    height: Math.max(0, bottom - firstTop),
-  };
-}
-
-function scaleTextRange(textbox: Textbox, range: TextRange, factor: number): void {
-  const start = Math.max(0, Math.min(range.start, textbox.text.length));
-  const end = Math.max(start, Math.min(range.end, textbox.text.length));
-  for (let index = start; index < end; index += 1) {
-    const style = textbox.getSelectionStyles(index, index + 1, true)[0] as Record<string, unknown> | undefined;
-    const fontSize = Number(style?.fontSize ?? textbox.fontSize);
-    if (!Number.isFinite(fontSize)) continue;
-    const nextFontSize = Math.max(6, Math.min(512, Math.round(fontSize * factor * 100) / 100));
-    const mode = normalizeStudioScript(style?.studioScript);
-    textbox.setSelectionStyles({
-      fontSize: nextFontSize,
-      ...(mode !== "none" ? { studioScriptBaseFontSize: nextFontSize / SCRIPT_SCHEMAS[mode].size } : {}),
-    }, index, index + 1);
-  }
-}
-
-function applyAutoSize(textbox: Textbox, mode: StudioAutoSize, range: TextRange): void {
-  if (mode === "None" || !textbox.text || range.end <= range.start) return;
-  const fullText = range.start === 0 && range.end >= textbox.text.length;
-  const targetWidth = Math.max(1, textbox.width);
-  const targetHeight = Math.max(1, textbox.studioBoxHeight ?? textbox.height);
-
-  // Recalculate after every pass because changing font size can change line
-  // wrapping, which changes the amount of space the text needs.
-  for (let pass = 0; pass < 5; pass += 1) {
-    textbox.initDimensions();
-    const bounds = textRangeBounds(textbox, range);
-    if (bounds.width <= 0 || bounds.height <= 0) return;
-    const widthFactor = targetWidth / bounds.width;
-    const heightFactor = targetHeight / bounds.height;
-    const factor = mode === "Grow to fit"
-      ? Math.min(widthFactor, heightFactor)
-      : Math.min(1, widthFactor, heightFactor);
-    if (!Number.isFinite(factor) || Math.abs(factor - 1) < 0.01) return;
-
-    if (fullText) {
-      const styles = textbox.getSelectionStyles(0, textbox.text.length, true);
-      const fontSizes = styles.map((style) => Number(style.fontSize ?? textbox.fontSize));
-      const firstFontSize = fontSizes[0] ?? textbox.fontSize;
-      const uniformFontSize = fontSizes.length > 0
-        && fontSizes.every((size) => Number.isFinite(size) && Math.abs(size - firstFontSize) < 0.01);
-      if (uniformFontSize) {
-        textbox.cleanStyle("fontSize");
-        textbox.set({ fontSize: Math.max(6, Math.min(512, Math.round(firstFontSize * factor * 100) / 100)) });
-      } else {
-        scaleTextRange(textbox, range, factor);
-      }
-    } else {
-      scaleTextRange(textbox, range, factor);
-    }
-    textbox.dirty = true;
-  }
-  textbox.initDimensions();
-  textbox.dirty = true;
-}
-
-// These are Fabric's character-level text properties. Properties such as
-// textAlign and verticalAlign belong to the textbox as a whole because they
-// describe the paragraph/container, not individual characters.
-const TEXT_SELECTION_STYLE_KEYS = new Set([
-  "fill",
-  "stroke",
-  "strokeWidth",
-  "fontSize",
-  "fontFamily",
-  "fontWeight",
-  "fontStyle",
-  "underline",
-  "overline",
-  "linethrough",
-  "textDecorationThickness",
-  "textDecorationColor",
-  "textBackgroundColor",
-]);
-
-function selectionStylesFrom(props: Record<string, unknown>): Record<string, unknown> {
-  const styles: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(props)) {
-    // The inspector calls this field backgroundColor, while Fabric's
-    // character-level equivalent is textBackgroundColor.
-    const styleKey = key === "backgroundColor" ? "textBackgroundColor" : key;
-    if (TEXT_SELECTION_STYLE_KEYS.has(styleKey)) styles[styleKey] = value;
-  }
-  return styles;
-}
-
-function selectionStyleSummary(textbox: Textbox, start: number, end: number): Record<string, unknown> {
-  const styles = textbox.getSelectionStyles(start, end, true);
-  if (styles.length === 0) return {};
-  const keys = ["fill", "stroke", "strokeWidth", "fontSize", "fontFamily", "fontWeight", "fontStyle", "underline", "overline", "linethrough", "studioScript", "textBackgroundColor"];
-  return Object.fromEntries(keys.flatMap((key) => {
-    const first = styles[0][key as keyof typeof styles[number]];
-    return styles.every((style) => style[key as keyof typeof style] === first) ? [[key, first]] : [];
-  }));
-}
+import { type FabricStudioCanvasProps, type StudioCanvasSnapshot } from "./studioCanvas/types";
+import { canvasSnapshot, snapshotsEqual, nextStudioId, nextStudioName, findByStudioId } from "./studioCanvas/snapshot";
+import { isShapeObject, videoFrameSource, shapeMediaFallbackPreview, shapeMediaPattern, refreshShapeMediaPattern, shapeMediaVideo, hydrateShapeMedia } from "./studioCanvas/shapeMedia";
+import { radialPoints, shapeFactory } from "./studioCanvas/shapes";
+import { configureStudioTextbox, type StudioAutoSize, normalizeStudioScript, normalizeStudioTextCase, applyTextCase, scriptRange, applyTextScript, updateScriptFontSize, applyAutoSize, selectionStylesFrom, selectionStyleSummary } from "./studioCanvas/textbox";
+export type { StudioShapeKind, StudioCanvasHandle, StudioTextSelection } from "./studioCanvas/types";
 
 export function FabricStudioCanvas({ document, cameraEditMode = "off", onSelectionChange, onTextSelectionChange, onDocumentChange, onHistoryChange, handleRef }: FabricStudioCanvasProps) {
     const clipboardRef = useRef<FabricObject[]>([]);
@@ -653,7 +47,7 @@ export function FabricStudioCanvas({ document, cameraEditMode = "off", onSelecti
   const [canvasReady, setCanvasReady] = useState(false);
   const [cameraError, setCameraError] = useState<{ source: string; message: string } | null>(null);
   const [cameraRetryToken, setCameraRetryToken] = useState(0);
-  const cameraSourceKey = [document.backgroundMedia?.cameraSourceType, document.backgroundMedia?.cameraDeviceId, document.backgroundMedia?.cameraLabel, document.backgroundMedia?.cameraUrl].join("|");
+  const cameraSourceKey = [document.cameraMedia?.cameraSourceType, document.cameraMedia?.cameraDeviceId, document.cameraMedia?.cameraLabel, document.cameraMedia?.cameraUrl].join("|");
 
   useEffect(() => {
     documentRef.current = document;
@@ -723,7 +117,7 @@ export function FabricStudioCanvas({ document, cameraEditMode = "off", onSelecti
       restoringHistoryRef.current = true;
       try {
         const canvasChanged = snapshot.objects !== lastSnapshotRef.current?.objects || snapshot.background !== lastSnapshotRef.current?.background;
-        documentRef.current = { ...documentRef.current, background: snapshot.background, backgroundMode: snapshot.backgroundMode, backgroundMedia: snapshot.backgroundMedia };
+        documentRef.current = { ...documentRef.current, background: snapshot.background, backgroundMode: snapshot.backgroundMode, backgroundMedia: snapshot.backgroundMedia, cameraMedia: snapshot.cameraMedia };
         if (canvasChanged) {
           await canvas.loadFromJSON({ objects: snapshot.objects, background: snapshot.background });
           canvas.getObjects().forEach((object) => {
@@ -736,7 +130,7 @@ export function FabricStudioCanvas({ document, cameraEditMode = "off", onSelecti
         lastSnapshotRef.current = snapshot;
         callbacksRef.current.onSelectionChange([]);
         callbacksRef.current.onTextSelectionChange(null);
-        callbacksRef.current.onDocumentChange({ objects: snapshot.objects, background: snapshot.background, backgroundMode: snapshot.backgroundMode, backgroundMedia: snapshot.backgroundMedia, updatedAt: Date.now() });
+        callbacksRef.current.onDocumentChange({ objects: snapshot.objects, background: snapshot.background, backgroundMode: snapshot.backgroundMode, backgroundMedia: snapshot.backgroundMedia, cameraMedia: snapshot.cameraMedia, updatedAt: Date.now() });
       } finally {
         restoringHistoryRef.current = false;
       }
@@ -1458,6 +852,20 @@ export function FabricStudioCanvas({ document, cameraEditMode = "off", onSelecti
           updatedAt: Date.now(),
         });
       },
+      setCameraMedia: (cameraMedia) => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const previous = lastSnapshotRef.current ?? canvasSnapshot(canvas, documentRef.current);
+        const next = { ...previous, cameraMedia };
+        if (!snapshotsEqual(previous, next)) {
+          historyPastRef.current.push(previous);
+          historyFutureRef.current = [];
+          callbacksRef.current.onHistoryChange({ canUndo: true, canRedo: false });
+        }
+        lastSnapshotRef.current = next;
+        documentRef.current = { ...documentRef.current, cameraMedia };
+        callbacksRef.current.onDocumentChange({ cameraMedia, updatedAt: Date.now() });
+      },
     }),
     [],
   );
@@ -1467,15 +875,15 @@ export function FabricStudioCanvas({ document, cameraEditMode = "off", onSelecti
     if (!canvas) return;
     cameraGestureStartRef.current = lastSnapshotRef.current ?? canvasSnapshot(canvas, documentRef.current);
   };
-  const changeCameraFrame = (media: TemplateBackgroundMedia) => {
-    documentRef.current = { ...documentRef.current, backgroundMedia: media };
-    callbacksRef.current.onDocumentChange({ backgroundMedia: media, updatedAt: Date.now() });
+  const changeCameraFrame = (media: TemplateBackgroundMedia | null) => {
+    documentRef.current = { ...documentRef.current, cameraMedia: media };
+    callbacksRef.current.onDocumentChange({ cameraMedia: media, updatedAt: Date.now() });
   };
   const endCameraGesture = () => {
     const start = cameraGestureStartRef.current;
     cameraGestureStartRef.current = null;
     if (!start) return;
-    const next = { ...start, backgroundMedia: documentRef.current.backgroundMedia };
+    const next = { ...start, cameraMedia: documentRef.current.cameraMedia };
     if (snapshotsEqual(start, next)) return;
     historyPastRef.current.push(start);
     historyFutureRef.current = [];
@@ -1544,18 +952,9 @@ export function FabricStudioCanvas({ document, cameraEditMode = "off", onSelecti
             style={{ display: "block", border: "1px solid var(--border-base)", boxShadow: "var(--shadow-md)" }}
           />
         </div>
-        {canvasReady && document.backgroundMode === "media" && document.backgroundMedia && (document.backgroundMedia.type === "camera" || (typeof document.backgroundMedia.src === "string" && document.backgroundMedia.src.length > 0)) ? (
+        {canvasReady && document.backgroundMode === "media" && document.backgroundMedia && document.backgroundMedia.type !== "camera" && typeof document.backgroundMedia.src === "string" && document.backgroundMedia.src.length > 0 ? (
           <div style={{ position: "absolute", inset: 0, zIndex: 1, filter: document.backgroundBlur ? `blur(${document.backgroundBlur}px)` : undefined, transform: document.backgroundBlur ? "scale(1.04)" : undefined }}>
-          {document.backgroundMedia.type === "camera" ? (
-            <CameraViewport
-              key={`${cameraSourceKey}:${cameraRetryToken}`}
-              media={document.backgroundMedia}
-              onReady={() => setCameraError(null)}
-              onError={(message) => setCameraError((current) => current?.source === cameraSourceKey && current.message === message ? current : { source: cameraSourceKey, message })}
-              retryToken={cameraRetryToken}
-              style={{ position: "absolute", left: `${document.backgroundMedia.x}%`, top: `${document.backgroundMedia.y}%`, width: `${document.backgroundMedia.width}%`, height: `${document.backgroundMedia.height}%`, opacity: document.backgroundMedia.opacity, mixBlendMode: document.backgroundMedia.blendMode as CSSProperties["mixBlendMode"] }}
-            />
-          ) : document.backgroundMedia.type === "video" ? (
+          {document.backgroundMedia.type === "video" ? (
             <ResilientVideo
               key={document.backgroundMedia.src}
               media={document.backgroundMedia}
@@ -1566,9 +965,21 @@ export function FabricStudioCanvas({ document, cameraEditMode = "off", onSelecti
            )}
           </div>
         ) : null}
-        {canvasReady && cameraEditMode !== "off" && document.backgroundMode === "media" && document.backgroundMedia?.type === "camera" ? (
+        {canvasReady && document.cameraMedia?.type === "camera" ? (
+          <div style={{ position: "absolute", inset: 0, zIndex: 1, overflow: "hidden" }}>
+            <CameraViewport
+              key={`${cameraSourceKey}:${cameraRetryToken}`}
+              media={document.cameraMedia}
+              onReady={() => setCameraError(null)}
+              onError={(message) => setCameraError((current) => current?.source === cameraSourceKey && current.message === message ? current : { source: cameraSourceKey, message })}
+              retryToken={cameraRetryToken}
+              style={{ position: "absolute", left: `${document.cameraMedia.x}%`, top: `${document.cameraMedia.y}%`, width: `${document.cameraMedia.width}%`, height: `${document.cameraMedia.height}%`, opacity: document.cameraMedia.opacity, mixBlendMode: document.cameraMedia.blendMode as CSSProperties["mixBlendMode"] }}
+            />
+          </div>
+        ) : null}
+        {canvasReady && cameraEditMode !== "off" && document.cameraMedia?.type === "camera" ? (
           <CameraFrameControls
-            media={document.backgroundMedia}
+            media={document.cameraMedia}
             mode={cameraEditMode}
             getSnapTargets={getCameraSnapTargets}
             onStart={beginCameraGesture}
@@ -1577,7 +988,7 @@ export function FabricStudioCanvas({ document, cameraEditMode = "off", onSelecti
             onEnd={endCameraGesture}
           />
         ) : null}
-        {document.backgroundMode === "media" && document.backgroundMedia?.type === "camera" && cameraError?.source === cameraSourceKey ? (
+        {document.cameraMedia?.type === "camera" && cameraError?.source === cameraSourceKey ? (
           <div role="alert" style={{ position: "absolute", zIndex: 5, top: 12, left: 12, maxWidth: "65%", padding: "8px 10px", borderRadius: 5, background: "rgba(20, 12, 16, 0.92)", color: "#ffb4b4", fontSize: 12, lineHeight: 1.4, display: "flex", alignItems: "center", gap: 8 }}>
             <span>Camera preview: {cameraError.message}</span>
             <button type="button" onClick={() => { setCameraError(null); setCameraRetryToken((value) => value + 1); }} style={{ border: "none", borderRadius: 4, background: "var(--color-primary)", color: "var(--fg-on-accent)", padding: "4px 7px", cursor: "pointer" }}>Retry</button>
