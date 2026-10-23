@@ -35,6 +35,7 @@ export interface StudioDocument {
   backgroundGradientStyle?: "linear" | "radial" | "conic";
   backgroundBlur?: number;
   backgroundMedia?: TemplateBackgroundMedia | null;
+  cameraMedia?: TemplateBackgroundMedia | null;
   /** Fabric's own schema version, from Canvas#toObject().version. */
   fabricVersion: string;
   objects: StudioFabricObjectData[];
@@ -55,6 +56,7 @@ export function createEmptyStudioDocument(category: StudioCategory, name: string
     width: STUDIO_DOCUMENT_WIDTH,
     height: STUDIO_DOCUMENT_HEIGHT,
     background: STUDIO_DOCUMENT_BACKGROUND,
+    cameraMedia: null,
     fabricVersion: "6.0.0",
     objects: [],
     createdAt: now,

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 
 import type { ProjectorSlide } from "../types/state";
 import type { BiblePassage } from "./desktop/uiTypes";
+import { Dropdown } from "./Settings/primitives";
 import { ScrollArea } from "./ui/ScrollArea";
 
 function referenceLabel(slide: ProjectorSlide) {
@@ -67,23 +68,15 @@ export function BiblePanel({ passages, activeReference, onPreviewSlide }: BibleP
             fontSize: "var(--text-sm)",
           }}
         />
-        <select
+        <Dropdown
+          ariaLabel="Bible book"
           value={book}
-          onChange={(event) => setBook(event.target.value)}
-          style={{
-            background: "var(--bg-base)",
-            color: "var(--fg-base)",
-            border: "1px solid var(--border-base)",
-            borderRadius: "var(--radius-md)",
-            padding: "10px 12px",
-          }}
-        >
-          {books.map((entry) => (
-            <option key={entry} value={entry}>
-              {entry}
-            </option>
-          ))}
-        </select>
+          options={books.map((entry) => ({ value: entry, label: entry }))}
+          onChange={setBook}
+          containerStyle={{ width: "auto", minWidth: 140, flexShrink: 0 }}
+          triggerStyle={{ background: "var(--bg-base)", color: "var(--fg-base)", border: "1px solid var(--border-base)", borderRadius: "4px", fontSize: "var(--text-sm)" }}
+          minMenuWidth={180}
+        />
       </div>
 
       <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: "var(--space-4)" }}>

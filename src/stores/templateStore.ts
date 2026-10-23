@@ -27,6 +27,7 @@ interface TemplateStore {
   upsertTemplate: (template: TemplateCanvasTheme) => Promise<void>;
   createTemplateDraft: (category: TemplateCategory) => TemplateCanvasTheme;
   makeDefault: (category: TemplateCategory, layout: OverlayMode, templateId: string) => Promise<void>;
+  setDefaultBackground: (category: TemplateCategory, media: TemplateBackgroundMedia) => Promise<number>;
   renameTemplate: (templateId: string, name: string) => Promise<void>;
   deleteTemplate: (templateId: string) => Promise<void>;
   duplicateTemplate: (templateId: string) => Promise<void>;
@@ -235,6 +236,32 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     const nextDefaults = { ...get().defaults, [category]: { ...get().defaults[category], [layout]: templateId } };
     set({ defaults: nextDefaults });
     await saveTemplateThemes(toDocument(get().templates, nextDefaults));
+  },
+
+  setDefaultBackground: async (category, media) => {
+    const defaultIds = new Set(Object.values(get().defaults[category]).filter((id): id is string => Boolean(id)));
+    const templates = get().templates;
+    const updatedAt = Date.now();
+    let updatedCount = 0;
+    const nextTemplates = templates.map((template) => {
+      if (template.category !== category || !defaultIds.has(template.id)) return template;
+      updatedCount += 1;
+      return {
+        ...template,
+        updatedAt,
+        scene: { ...template.scene, backgroundMedia: media },
+        studioDocument: template.studioDocument ? {
+          ...template.studioDocument,
+          backgroundMode: "media" as const,
+          backgroundMedia: media,
+        } : undefined,
+      };
+    });
+    if (updatedCount === 0) return 0;
+
+    set({ templates: nextTemplates });
+    await saveTemplateThemes(toDocument(nextTemplates, get().defaults));
+    return updatedCount;
   },
 
   renameTemplate: async (templateId, name) => {

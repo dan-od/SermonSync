@@ -75,7 +75,7 @@ function fetchPlaybackBlob(src: string): Promise<Blob> {
   const request = fetch(src).then((response) => {
     if (!response.ok) throw new Error(`Video request failed (${response.status}).`);
     const size = Number(response.headers?.get("content-length") ?? 0);
-    if (size > 32 * 1024 * 1024) {
+    if (size > 128 * 1024 * 1024) {
       void response.body?.cancel();
       throw new Error("This video could not be played from the local stream and is too large for the playback fallback.");
     }
@@ -305,7 +305,8 @@ export function ResilientVideo({
         })
         .catch((error: unknown) => {
           if (stallTimer !== null) { window.clearInterval(stallTimer); stallTimer = null; }
-          if (active) failVideo(error instanceof Error ? error.message : String(error));
+          console.warn("[ResilientVideo] blob playback recovery skipped/failed:", error);
+          if (active && force) failVideo(error instanceof Error ? error.message : String(error));
         })
         .finally(() => {
           blobFallbackInProgress = false;
@@ -416,7 +417,7 @@ export function ResilientVideo({
       if (resolved.src.startsWith("http://127.0.0.1:8000/api/template-video/")) {
         playbackTimer = window.setTimeout(() => {
           if (active && playingRef.current && video.currentTime <= 0.2
-            && (visibleRef.current || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA)) recoverCachedVideo();
+            && (visibleRef.current || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA)) recoverCachedVideo(false);
         }, 600);
         stallTimer = window.setInterval(() => {
           if (!active || blobFallbackAttempted || !playingRef.current || video.ended) return;

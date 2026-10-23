@@ -5,6 +5,7 @@
  * NDI/HDMI). External projector and NDI output remain outside this change.
  */
 import { create } from "zustand";
+import { DEFAULT_TRANSITIONS } from "../lib/transitions";
 import type { OverlayDefinition } from "../types/overlays";
 
 import type {
@@ -20,51 +21,6 @@ import type {
   VerseTheme,
 } from "../types/state";
 
-export const DEFAULT_TRANSITIONS: TransitionsConfig = {
-  scriptures: {
-    effect: "fade",
-    durationMs: 350,
-    easing: "ease-in-out",
-    crossfade: true,
-    motionBlur: false,
-  },
-  songs: {
-    effect: "slide-left",
-    durationMs: 400,
-    easing: "ease",
-    crossfade: true,
-    motionBlur: true,
-  },
-  layout: {
-    effect: "dissolve",
-    durationMs: 400,
-    easing: "ease-in-out",
-    crossfade: true,
-    motionBlur: false,
-  },
-  logo: {
-    effect: "zoom-in",
-    durationMs: 500,
-    easing: "ease-out",
-    crossfade: true,
-    motionBlur: true,
-  },
-  black: {
-    effect: "fade",
-    durationMs: 250,
-    easing: "linear",
-    crossfade: false,
-    motionBlur: false,
-  },
-  clear: {
-    effect: "dissolve",
-    durationMs: 300,
-    easing: "ease-out",
-    crossfade: true,
-    motionBlur: false,
-  },
-};
-
 export const DEFAULT_LOGO: LogoConfig = {
   src: null,
   fit: "contain",
@@ -75,6 +31,8 @@ interface ProjectorStore extends ProjectorState {
   sendLive: (slide: ProjectorSlide) => void;
   setPreviewMedia: (media: ProjectorMedia | null) => void;
   sendLiveMedia: (media: ProjectorMedia) => void;
+  setLiveAudioWaveform: (path: string, peaks: number[], duration: number, error: string | null, minPeaks?: number[], maxPeaks?: number[]) => void;
+  setLiveAudioPlaybackError: (path: string, error: string | null) => void;
   toggleOverlay: (overlay: OverlayDefinition) => void;
   updateActiveOverlay: (overlay: OverlayDefinition) => void;
   removeActiveOverlay: (id: string) => void;
@@ -117,6 +75,27 @@ const initialState: ProjectorState = {
   livePlayback: { playing: true, looping: true, seekTime: null, seekRevision: 0 },
 };
 
+function sameDisplays(previous: DisplayInfo[], next: DisplayInfo[]): boolean {
+  return previous.length === next.length && previous.every((display, index) => {
+    const other = next[index];
+    return display.id === other.id
+      && display.name === other.name
+      && display.friendlyName === other.friendlyName
+      && display.width === other.width
+      && display.height === other.height
+      && display.refreshHz === other.refreshHz
+      && display.x === other.x
+      && display.y === other.y
+      && display.scaleFactor === other.scaleFactor
+      && display.nativeX === other.nativeX
+      && display.nativeY === other.nativeY
+      && display.nativeWidth === other.nativeWidth
+      && display.nativeHeight === other.nativeHeight
+      && display.isPrimary === other.isPrimary
+      && display.connected === other.connected;
+  });
+}
+
 export const useProjectorStore = create<ProjectorStore>((set) => ({
   ...initialState,
 
@@ -134,8 +113,29 @@ export const useProjectorStore = create<ProjectorStore>((set) => ({
   sendLiveMedia: (currentMedia) =>
     set((state) => ({
       currentMedia, liveMedia: currentMedia, currentSlide: null, liveSlide: null, isLive: true,
-      livePlayback: { ...state.livePlayback, playing: true, seekTime: null },
+      livePlayback: { ...state.livePlayback, playing: true, looping: currentMedia.category === "videos", seekTime: null },
     })),
+
+  setLiveAudioWaveform: (path, peaks, duration, error, minPeaks, maxPeaks) => set((state) => {
+    const media = state.liveMedia;
+    if (!media || media.category !== "audio" || media.path !== path || media.audioWaveform !== undefined) return state;
+    return {
+      liveMedia: {
+        ...media,
+        audioWaveform: peaks,
+        ...(minPeaks ? { audioWaveformMin: minPeaks } : {}),
+        ...(maxPeaks ? { audioWaveformMax: maxPeaks } : {}),
+        audioDuration: duration,
+        audioWaveformError: error,
+      },
+    };
+  }),
+
+  setLiveAudioPlaybackError: (path, error) => set((state) => {
+    const media = state.liveMedia;
+    if (!media || media.category !== "audio" || media.path !== path || media.audioPlaybackError === error) return state;
+    return { liveMedia: { ...media, audioPlaybackError: error } };
+  }),
 
   toggleOverlay: (overlay) => set((state) => {
     const activeOverlays = state.activeOverlays.some((entry) => entry.definition.id === overlay.id)
@@ -166,7 +166,8 @@ export const useProjectorStore = create<ProjectorStore>((set) => ({
 
   setOutputDisplay: (outputDisplay) => set({ outputDisplay, selectedDisplayId: outputDisplay }),
 
-  setAvailableDisplays: (availableDisplays) => set({ availableDisplays }),
+  setAvailableDisplays: (availableDisplays) => set((state) =>
+    sameDisplays(state.availableDisplays, availableDisplays) ? state : { availableDisplays }),
 
   selectDisplay: (selectedDisplayId) => set({ selectedDisplayId, outputDisplay: selectedDisplayId }),
 

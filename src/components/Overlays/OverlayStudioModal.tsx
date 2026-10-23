@@ -8,6 +8,7 @@ import {
   type OverlayDefinition, type OverlayElement, type OverlayShapeKind, type OverlayWatermark, type OverlayWidget,
 } from "../../types/overlays";
 import { OverlayStage, OverlayVisual } from "./OverlayVisual";
+import { Dropdown } from "../Settings/primitives";
 
 type Handle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 type Geometry = Pick<OverlayElement, "x" | "y" | "width" | "height">;
@@ -30,6 +31,7 @@ const controlStyle: React.CSSProperties = {
   width: "100%", boxSizing: "border-box", border: "none", borderRadius: 7,
   background: "var(--bg-elevated)", color: "var(--fg-base)", padding: "8px 9px", fontSize: 13,
 };
+const dropdownTriggerStyle: React.CSSProperties = { ...controlStyle, borderRadius: 4 };
 const labelStyle: React.CSSProperties = { display: "grid", gap: 6, color: "var(--fg-muted)", fontSize: 12 };
 const sectionStyle: React.CSSProperties = { fontSize: 11, letterSpacing: ".08em", color: "var(--fg-muted)" };
 
@@ -307,13 +309,13 @@ export function OverlayStudioModal({ initial, onSave, onClose }: {
               <label style={labelStyle}>Element name<input aria-label="Element name" value={selectedElement.name} onChange={(event) => patchElement(selectedElement.id, { name: event.target.value })} style={controlStyle} /></label>
               <button type="button" disabled={isImportingPng} onClick={() => void choosePng(selectedElement.id)} style={{ ...controlStyle, cursor: isImportingPng ? "wait" : "pointer" }}>{isImportingPng ? "Importing PNG…" : selectedElement.src ? "Replace PNG" : "Choose PNG"}</button>
               <span style={{ color: "var(--fg-muted)", fontSize: 11, overflowWrap: "anywhere" }}>{selectedElement.src ? selectedElement.src.startsWith("data:") ? "PNG selected" : selectedElement.src.split(/[\\/]/).pop()?.slice(0, 80) || "PNG selected" : "Transparent PNG images keep their alpha channel on LIVE output."}</span>
-              <label style={labelStyle}>Fit<select aria-label="Watermark fit" value={selectedElement.fit} onChange={(event) => patchElement(selectedElement.id, { fit: event.target.value as OverlayWatermark["fit"] })} style={controlStyle}><option value="contain">Contain</option><option value="cover">Cover</option><option value="fill">Fill</option></select></label>
+              <label style={labelStyle}>Fit<Dropdown ariaLabel="Watermark fit" value={selectedElement.fit} options={[{ value: "contain", label: "Contain" }, { value: "cover", label: "Cover" }, { value: "fill", label: "Fill" }]} onChange={(fit) => patchElement(selectedElement.id, { fit: fit as OverlayWatermark["fit"] })} triggerStyle={dropdownTriggerStyle} /></label>
               <label style={labelStyle}>Opacity<input aria-label="Watermark opacity" type="range" min={0.05} max={1} step={0.05} value={selectedElement.opacity} onChange={(event) => patchElement(selectedElement.id, { opacity: Number(event.target.value) })} /></label>
               <label style={labelStyle}>Rotation °<input aria-label="Watermark rotation" type="number" min={-180} max={180} value={selectedElement.rotation} onChange={(event) => patchElement(selectedElement.id, { rotation: clamp(Number(event.target.value), -180, 180) })} style={controlStyle} /></label>
             </> : selectedElement?.type === "shape" ? <>
               <strong style={sectionStyle}>SHAPE SETTINGS</strong>
               <label style={labelStyle}>Element name<input aria-label="Element name" value={selectedElement.name} onChange={(event) => patchElement(selectedElement.id, { name: event.target.value })} style={controlStyle} /></label>
-              <label style={labelStyle}>Shape<select aria-label="Shape kind" value={selectedElement.kind} onChange={(event) => patchElement(selectedElement.id, { kind: event.target.value as OverlayShapeKind })} style={controlStyle}><option value="rectangle">Rectangle</option><option value="ellipse">Ellipse</option><option value="triangle">Triangle</option></select></label>
+              <label style={labelStyle}>Shape<Dropdown ariaLabel="Shape kind" value={selectedElement.kind} options={[{ value: "rectangle", label: "Rectangle" }, { value: "ellipse", label: "Ellipse" }, { value: "triangle", label: "Triangle" }]} onChange={(kind) => patchElement(selectedElement.id, { kind: kind as OverlayShapeKind })} triggerStyle={dropdownTriggerStyle} /></label>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}>
                 <OptionalColor label="Shape fill" value={selectedElement.fill} onChange={(fill) => patchElement(selectedElement.id, { fill })} />
                 <OptionalColor label="Shape border color" value={selectedElement.stroke} onChange={(stroke) => patchElement(selectedElement.id, { stroke })} />
@@ -337,12 +339,12 @@ export function OverlayStudioModal({ initial, onSave, onClose }: {
                 </div></div>
               </> : null}
               <label style={labelStyle}>Font size<input aria-label="Font size" type="number" min={12} max={240} value={selectedElement.fontSize} onChange={(event) => patchElement(selectedElement.id, { fontSize: clamp(Number(event.target.value), 12, 240) })} style={controlStyle} /></label>
-              <label style={labelStyle}>Font weight<select aria-label="Font weight" value={selectedElement.fontWeight} onChange={(event) => patchElement(selectedElement.id, { fontWeight: Number(event.target.value) })} style={controlStyle}><option value={400}>Regular</option><option value={500}>Medium</option><option value={600}>Semibold</option><option value={700}>Bold</option><option value={800}>Extra bold</option></select></label>
-              <label style={labelStyle}>Text alignment<select aria-label="Text alignment" value={selectedElement.textAlign} onChange={(event) => patchElement(selectedElement.id, { textAlign: event.target.value as OverlayWidget["textAlign"] })} style={controlStyle}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></label>
+              <label style={labelStyle}>Font weight<Dropdown ariaLabel="Font weight" value={String(selectedElement.fontWeight)} options={[{ value: "400", label: "Regular" }, { value: "500", label: "Medium" }, { value: "600", label: "Semibold" }, { value: "700", label: "Bold" }, { value: "800", label: "Extra bold" }]} onChange={(fontWeight) => patchElement(selectedElement.id, { fontWeight: Number(fontWeight) })} triggerStyle={dropdownTriggerStyle} /></label>
+              <label style={labelStyle}>Text alignment<Dropdown ariaLabel="Text alignment" value={selectedElement.textAlign} options={[{ value: "left", label: "Left" }, { value: "center", label: "Center" }, { value: "right", label: "Right" }]} onChange={(textAlign) => patchElement(selectedElement.id, { textAlign: textAlign as OverlayWidget["textAlign"] })} triggerStyle={dropdownTriggerStyle} /></label>
               <label style={labelStyle}>Text color<input aria-label="Text color" type="color" value={selectedElement.color} onChange={(event) => patchElement(selectedElement.id, { color: event.target.value })} /></label>
               {selectedElement.type === "name" ? <>
                 <label style={labelStyle}>Title font size<input aria-label="Title font size" type="number" min={12} max={240} value={selectedElement.titleFontSize ?? 32} onChange={(event) => patchElement(selectedElement.id, { titleFontSize: clamp(Number(event.target.value), 12, 240) })} style={controlStyle} /></label>
-                <label style={labelStyle}>Title font weight<select aria-label="Title font weight" value={selectedElement.titleFontWeight ?? 500} onChange={(event) => patchElement(selectedElement.id, { titleFontWeight: Number(event.target.value) })} style={controlStyle}><option value={400}>Regular</option><option value={500}>Medium</option><option value={600}>Semibold</option><option value={700}>Bold</option><option value={800}>Extra bold</option></select></label>
+                <label style={labelStyle}>Title font weight<Dropdown ariaLabel="Title font weight" value={String(selectedElement.titleFontWeight ?? 500)} options={[{ value: "400", label: "Regular" }, { value: "500", label: "Medium" }, { value: "600", label: "Semibold" }, { value: "700", label: "Bold" }, { value: "800", label: "Extra bold" }]} onChange={(titleFontWeight) => patchElement(selectedElement.id, { titleFontWeight: Number(titleFontWeight) })} triggerStyle={dropdownTriggerStyle} /></label>
                 <label style={labelStyle}>Title color<input aria-label="Title color" type="color" value={selectedElement.titleColor ?? selectedElement.color} onChange={(event) => patchElement(selectedElement.id, { titleColor: event.target.value })} /></label>
               </> : null}
               <label style={labelStyle}><span><input aria-label="Show panel" type="checkbox" checked={selectedElement.showPanel} onChange={(event) => patchElement(selectedElement.id, { showPanel: event.target.checked })} /> Panel</span></label>

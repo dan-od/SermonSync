@@ -10,24 +10,34 @@ const CHECK_INTERVAL_MS = 500;
 
 export function useMicMuteDetection(isCapturing: boolean, levelRms: number, levelPeak: number): boolean {
   const [isMuted, setIsMuted] = useState(false);
+  const mutedRef = useRef(false);
   const lastSoundAtRef = useRef(0);
   const captureStartedAtRef = useRef(0);
 
   useEffect(() => {
     if (!isCapturing) {
-      setTimeout(() => setIsMuted(false), 0);
+      if (mutedRef.current) {
+        mutedRef.current = false;
+        setTimeout(() => setIsMuted(false), 0);
+      }
       return;
     }
     const now = Date.now();
     captureStartedAtRef.current = now;
     lastSoundAtRef.current = now;
-    setTimeout(() => setIsMuted(false), 0);
+    if (mutedRef.current) {
+      mutedRef.current = false;
+      setTimeout(() => setIsMuted(false), 0);
+    }
   }, [isCapturing]);
 
   useEffect(() => {
     if (levelRms > SILENCE_THRESHOLD || levelPeak > SILENCE_THRESHOLD) {
       lastSoundAtRef.current = Date.now();
-      setTimeout(() => setIsMuted(false), 0);
+      if (mutedRef.current) {
+        mutedRef.current = false;
+        setTimeout(() => setIsMuted(false), 0);
+      }
     }
   }, [levelRms, levelPeak]);
 
@@ -39,7 +49,8 @@ export function useMicMuteDetection(isCapturing: boolean, levelRms: number, leve
       const now = Date.now();
       const sinceCaptureStarted = now - captureStartedAtRef.current;
       const sinceLastSound = now - lastSoundAtRef.current;
-      if (sinceCaptureStarted > SUSTAINED_SILENCE_MS && sinceLastSound > SUSTAINED_SILENCE_MS) {
+      if (!mutedRef.current && sinceCaptureStarted > SUSTAINED_SILENCE_MS && sinceLastSound > SUSTAINED_SILENCE_MS) {
+        mutedRef.current = true;
         setIsMuted(true);
       }
     }, CHECK_INTERVAL_MS);

@@ -1,7 +1,6 @@
-import { Component, StrictMode, type ErrorInfo, type ReactNode } from 'react'
+import { Component, StrictMode, Suspense, type ErrorInfo, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
-import App from './App.tsx'
-import { ProjectorOutput } from './components/ProjectorOutput.tsx'
+import { AppView, ProjectorOutputView } from './app/entryViews'
 import './styles/global.css'
 
 class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -34,6 +33,10 @@ const isProjectorOutput = new URLSearchParams(window.location.search).get('windo
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <AppErrorBoundary>{isProjectorOutput ? <ProjectorOutput /> : <App />}</AppErrorBoundary>
+    <AppErrorBoundary>
+      <Suspense fallback={<div style={{ minHeight: '100vh', background: 'var(--bg-base, #181818)' }} />}>
+        {isProjectorOutput ? <ProjectorOutputView /> : <AppView />}
+      </Suspense>
+    </AppErrorBoundary>
   </StrictMode>,
 )

@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, useMemo } from "react";
 import { createPortal } from "react-dom";
-import type { Song, SongSlide } from "../../stores/songStore";
-import { useSongStore } from "../../stores/songStore";
+import { type Song, type SongSlide, useSongStore } from "../../stores/songStore";
 import { useTemplateStore } from "../../stores/templateStore";
 import { TemplateSceneOverlay } from "../ProjectorView";
 import { projectionScene } from "../../lib/projectionScene";
-import type { ProjectorSlide } from "../../types/state";
+import { type ProjectorSlide } from "../../types/state";
 import { tagColor } from "./tagColor";
+import { type SongTextBlock, SONG_TAG_PATTERN, subTagSuffix, parseSongText, songTextFromSlides, songSlidesEqual } from "./songText";
+import { IconButton } from "./SongIconButton";
 
 interface SongStudioModalProps {
   open: boolean;
@@ -15,55 +16,6 @@ interface SongStudioModalProps {
   onCreateCue?: (cue: { title: string; slides: SongSlide[] }) => void;
 }
 
-interface SongTextBlock {
-  label: string;
-  text: string;
-  tag: string | null;
-  explicitTag: string | null;
-}
-
-const SONG_TAG_PATTERN = /^\[([^\]]+)\]\s*$/;
-
-function subTagSuffix(index: number): string {
-  let value = index;
-  let suffix = "";
-  do {
-    suffix = String.fromCharCode(97 + (value % 26)) + suffix;
-    value = Math.floor(value / 26) - 1;
-  } while (value >= 0);
-  return suffix;
-}
-
-function parseSongText(value: string): SongTextBlock[] {
-  let currentTag: string | null = null;
-  return value
-    .split(/\n\s*\n/)
-    .map((block) => {
-      const lines = block.trim().split("\n");
-      const tagMatch = lines[0]?.match(SONG_TAG_PATTERN);
-      const explicitTag = tagMatch?.[1].trim() || null;
-      if (explicitTag) currentTag = explicitTag;
-      const text = (tagMatch ? lines.slice(1) : lines).join("\n").trim();
-      return {
-        label: currentTag ?? "Unlabeled",
-        text,
-        tag: currentTag,
-        explicitTag,
-      };
-    })
-    .filter((block) => block.tag || block.text);
-}
-
-function songTextFromSlides(slides: SongSlide[]): string {
-  return slides.map((slide) => `[${slide.label}]\n${slide.text}`).join("\n\n");
-}
-
-function songSlidesEqual(first: SongSlide[], second: SongSlide[]): boolean {
-  return first.length === second.length && first.every((slide, index) => {
-    const other = second[index];
-    return other?.label === slide.label && other.text === slide.text;
-  });
-}
 
 export function SongStudioModal({ open, song, onClose, onCreateCue }: SongStudioModalProps) {
   if (!open || !song) return null;
@@ -1013,57 +965,5 @@ function SongStudioContent({ song, onClose, onCreateCue }: Omit<SongStudioModalP
       </div>
     </div>,
     document.body
-  );
-}
-
-function IconButton({
-  children,
-  title,
-  disabled,
-  danger,
-  onClick,
-}: {
-  children: React.ReactNode;
-  title: string;
-  disabled?: boolean;
-  danger?: boolean;
-  onClick: (e: React.MouseEvent) => void;
-}) {
-  return (
-    <button
-      type="button"
-      title={title}
-      disabled={disabled}
-      onClick={onClick}
-      style={{
-        border: "none",
-        background: "transparent",
-        color: danger ? "var(--color-error)" : "var(--fg-subtle)",
-        borderRadius: "4px",
-        width: "18px",
-        height: "18px",
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.3 : 0.8,
-        fontSize: "11px",
-        padding: 0,
-      }}
-      onMouseEnter={(e) => {
-        if (!disabled) {
-          e.currentTarget.style.opacity = "1";
-          e.currentTarget.style.background = danger ? "rgba(255, 75, 96, 0.15)" : "var(--bg-elevated)";
-        }
-      }}
-      onMouseLeave={(e) => {
-        if (!disabled) {
-          e.currentTarget.style.opacity = "0.8";
-          e.currentTarget.style.background = "transparent";
-        }
-      }}
-    >
-      {children}
-    </button>
   );
 }

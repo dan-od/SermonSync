@@ -3,17 +3,23 @@ import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { defaults, videoElementCallbacks, readyCallbacks, flags } = vi.hoisted(() => ({
+const { defaults, videoElementCallbacks, readyCallbacks, flags, audioPeaksMock, setLiveAudioWaveformMock, setLiveAudioPlaybackErrorMock } = vi.hoisted(() => ({
   defaults: {
     scriptures: { widescreen: "scripture-video" as string | null, "lower-third": "scripture-lower-video" as string | null, "split-screen": "scripture-split-video" as string | null },
     songs: { widescreen: "song-video" as string | null, "lower-third": null as string | null, "split-screen": null as string | null },
   },
   videoElementCallbacks: vi.fn(),
   readyCallbacks: new Map<string, () => void>(),
-  flags: { sharedBackground: false },
+  flags: { sharedBackground: false, liveAudioActive: false },
+  audioPeaksMock: vi.fn(() => ({ peaks: [0.2, 0.8, 0.4], minPeaks: [-0.2, -0.7, -0.3], maxPeaks: [0.2, 0.8, 0.4], duration: 10, loading: false, error: null })),
+  setLiveAudioWaveformMock: vi.fn(),
+  setLiveAudioPlaybackErrorMock: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({ convertFileSrc: (path: string) => `asset://localhost${path}` }));
+vi.mock("../../lib/waveform", () => ({ useAudioPeaks: audioPeaksMock }));
+vi.mock("../Media/Waveform", () => ({ WaveformCanvas: ({ currentTime, onSeek }: { currentTime?: number; onSeek?: (time: number) => void }) => <button type="button" data-testid="audio-waveform" data-current-time={currentTime} onClick={() => onSeek?.(4)}>Waveform</button> }));
+vi.mock("../Media/LiveWaveform", () => ({ LiveWaveform: ({ currentTime, onSeek, minPeaks, maxPeaks }: { currentTime?: number; onSeek?: (time: number) => void; minPeaks: number[]; maxPeaks: number[] }) => <button type="button" data-testid="audio-waveform" data-current-time={currentTime} data-min={minPeaks.join(",")} data-max={maxPeaks.join(",")} onClick={() => onSeek?.(4)}>Live waveform</button> }));
 vi.mock("../../lib/projectionScene", () => ({
   projectionScene: (template: { id: string }) => ({
     canvasWidth: 1920,
@@ -44,11 +50,14 @@ vi.mock("../../stores/templateStore", () => ({
     initialized: true,
   }),
 }));
-vi.mock("../../stores/projectorStore", () => ({
-  useProjectorStore: (selector: (state: unknown) => unknown) => selector({
-    logo: { src: null, fit: "contain" }, transitions: {},
-  }),
-}));
+vi.mock("../../stores/projectorStore", () => {
+  const state = { logo: { src: null, fit: "contain" }, transitions: {} };
+  const useProjectorStore = Object.assign(
+    (selector: (value: typeof state & { feedOverride: string; liveMedia: { category: string } | null; livePlayback: { playing: boolean } }) => unknown) => selector({ ...state, feedOverride: flags.liveAudioActive ? "live" : "black", liveMedia: flags.liveAudioActive ? { category: "audio" } : null, livePlayback: { playing: flags.liveAudioActive } }),
+    { getState: () => ({ setLiveAudioWaveform: setLiveAudioWaveformMock, setLiveAudioPlaybackError: setLiveAudioPlaybackErrorMock }) },
+  );
+  return { useProjectorStore };
+});
 vi.mock("../CameraFeed", () => ({ CameraFeed: ({ onError }: { onError?: (message: string) => void }) => <button type="button" data-testid="camera-feed" onClick={() => onError?.("Camera offline")}>Camera feed</button> }));
 vi.mock("../ResilientVideo", () => ({
   ResilientVideo: ({ media, playing, loop, onVideoElementChange, onReady, presentationVisible = true }: { media: { src: string }; playing?: boolean; loop?: boolean; onVideoElementChange?: (video: HTMLVideoElement | null) => void; onReady?: () => void; presentationVisible?: boolean }) => {
@@ -62,6 +71,7 @@ vi.mock("../ResilientVideo", () => ({
 }));
 
 import { ProjectorView } from "../ProjectorView";
+import { getSharedAudioElement } from "../../lib/audioPlayback";
 import { createOverlayDraft, createOverlayShape } from "../../types/overlays";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -76,6 +86,7 @@ describe("live screen playback controls", () => {
     defaults.scriptures["split-screen"] = "scripture-split-video";
     defaults.songs.widescreen = "song-video";
     flags.sharedBackground = false;
+    flags.liveAudioActive = false;
     readyCallbacks.clear();
     vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
     container = document.createElement("div");
@@ -120,6 +131,115 @@ describe("live screen playback controls", () => {
     expect(container.querySelector('[data-testid="background-video"]')?.getAttribute("data-playing")).toBe("false");
   });
 
+  it("keeps the current slide visible while a different media type prepares", () => {
+    const slide = { reference: { book: "John", chapter: 3, verse: 16 }, text: "Current verse", version: "KJV" };
+    act(() => root.render(<ProjectorView title="LIVE" slide={slide} feedOverride="live" overlayMode="widescreen" theme="cross" isLive fontSizePx={48} />));
+    act(() => readyCallbacks.get("scripture-video.mp4")?.());
+    const outgoingScene = container.querySelector('[data-projector-scene="visible"]');
+    expect(outgoingScene?.textContent).toContain("Current verse");
+
+    act(() => root.render(<ProjectorView title="LIVE" slide={null} media={{ path: "/video.mp4", name: "Video", category: "videos", fit: "cover", opacity: 1 }} feedOverride="live" overlayMode="widescreen" theme="cross" isLive fontSizePx={48} />));
+
+    expect(outgoingScene?.isConnected).toBe(true);
+    expect(container.querySelector('[data-projector-media-layer="preparing"]')).not.toBeNull();
+    act(() => readyCallbacks.get("asset://localhost/video.mp4")?.());
+    expect(container.querySelector('[data-projector-media-layer="visible"]')).not.toBeNull();
+  });
+
+  it("keeps the current media visible while a song scene prepares", () => {
+    const media = { path: "/video.mp4", name: "Video", category: "videos" as const, fit: "cover" as const, opacity: 1 };
+    act(() => root.render(<ProjectorView title="LIVE" slide={null} media={media} feedOverride="live" overlayMode="widescreen" theme="cross" isLive fontSizePx={48} />));
+    act(() => readyCallbacks.get("asset://localhost/video.mp4")?.());
+    const outgoingMedia = container.querySelector('[data-projector-media-layer="visible"]');
+    expect(outgoingMedia).not.toBeNull();
+
+    const song = { reference: { book: "Song", chapter: 1, verse: 1 }, text: "New song lyrics", version: "SONG" };
+    act(() => root.render(<ProjectorView title="LIVE" slide={song} media={null} feedOverride="live" overlayMode="widescreen" theme="cross" isLive fontSizePx={48} />));
+
+    expect(outgoingMedia?.isConnected).toBe(true);
+    expect(outgoingMedia?.querySelector('[data-testid="background-video"]')?.getAttribute("data-playing")).toBe("false");
+    expect(container.querySelector('[data-projector-scene="preparing"]')?.textContent).not.toContain("New song lyrics");
+    act(() => readyCallbacks.get("song-video.mp4")?.());
+    expect(container.querySelector('[data-projector-scene="visible"]')?.textContent).toContain("New song lyrics");
+  });
+
+  it("plays projected audio with a synchronized waveform and mutes the external output", async () => {
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+    audioPeaksMock.mockClear();
+    setLiveAudioWaveformMock.mockClear();
+    const media = {
+      path: "/audio.mp3",
+      name: "Choir intro",
+      category: "audio" as const,
+      fit: "cover" as const,
+      opacity: 1,
+      audioSettings: { volume: 0.4, trimStart: 2, trimEnd: 8 },
+    };
+    const playback = { playing: true, looping: false, seekTime: null, seekRevision: 0 };
+    const onSeek = vi.fn();
+
+    await act(async () => root.render(<>
+      <ProjectorView title="LIVE" slide={null} media={media} feedOverride="live" overlayMode="widescreen" theme="cross" isLive fontSizePx={48} playback={playback} onPlaybackChange={vi.fn()} onSeek={onSeek} />
+      <ProjectorView title="PROJECTOR OUTPUT" slide={null} media={media} feedOverride="live" overlayMode="widescreen" theme="cross" isLive fontSizePx={48} chrome={false} playback={playback} />
+    </>));
+
+    const audioElements = [...container.querySelectorAll("audio")];
+    const operatorAudio = getSharedAudioElement();
+    expect(audioElements).toHaveLength(0);
+    expect(operatorAudio.src).toBe("asset://localhost/audio.mp3");
+    expect(operatorAudio.volume).toBe(0.4);
+    expect(operatorAudio.muted).toBe(false);
+    expect(play).toHaveBeenCalled();
+    expect(container.querySelectorAll('[data-projector-audio=""]')).toHaveLength(2);
+    expect(audioPeaksMock).toHaveBeenCalledWith("asset://localhost/audio.mp3", 220, "/audio.mp3");
+    expect(audioPeaksMock).toHaveBeenCalledWith(null, 220, "/audio.mp3");
+    expect(setLiveAudioWaveformMock).toHaveBeenCalledWith("/audio.mp3", [0.2, 0.8, 0.4], 10, null, [-0.2, -0.7, -0.3], [0.2, 0.8, 0.4]);
+    expect(container.querySelector('[data-testid="audio-waveform"]')?.getAttribute("data-min")).toBe("-0.2,-0.7,-0.3");
+
+    Object.defineProperty(operatorAudio, "duration", { configurable: true, value: 10 });
+    await act(async () => operatorAudio.dispatchEvent(new Event("loadedmetadata")));
+    Object.defineProperty(operatorAudio, "currentTime", { configurable: true, writable: true, value: 3 });
+    await act(async () => operatorAudio.dispatchEvent(new Event("timeupdate")));
+    expect(container.querySelector<HTMLInputElement>('input[aria-label="LIVE audio progress"]')?.max).toBe("10");
+    const renderedPlayheads = [...container.querySelectorAll('[data-testid="audio-waveform"]')].map((waveform) => waveform.getAttribute("data-current-time"));
+    expect(renderedPlayheads).toContain("3");
+
+    await act(async () => (container.querySelector<HTMLButtonElement>('[data-testid="audio-waveform"]') as HTMLButtonElement).click());
+    expect(operatorAudio.currentTime).toBe(4);
+    expect(onSeek).toHaveBeenCalledWith(4);
+  });
+
+  it("shows a playback rejection instead of silently remaining at zero", async () => {
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockRejectedValue(new Error("NotAllowedError: playback was blocked"));
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+    setLiveAudioPlaybackErrorMock.mockClear();
+    const media = { path: "/audio.mp3", name: "Choir intro", category: "audio" as const, fit: "cover" as const, opacity: 1 };
+
+    await act(async () => root.render(<ProjectorView title="LIVE" slide={null} media={media} feedOverride="live" overlayMode="widescreen" theme="cross" isLive fontSizePx={48} playback={{ playing: true, looping: false, seekTime: null, seekRevision: 0 }} onPlaybackChange={vi.fn()} />));
+
+    await vi.waitFor(() => expect(container.querySelector('[role="alert"]')?.textContent).toContain("NotAllowedError"));
+    expect(setLiveAudioPlaybackErrorMock).toHaveBeenCalledWith("/audio.mp3", expect.stringContaining("NotAllowedError: playback was blocked"));
+  });
+
+  it("renders output audio progress without an output audio element", async () => {
+    const media = { path: "/audio.mp3", name: "Choir", category: "audio" as const, fit: "cover" as const, opacity: 1, audioWaveform: [0.2, 0.8], audioDuration: 12 };
+    await act(async () => root.render(<ProjectorView title="PROJECTOR OUTPUT" slide={null} media={media} feedOverride="live" overlayMode="widescreen" theme="cross" isLive fontSizePx={48} chrome={false} audioProgress={{ path: media.path, time: 5, duration: 12 }} />));
+    expect(container.querySelectorAll("audio")).toHaveLength(0);
+    expect(container.querySelector('[data-testid="audio-waveform"]')?.getAttribute("data-current-time")).toBe("5");
+  });
+
+  it("does not let Preview playback controls interrupt Live audio", async () => {
+    flags.liveAudioActive = true;
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+    const media = { path: "/preview.mp3", name: "Preview", category: "audio" as const, fit: "cover" as const, opacity: 1 };
+    await act(async () => root.render(<ProjectorView title="PREVIEW" slide={null} media={media} feedOverride="live" overlayMode="widescreen" theme="cross" isLive={false} fontSizePx={48} />));
+    expect(container.querySelector<HTMLButtonElement>('button[aria-label="Play PREVIEW audio"]')?.disabled).toBe(true);
+    expect(play).not.toHaveBeenCalled();
+  });
+
   it("clears a projected image and restores it when Clear is toggled off", () => {
     const media = { path: "/photo.png", name: "Photo", category: "images" as const, fit: "cover" as const, opacity: 1 };
     const render = (feedOverride: "live" | "clear") => root.render(
@@ -134,10 +254,29 @@ describe("live screen playback controls", () => {
     act(() => render("clear"));
     expect(container.querySelector("[data-projector-media]")).toBe(mediaLayer);
     expect(container.querySelector<HTMLElement>("[data-projector-media]")?.style.opacity).toBe("0");
+    expect(container.querySelector<HTMLElement>("[data-projector-media]")?.style.transition).toBe("none");
     expect(container.querySelector('img[alt="Photo"]')).toBe(image);
 
     act(() => render("live"));
     expect(container.querySelector<HTMLElement>("[data-projector-media]")?.style.opacity).toBe("1");
+  });
+
+  it("does not remount live content when a feed override is toggled", () => {
+    defaults.scriptures.widescreen = null;
+    const slide = { reference: { book: "John", chapter: 3, verse: 16 }, text: "For God so loved the world", version: "KJV" };
+    const render = (feedOverride: "live" | "black") => root.render(
+      <ProjectorView title="PROJECTOR OUTPUT" slide={slide} feedOverride={feedOverride} overlayMode="widescreen" theme="cross" isLive fontSizePx={48} chrome={false} />,
+    );
+
+    act(() => render("live"));
+    const transitionLayer = container.querySelector("[data-projector-template-fallback]")?.parentElement;
+    expect(transitionLayer).toBeDefined();
+
+    act(() => render("black"));
+    expect(transitionLayer?.isConnected).toBe(true);
+
+    act(() => render("live"));
+    expect(container.querySelector("[data-projector-template-fallback]")?.parentElement).toBe(transitionLayer);
   });
 
   it("clears a projected video without restarting its player", () => {
@@ -154,6 +293,22 @@ describe("live screen playback controls", () => {
     act(() => render("live"));
     expect(container.querySelector('[data-testid="background-video"]')).toBe(video);
     expect(container.querySelector<HTMLElement>("[data-projector-media]")?.style.opacity).toBe("1");
+  });
+
+  it("preserves configured transitions on black and logo overrides", () => {
+    const slide = { reference: { book: "John", chapter: 3, verse: 16 }, text: "For God so loved the world", version: "KJV" };
+    const render = (feedOverride: "live" | "black" | "logo") => root.render(
+      <ProjectorView title="PROJECTOR OUTPUT" slide={slide} feedOverride={feedOverride} overlayMode="widescreen" theme="cross" isLive fontSizePx={48} chrome={false} />,
+    );
+
+    act(() => render("live"));
+    act(() => render("black"));
+    expect(container.querySelector<HTMLElement>('[aria-label="Black live feed overlay"]')?.style.transition).toBe("none");
+    expect(container.querySelector<HTMLElement>('[aria-label="Black live feed overlay"]')?.style.opacity).toBe("1");
+
+    act(() => render("logo"));
+    expect(container.querySelector<HTMLElement>('[aria-label="Logo live feed overlay"]')?.style.transition).toBe("none");
+    expect(container.querySelector<HTMLElement>('[aria-label="Logo live feed overlay"]')?.style.opacity).toBe("1");
   });
 
   it("shows a live overlay above an empty screen and hides it with Clear", () => {
@@ -241,7 +396,7 @@ describe("live screen playback controls", () => {
     expect(container.querySelector('[data-testid="background-video"]')).toBeNull();
   });
 
-  it("keeps the outgoing scripture visible until the song background has a frame", () => {
+  it("keeps outgoing scripture until the song background is ready, then cuts directly", () => {
     const scripture = { reference: { book: "John", chapter: 3, verse: 16 }, text: "Verse", version: "KJV" };
     const song = { reference: { book: "Song", chapter: 1, verse: 1 }, text: "Lyrics", version: "SONG" };
     const render = (slide: typeof scripture) => root.render(<ProjectorView title="LIVE" slide={slide} feedOverride="live" overlayMode="widescreen" theme="cross" isLive fontSizePx={48} />);
@@ -261,7 +416,7 @@ describe("live screen playback controls", () => {
 
     act(() => readyCallbacks.get("song-video.mp4")?.());
     expect(container.querySelector('[data-projector-scene="visible"]')?.textContent).toContain("Lyrics");
-    expect(container.querySelector('[data-projector-scene="outgoing"]')?.textContent).toContain("Verse");
+    expect(container.querySelector('[data-projector-scene="outgoing"]')).toBeNull();
   });
 
   it("reuses the playing background when song and scripture share its source", () => {
@@ -296,8 +451,8 @@ describe("live screen playback controls", () => {
     expect(container.querySelector('[data-projector-scene="visible"] [data-testid="background-video"]')).toBe(video);
   });
 
-  it("finishes a scripture entrance once and only animates again for new verse content", () => {
-    const fade = { effect: "fade" as const, durationMs: 350, easing: "ease" as const, crossfade: false, motionBlur: false };
+  it("keeps scripture projection cuts instantaneous despite configured transitions", () => {
+    const fade = { effect: "fade" as const, durationMs: 350, easing: "ease" as const };
     const transitions = { scriptures: fade, songs: fade, layout: fade, logo: fade, black: fade, clear: fade };
     const slide = { reference: { book: "John", chapter: 3, verse: 16 }, text: "First verse", version: "KJV" };
     const render = (nextSlide: typeof slide, durationMs = 350) => root.render(
@@ -307,21 +462,17 @@ describe("live screen playback controls", () => {
     act(() => render(slide));
     act(() => readyCallbacks.get("scripture-video.mp4")?.());
     const scene = container.querySelector('[data-projector-scene="visible"]');
-    const entrance = scene?.querySelector<HTMLElement>('[style*="projFadeIn"]');
-    expect(entrance?.style.animation).toContain("projFadeIn");
+    const animatedElements = () => Array.from(scene?.querySelectorAll<HTMLElement>("[style]") ?? [])
+      .filter((element) => element.style.animation && element.style.animation !== "none");
+    expect(animatedElements()).toHaveLength(0);
     expect(container.querySelector("style")).toBeNull();
 
-    act(() => entrance?.dispatchEvent(new Event("animationend", { bubbles: true })));
-    expect(entrance?.style.animation).toBe("none");
     act(() => render({ ...slide, reference: { ...slide.reference } }, 900));
     expect(container.querySelector('[data-projector-scene="visible"]')).toBe(scene);
-    expect(scene?.querySelector('[style*="projFadeIn"]')).toBeNull();
-    expect(entrance?.style.animation).toBe("none");
 
     act(() => render({ ...slide, reference: { ...slide.reference, verse: 17 }, text: "Second verse" }));
-    const nextEntrance = scene?.querySelector<HTMLElement>('[style*="projFadeIn"]');
-    expect(nextEntrance).not.toBe(entrance);
-    expect(nextEntrance?.style.animation).toContain("projFadeIn");
+    expect(animatedElements()).toHaveLength(0);
+    expect(scene?.textContent).toContain("Second verse");
   });
 
   it("keeps the live frame mounted while switching layouts and prepares only one incoming background", () => {
