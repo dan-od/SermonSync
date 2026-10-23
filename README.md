@@ -28,6 +28,6 @@ The repository includes a Bible database. To rebuild it or its embeddings, use t
 
 ## Package the app
 
-Run `npm run tauri build` for a desktop bundle. A Linux RPM also needs the frozen sidecar and Whisper model staged first with `npm run build:sidecar`; use `npm run tauri build -- --config src-tauri/tauri.linux.conf.json` for that target. See [packaging notes](docs/PACKAGING.md) for the other platforms.
+Run `npm run tauri build` for a desktop bundle. A Linux RPM also needs the frozen sidecar and Whisper model staged first with `npm run build:sidecar`; use `npm run tauri build -- --config src-tauri/tauri.rpm.conf.json` for that target. See [packaging notes](docs/PACKAGING.md) for the other platforms.
 
 For service setup and the operator workflow, see the [operator guide](docs/OPERATOR.md). [Benchmarks](docs/BENCHMARKS.md) record measured latency and hardware details.

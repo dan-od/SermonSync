@@ -9,8 +9,10 @@ The Linux configuration runs a PyInstaller `onedir` sidecar from Tauri resources
 ```bash
 npm ci
 npm run build:sidecar
-npm run tauri build -- --config src-tauri/tauri.linux.conf.json
+npm run tauri build -- --config src-tauri/tauri.rpm.conf.json
 ```
+
+The custom filename matters: Tauri loads `tauri.linux.conf.json` automatically for every Linux build, including CI. The RPM configuration should load only when the build command requests it.
 
 `build:sidecar` creates `src-tauri/resources/sidecar/` and downloads the Whisper base model into `src-tauri/resources/whisper/`. Both directories are generated and ignored by Git. The RPM declares WebKitGTK, PortAudio, and GStreamer codec dependencies for media playback.
 
