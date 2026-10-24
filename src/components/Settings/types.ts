@@ -13,10 +13,11 @@
  * v3.0 §5–§10.
  */
 
-import type { LogoConfig, TransitionEasing, TransitionEffect, TransitionSetting, TransitionsConfig } from "../../types/state";
-import { DEFAULT_LOGO, DEFAULT_TRANSITIONS } from "../../stores/projectorStore";
+import type { LogoConfig, TransitionCategory, TransitionEasing, TransitionEffect, TransitionSetting, TransitionsConfig } from "../../types/state";
+import { DEFAULT_LOGO } from "../../stores/projectorStore";
+import { DEFAULT_TRANSITIONS } from "../../lib/transitions";
 
-export type { TransitionEasing, TransitionEffect, TransitionSetting, TransitionsConfig };
+export type { TransitionCategory, TransitionEasing, TransitionEffect, TransitionSetting, TransitionsConfig };
 export type { LogoConfig, LogoFit } from "../../types/state";
 
 export type SttMode = "moonshine" | "whisper";

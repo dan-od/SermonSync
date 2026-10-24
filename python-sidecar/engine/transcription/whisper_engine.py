@@ -111,7 +111,22 @@ class WhisperEngine:
             tried.append(size)
             try:
                 logger.info("loading Whisper model '%s' on %s/%s", size, device, compute_type)
-                model = WhisperModel(size, device=device, compute_type=compute_type)
+                bundled = os.environ.get("SERMONSYNC_WHISPER_DIR")
+                kwargs = (
+                    {"download_root": bundled, "local_files_only": size == "base"}
+                    if bundled else {}
+                )
+                try:
+                    # Cached models must load without touching the network: an
+                    # unreachable Hugging Face otherwise stalls sidecar startup.
+                    local_kwargs = {**kwargs, "local_files_only": True}
+                    model = WhisperModel(
+                        size, device=device, compute_type=compute_type, **local_kwargs
+                    )
+                except Exception:
+                    if kwargs.get("local_files_only"):
+                        raise
+                    model = WhisperModel(size, device=device, compute_type=compute_type, **kwargs)
                 degraded = size != requested
                 # WARNING so the operator can grep one line for the truth. A
                 # silent fallback to a smaller model is the failure mode this

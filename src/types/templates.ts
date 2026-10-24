@@ -146,7 +146,7 @@ export interface TemplateBackgroundMedia {
   brightness?: number;
   contrast?: number;
   saturate?: number;
-  /** Live camera background (type "camera") — wired/USB webcam or a Wi-Fi phone camera (DroidCam/IP Webcam/iVCam) on the same network. */
+  /** Camera source used by template camera layers. */
   cameraSourceType?: TemplateCameraSourceType;
   /** Local: MediaDeviceInfo.deviceId. */
   cameraDeviceId?: string;
@@ -166,6 +166,7 @@ export interface TemplateScene {
   gradientStyle?: "linear" | "radial" | "conic";
   backgroundOverlayOpacity: number;
   backgroundMedia: TemplateBackgroundMedia | null;
+  cameraMedia?: TemplateBackgroundMedia | null;
   layers: TemplateLayer[];
 }
 

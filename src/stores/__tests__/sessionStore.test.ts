@@ -1,13 +1,22 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useSessionStore } from "../sessionStore";
 
 describe("sessionStore", () => {
   beforeEach(() => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "sidecar-session-1", status: "active" }),
+    } as Response);
     useSessionStore.getState().reset();
   });
 
-  it("transitions lifecycle start/pause/resume/end", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("transitions lifecycle start/pause/resume/end", async () => {
     const store = useSessionStore.getState();
 
     store.start("UNIT-001");
@@ -19,18 +28,15 @@ describe("sessionStore", () => {
     useSessionStore.getState().resume();
     expect(useSessionStore.getState().status).toBe("active");
 
-    useSessionStore.getState().end();
+    await useSessionStore.getState().end();
     expect(useSessionStore.getState().status).toBe("ended");
   });
 
   it("calls the sidecar session lifecycle endpoints", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      ok: true,
-      json: async () => ({ id: "sidecar-session-1", status: "active" }),
-    } as Response);
+    const fetchMock = vi.mocked(globalThis.fetch);
 
     useSessionStore.getState().start("UNIT-001", "Test Unit");
-    useSessionStore.getState().end();
+    await useSessionStore.getState().end();
 
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(fetchMock).toHaveBeenNthCalledWith(
@@ -47,7 +53,66 @@ describe("sessionStore", () => {
       expect.objectContaining({ method: "POST" }),
     );
 
-    fetchMock.mockRestore();
+  });
+
+  it("does not restore a previous run's active session or timer", async () => {
+    const oldSession = JSON.stringify({
+      state: { id: "old", status: "active", startTime: 1, elapsed: 999, unitId: "OLD" },
+      version: 0,
+    });
+    vi.stubGlobal("window", { localStorage: { getItem: () => oldSession } });
+    vi.resetModules();
+    const { useSessionStore: freshStore } = await import("../sessionStore");
+
+    expect(freshStore.getState()).toMatchObject({
+      id: null,
+      status: "idle",
+      startTime: null,
+      elapsed: 0,
+    });
+    freshStore.getState().start("NEW");
+    expect(freshStore.getState()).toMatchObject({ status: "active", elapsed: 0, unitId: "NEW" });
+    await freshStore.getState().end();
+  });
+
+  it("finishes the start request before ending the session", async () => {
+    let resolveStart!: (response: Response) => void;
+    const fetchMock = vi.mocked(globalThis.fetch);
+    fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => {
+      resolveStart = resolve;
+    }));
+
+    useSessionStore.getState().start("UNIT-001");
+    const ending = useSessionStore.getState().end();
+    const closing = useSessionStore.getState().end();
+    expect(useSessionStore.getState().status).toBe("ended");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    resolveStart({ ok: true, json: async () => ({ id: "sidecar-session-1" }) } as Response);
+    await Promise.all([ending, closing]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(useSessionStore.getState().id).toBe("sidecar-session-1");
+  });
+
+  it("waits for an in-flight end before starting another session and resets elapsed", async () => {
+    let resolveEnd!: (response: Response) => void;
+    const fetchMock = vi.mocked(globalThis.fetch);
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ id: "first" }) } as Response);
+    fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => {
+      resolveEnd = resolve;
+    }));
+
+    useSessionStore.getState().start("FIRST");
+    await vi.waitFor(() => expect(useSessionStore.getState().id).toBe("first"));
+    useSessionStore.getState().tick(75);
+    const ending = useSessionStore.getState().end();
+    useSessionStore.getState().start("SECOND");
+    expect(useSessionStore.getState()).toMatchObject({ status: "active", elapsed: 0, unitId: "SECOND" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    resolveEnd({ ok: true, json: async () => ({ id: "first", status: "ended" }) } as Response);
+    await ending;
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
   });
 
   it("applies sidecar system status telemetry", () => {

@@ -14,6 +14,7 @@ import asyncio
 import contextlib
 import logging
 import math
+import time
 from collections import deque
 
 from ws_hub import manager
@@ -143,6 +144,7 @@ class StreamResampler:
 class CaptureManager:
     def __init__(self) -> None:
         self._stream = None
+        self._closing = False
         self._loop: asyncio.AbstractEventLoop | None = None
         self._chunk_counter = 0
         # Emit meter updates at 10 Hz; capture callbacks must stay lightweight.
@@ -245,11 +247,21 @@ class CaptureManager:
         audio_state.is_capturing = False
         stream, self._stream = self._stream, None
         if stream is not None:
-            try:
-                stream.stop()
-                stream.close()
-            except Exception as exc:  # pragma: no cover
-                logger.warning("error stopping stream: %s", exc)
+            self._closing = True
+
+            def _teardown() -> None:
+                # Let any in-flight PortAudio callback drain before the stream
+                # (and its callback trampoline) is freed; closing mid-callback
+                # on the JACK/PipeWire host API crashes the process (SIGILL).
+                try:
+                    stream.abort()
+                    time.sleep(0.2)
+                    stream.close()
+                except Exception as exc:  # pragma: no cover
+                    logger.warning("error stopping stream: %s", exc)
+
+            await asyncio.to_thread(_teardown)
+            self._closing = False
         logger.info("capture stopped")
 
     def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
@@ -282,6 +294,8 @@ class CaptureManager:
 
     def _on_audio(self, indata, frames, time_info, status) -> None:
         """PortAudio callback (runs in a separate thread)."""
+        if self._closing:
+            return
         if status:
             # e.g. input overflow, or device removed mid-capture.
             logger.warning("audio callback status: %s", status)

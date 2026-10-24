@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { useAudioPeaks } from "../../lib/waveform";
+import { audioPlaybackErrorMessage } from "../../lib/audioPlayback";
+import { useProjectorStore } from "../../stores/projectorStore";
 import type { AudioMediaSettings } from "../../types/media";
 import { WaveformCanvas } from "./Waveform";
 import {
@@ -28,6 +30,7 @@ interface AudioStudioModalProps {
   open: boolean;
   name: string;
   src: string;
+  sourcePath: string;
   settings: AudioMediaSettings;
   onClose: () => void;
   onSave: (name: string, settings: AudioMediaSettings) => void;
@@ -43,6 +46,7 @@ export function AudioStudioModal(props: AudioStudioModalProps) {
       key={`${props.src}:${props.name}`}
       name={props.name}
       src={props.src}
+      sourcePath={props.sourcePath}
       settings={props.settings}
       onClose={props.onClose}
       onSave={props.onSave}
@@ -50,20 +54,27 @@ export function AudioStudioModal(props: AudioStudioModalProps) {
   );
 }
 
-function AudioStudioContent({ name, src, settings, onClose, onSave }: AudioStudioContentProps) {
+function AudioStudioContent({ name, src, sourcePath, settings, onClose, onSave }: AudioStudioContentProps) {
   const [title, setTitle] = useState(name);
   const [volume, setVolume] = useState(settings.volume);
   const [trimStart, setTrimStart] = useState(settings.trimStart);
   const [trimEnd, setTrimEnd] = useState<number | null>(settings.trimEnd);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const { peaks, duration, loading, error } = useAudioPeaks(src);
+  const liveAudioActive = useProjectorStore((state) => state.feedOverride === "live" && state.liveMedia?.category === "audio" && state.livePlayback.playing);
+  const { peaks, duration, loading, error } = useAudioPeaks(src, 220, sourcePath);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (audio) audio.volume = Math.max(0, Math.min(1, volume));
   }, [volume]);
+
+  useEffect(() => {
+    if (!liveAudioActive) return;
+    audioRef.current?.pause();
+  }, [liveAudioActive]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -94,10 +105,18 @@ function AudioStudioContent({ name, src, settings, onClose, onSave }: AudioStudi
       setIsPlaying(false);
       return;
     }
+    if (liveAudioActive) {
+      setPlaybackError("Pause Live audio before auditioning another track.");
+      return;
+    }
+    setPlaybackError(null);
     if (audio.currentTime < trimStart || (trimEnd != null && audio.currentTime >= trimEnd)) {
       audio.currentTime = trimStart;
     }
-    void audio.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+    void audio.play().then(() => { setIsPlaying(true); setPlaybackError(null); }).catch((playError: unknown) => {
+      setIsPlaying(false);
+      setPlaybackError(audioPlaybackErrorMessage(playError, audio));
+    });
   };
 
   const handleSeek = (time: number) => {
@@ -131,6 +150,8 @@ function AudioStudioContent({ name, src, settings, onClose, onSave }: AudioStudi
           ref={audioRef}
           src={src}
           preload="auto"
+          onPause={() => setIsPlaying(false)}
+          onError={(event) => setPlaybackError(audioPlaybackErrorMessage(event.currentTarget.error, event.currentTarget))}
           onLoadedMetadata={(event) => {
             if (trimEnd == null) setTrimEnd(event.currentTarget.duration);
           }}
@@ -143,6 +164,7 @@ function AudioStudioContent({ name, src, settings, onClose, onSave }: AudioStudi
             <div style={{ ...studioStageStyle, flex: 1, minHeight: 0, aspectRatio: "auto", padding: 18, boxSizing: "border-box" }}>
               <div style={{ width: "100%", display: "flex", alignItems: "center", gap: 12 }}>
                 <button type="button" onClick={togglePlay} title={isPlaying ? "Pause" : "Play"} style={playButtonStyle}>{isPlaying ? "Ⅱ" : "▶"}</button>
+                {playbackError ? <div role="alert" style={{ color: "var(--color-error)", fontSize: 12 }}>{playbackError}</div> : null}
                 <div style={{ flex: 1, minWidth: 0 }}>
             {loading ? (
               <div style={{ color: "var(--fg-subtle)", fontSize: 12 }}>Decoding waveform…</div>

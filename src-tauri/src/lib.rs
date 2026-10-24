@@ -16,6 +16,7 @@ use std::io::{BufRead, BufReader};
 use std::process::{Child as SidecarChild, Stdio};
 use tauri::{Emitter, Manager, WindowEvent};
 mod media_import;
+mod audio_import;
 #[cfg(not(debug_assertions))]
 use tauri_plugin_shell::{
     process::{CommandChild as SidecarChild, CommandEvent},
@@ -126,6 +127,11 @@ fn stop_sidecar(state: &SidecarState) {
             }
         }
     }
+}
+
+#[tauri::command]
+fn close_app(app: tauri::AppHandle) {
+    app.exit(0);
 }
 
 #[cfg(not(debug_assertions))]
@@ -560,8 +566,7 @@ async fn stage_template_video(app: tauri::AppHandle, data_url: String) -> Result
 async fn create_media_thumbnail(app: tauri::AppHandle, path: String, category: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let extension = match category.as_str() {
-            "audio" => "png",
-            "images" | "videos" => "jpg",
+            "audio" | "images" | "videos" => "jpg",
             _ => return Err("unsupported media category".to_string()),
         };
         let source = PathBuf::from(&path);
@@ -589,7 +594,7 @@ async fn create_media_thumbnail(app: tauri::AppHandle, path: String, category: S
         if category == "videos" { command.args(["-ss", "0.5"]); }
         command.arg("-i").arg(&source);
         if category == "audio" {
-            command.args(["-filter_complex", "[0:a:0]aformat=channel_layouts=mono,showwavespic=s=640x360:colors=0x7b2ff7[wave]", "-map", "[wave]"]);
+            command.args(["-map", "0:v:0?", "-vf", "scale=640:360:force_original_aspect_ratio=increase,crop=640:360"]);
         } else {
             command.args(["-vf", "scale=640:360:force_original_aspect_ratio=increase,crop=640:360"]);
         }
@@ -723,14 +728,17 @@ pub fn run() {
             let video_cache_dir = video_cache_dir.to_string_lossy().into_owned();
             let managed_video_dir = app.path().app_data_dir()?.join("media").join("videos").join("assets");
             let managed_video_dir = managed_video_dir.to_string_lossy().into_owned();
+            let managed_audio_dir = app.path().app_data_dir()?.join("media").join("audio").join("assets");
+            let managed_audio_dir = managed_audio_dir.to_string_lossy().into_owned();
             let window_handle = app.handle().clone();
             if let Some(window) = app.get_webview_window("main") {
                 window.on_window_event(move |event| {
-                    if matches!(event, WindowEvent::CloseRequested { .. }) {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
                         if let Some(projector) = window_handle.get_webview_window("projector-output") {
                             let _ = projector.close();
                         }
-                        window_handle.exit(0);
+                        let _ = window_handle.emit("app://close-requested", ());
                     }
                 });
             }
@@ -745,6 +753,7 @@ pub fn run() {
                         .arg("main.py")
                         .env("SERMONSYNC_VIDEO_CACHE_DIR", &video_cache_dir)
                         .env("SERMONSYNC_MANAGED_VIDEO_DIR", &managed_video_dir)
+                        .env("SERMONSYNC_MANAGED_AUDIO_DIR", &managed_audio_dir)
                         .current_dir(sidecar_dir)
                         .stdout(Stdio::piped())
                         .stderr(Stdio::piped())
@@ -753,12 +762,31 @@ pub fn run() {
                 })
             };
 
-            #[cfg(not(debug_assertions))]
+            // Linux ships the sidecar as an unpacked onedir resource (no
+            // per-launch extraction); other platforms use the externalBin.
+            #[cfg(all(not(debug_assertions), target_os = "linux"))]
+            let sidecar_result = {
+                let data_dir = app.path().app_data_dir()?.join("sidecar-data");
+                let resources = app.path().resource_dir()?;
+                let exe = resources.join("sidecar").join("python-sidecar");
+                app.shell()
+                    .command(exe)
+                    .env("SERMONSYNC_VIDEO_CACHE_DIR", &video_cache_dir)
+                    .env("SERMONSYNC_MANAGED_VIDEO_DIR", &managed_video_dir)
+                    .env("SERMONSYNC_MANAGED_AUDIO_DIR", &managed_audio_dir)
+                    .env("SERMONSYNC_DATA_DIR", data_dir.to_string_lossy().into_owned())
+                    .env("SERMONSYNC_WHISPER_DIR", resources.join("whisper").to_string_lossy().into_owned())
+                    .spawn()
+                    .map_err(|error| error.to_string())
+            };
+
+            #[cfg(all(not(debug_assertions), not(target_os = "linux")))]
             let sidecar_result = app
                 .shell()
                 .sidecar("python-sidecar")
                 .map(|command| command.env("SERMONSYNC_VIDEO_CACHE_DIR", &video_cache_dir)
-                    .env("SERMONSYNC_MANAGED_VIDEO_DIR", &managed_video_dir))
+                    .env("SERMONSYNC_MANAGED_VIDEO_DIR", &managed_video_dir)
+                    .env("SERMONSYNC_MANAGED_AUDIO_DIR", &managed_audio_dir))
                 .and_then(|command| command.spawn())
                 .map_err(|error| error.to_string());
 
@@ -912,6 +940,8 @@ pub fn run() {
             read_template_image_file,
             import_overlay_png,
             create_media_thumbnail,
+            audio_import::import_audio_asset,
+            audio_import::get_audio_waveform,
             media_import::import_video_asset,
             media_import::get_ready_video_asset,
             media_import::cancel_video_import,
@@ -922,7 +952,8 @@ pub fn run() {
             save_template_themes,
             load_app_settings,
             save_app_settings,
-            save_text_file
+            save_text_file,
+            close_app
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

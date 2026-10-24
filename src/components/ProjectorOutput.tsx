@@ -1,9 +1,10 @@
+import { DEFAULT_TRANSITIONS } from "../lib/transitions";
 import { useEffect, useRef, useState } from "react";
 
 import { postProjectorChannelMessage, subscribeProjectorChannel } from "../lib/projectorChannel";
 import { useTemplateStore } from "../stores/templateStore";
 import { ProjectorView } from "./ProjectorView";
-import type { ProjectorOutputSnapshot } from "../types/state";
+import type { ProjectorAudioProgress, ProjectorOutputSnapshot } from "../types/state";
 
 const EMPTY_SNAPSHOT: ProjectorOutputSnapshot = {
   slide: null,
@@ -12,14 +13,7 @@ const EMPTY_SNAPSHOT: ProjectorOutputSnapshot = {
   feedOverride: "black",
   overlayMode: "widescreen",
   theme: "cross",
-  transitions: {
-    scriptures: { effect: "fade", durationMs: 350, easing: "ease-in-out", crossfade: true, motionBlur: false },
-    songs: { effect: "fade", durationMs: 350, easing: "ease-in-out", crossfade: true, motionBlur: false },
-    layout: { effect: "fade", durationMs: 350, easing: "ease-in-out", crossfade: true, motionBlur: false },
-    logo: { effect: "fade", durationMs: 350, easing: "ease-in-out", crossfade: true, motionBlur: false },
-    black: { effect: "cut", durationMs: 0, easing: "linear", crossfade: false, motionBlur: false },
-    clear: { effect: "fade", durationMs: 350, easing: "ease-in-out", crossfade: true, motionBlur: false },
-  },
+  transitions: DEFAULT_TRANSITIONS,
   logo: { src: null, fit: "contain" },
   playback: { playing: true, looping: true, seekTime: null, seekRevision: 0 },
 };
@@ -28,7 +22,7 @@ function snapshotKey(snapshot: ProjectorOutputSnapshot) {
   const slide = snapshot.slide;
   return [
     snapshot.feedOverride,
-    snapshot.media?.path ?? "",
+    JSON.stringify(snapshot.media ?? null),
     JSON.stringify(snapshot.overlays ?? []),
     snapshot.overlayMode,
     snapshot.theme,
@@ -46,6 +40,7 @@ function snapshotKey(snapshot: ProjectorOutputSnapshot) {
 
 export function ProjectorOutput() {
   const [snapshot, setSnapshot] = useState<ProjectorOutputSnapshot>(EMPTY_SNAPSHOT);
+  const [audioProgress, setAudioProgress] = useState<ProjectorAudioProgress | null>(null);
   const activeOverlay = snapshot.overlays?.at(-1);
   const snapshotKeyRef = useRef(snapshotKey(EMPTY_SNAPSHOT));
   const initializeTemplates = useTemplateStore((state) => state.initialize);
@@ -57,6 +52,10 @@ export function ProjectorOutput() {
       if (!active) return;
       if (message.type === "templates-changed") {
         void reloadTemplates();
+        return;
+      }
+      if (message.type === "audio-progress") {
+        setAudioProgress(message.progress);
         return;
       }
       if (message.type !== "state") return;
@@ -95,6 +94,7 @@ export function ProjectorOutput() {
         transitions={snapshot.transitions}
         logo={snapshot.logo}
         playback={snapshot.playback}
+        audioProgress={audioProgress?.path === snapshot.media?.path ? audioProgress : null}
       />
     </main>
   );

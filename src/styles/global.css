@@ -35,6 +35,62 @@ body {
   color-scheme: dark;
 }
 
+.ss-schedule-remove {
+  background: var(--bg-base);
+}
+
+:root:not([data-theme="light"]) .ss-schedule-remove {
+  background: var(--bg-elevated);
+}
+
+.ss-schedule-remove:hover {
+  background: var(--color-primary-muted);
+  color: var(--color-primary);
+}
+
+.ss-schedule-remove:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.ss-compact-menu {
+  box-sizing: border-box;
+  padding: 4px;
+  border: none;
+  outline: none;
+  border-radius: 5px;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-md);
+}
+.ss-compact-menu-item {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  height: 25px;
+  min-height: 25px;
+  padding: 0 8px;
+  border: 0;
+  outline: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--fg-muted);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+.ss-compact-menu-item:hover,
+.ss-compact-menu-item:focus-visible {
+  outline: none;
+  background: var(--color-primary-muted);
+  color: var(--fg-base);
+}
+
+.ss-compact-trigger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-primary);
+}
+
 /* Apply a theme in one paint instead of transitioning each surface separately. */
 :root.theme-switching *,
 :root.theme-switching *::before,
@@ -286,6 +342,32 @@ body {
 }
 
 .scripture-scroll-pane::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary-hover);
+}
+
+.ss-suggestion-scroll-pane {
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-primary) transparent;
+}
+
+.ss-suggestion-scroll-pane::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ss-suggestion-scroll-pane::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ss-suggestion-scroll-pane::-webkit-scrollbar-thumb {
+  min-height: 36px;
+  border-radius: 0;
+  background: var(--color-primary);
+  border: 1px solid var(--bg-surface);
+}
+
+.ss-suggestion-scroll-pane::-webkit-scrollbar-thumb:hover {
   background: var(--color-primary-hover);
 }
 .template-text-scroll {

@@ -52,6 +52,15 @@ export function CameraFrameControls({ media, mode, getSnapTargets, onStart, onCh
       aria-label={mode === "crop" ? "Camera crop frame" : "Camera frame"}
       style={{ position: "absolute", left: `${media.x}%`, top: `${media.y}%`, width: `${media.width}%`, height: `${media.height}%`, boxSizing: "border-box", border: `2px ${mode === "crop" ? "dashed" : "solid"} var(--color-primary)`, boxShadow: "0 0 0 1px #fff", pointerEvents: "none", touchAction: "none" }}
     >
+      {mode === "frame" ? <button
+        type="button"
+        aria-label="Move camera frame"
+        onPointerDown={(event) => begin(event, "move")}
+        onPointerMove={move}
+        onPointerUp={end}
+        onPointerCancel={end}
+        style={{ position: "absolute", inset: 0, border: 0, padding: 0, background: "transparent", pointerEvents: "auto", touchAction: "none", cursor: "move" }}
+      /> : null}
       {mode === "frame" ? ([
         { name: "top", style: { left: 6, right: 6, top: -5, height: 10 } },
         { name: "bottom", style: { left: 6, right: 6, bottom: -5, height: 10 } },

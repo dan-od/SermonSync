@@ -1,7 +1,9 @@
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 
 import { useMicMuteDetection } from "../../lib/micMuteDetection";
+import { useAppUptime } from "../../app/useAppUptime";
 import { METER_BARS, useAudioStore } from "../../stores/audioStore";
+import { useSessionStore } from "../../stores/sessionStore";
 
 export interface StatusBarProps {
   inputName: string;
@@ -22,9 +24,6 @@ export interface StatusBarProps {
   /** True when the loader fell back to a smaller model than configured. */
   engineModelDegraded?: boolean;
   locationLabel: string;
-  latencyMs?: number;
-  uptimeSeconds?: number;
-  isSpeech?: boolean;
   modelProvider?: { id: "groq" | "openai" | "anthropic" | "gemini"; label: string } | null;
 }
 
@@ -68,9 +67,6 @@ export function StatusBar({
   engineModel = "",
   engineModelDegraded = false,
   locationLabel,
-  latencyMs = 0,
-  uptimeSeconds = 0,
-  isSpeech = false,
   modelProvider = null,
 }: StatusBarProps) {
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -84,7 +80,12 @@ export function StatusBar({
   const levels = useAudioStore((state) => state.levels);
   const levelRms = useAudioStore((state) => state.levelRms);
   const levelPeak = useAudioStore((state) => state.levelPeak);
+  const isSpeech = useAudioStore((state) => state.isSpeech);
   const decayMeter = useAudioStore((state) => state.decayMeter);
+  const latencyMs = useSessionStore((state) => state.lastLatencyMs);
+  const sessionUptimeSeconds = useSessionStore((state) => state.uptimeSeconds);
+  const { appUptimeSeconds } = useAppUptime();
+  const uptimeSeconds = Math.max(sessionUptimeSeconds, appUptimeSeconds);
   const activeInput = Boolean(inputName);
   const hasSignal = levels.some((value) => value > 0);
   const liveVisualsActive = isSessionLive && activeInput;
@@ -98,9 +99,10 @@ export function StatusBar({
   // Levels stop arriving when capture stops; tick the meter down so a frozen
   // reading is never mistaken for live input.
   useEffect(() => {
+    if (!hasSignal) return;
     const timer = setInterval(decayMeter, 120);
     return () => clearInterval(timer);
-  }, [decayMeter]);
+  }, [decayMeter, hasSignal]);
 
   useEffect(() => {
     if (!isInputMenuOpen && !isChannelMenuOpen) {
@@ -254,20 +256,23 @@ export function StatusBar({
         <div ref={dropdownRef} style={{ position: "relative", minWidth: 0, flex: "0 1 172px" }}>
           <button
             type="button"
+            className="ss-compact-trigger"
             onClick={() => setIsInputMenuOpen((current) => !current)}
             aria-haspopup="listbox"
             aria-expanded={isInputMenuOpen}
             style={{
               width: "100%",
               minWidth: 0,
+              height: "25px",
+              boxSizing: "border-box",
               border: "none",
-              borderRadius: "6px",
+              borderRadius: "4px",
               background: "var(--bg-elevated)",
               color: "var(--fg-base)",
               fontFamily: "var(--font-sans)",
               fontSize: "12px",
               lineHeight: 1,
-              padding: "5px 23px 5px 8px",
+              padding: "0 23px 0 8px",
               cursor: "pointer",
               textAlign: "left",
               overflow: "hidden",
@@ -282,6 +287,7 @@ export function StatusBar({
           {isInputMenuOpen ? (
             <div
               role="listbox"
+              className="ss-compact-menu"
               style={{
                 position: "absolute",
                 left: 0,
@@ -289,7 +295,7 @@ export function StatusBar({
                 zIndex: 20,
                 width: "220px",
                 border: "none",
-                borderRadius: "8px",
+                borderRadius: "5px",
                 background: "var(--bg-elevated)",
                 boxShadow: "var(--shadow-md)",
                 padding: "4px",
@@ -310,6 +316,7 @@ export function StatusBar({
                     key={device}
                     type="button"
                     role="option"
+                    className="ss-compact-menu-item"
                     aria-selected={selected}
                     onClick={() => {
                       onInputNameChange?.(device);
@@ -322,13 +329,16 @@ export function StatusBar({
                     onBlur={() => setHoveredInputDevice((current) => current === device ? null : current)}
                     style={{
                       width: "100%",
+                      height: "25px",
+                      minHeight: "25px",
+                      boxSizing: "border-box",
                       border: "none",
-                      borderRadius: "6px",
+                      borderRadius: "3px",
                       background: selected || hoveredInputDevice === device ? "var(--color-primary-muted)" : "transparent",
                       color: selected || hoveredInputDevice === device ? "var(--fg-base)" : "var(--fg-muted)",
                       fontFamily: "var(--font-sans)",
                       fontSize: "12px",
-                      padding: "8px 9px",
+                      padding: "0 8px",
                       cursor: "pointer",
                       textAlign: "left",
                       overflowWrap: "anywhere",
@@ -344,6 +354,7 @@ export function StatusBar({
         <div ref={channelDropdownRef} style={{ position: "relative", flex: "0 0 52px" }}>
           <button
             type="button"
+            className="ss-compact-trigger"
             onClick={() => setIsChannelMenuOpen((current) => !current)}
             disabled={!activeInput}
             aria-label="Input channel"
@@ -351,15 +362,17 @@ export function StatusBar({
             aria-expanded={isChannelMenuOpen}
             style={{
               width: "100%",
-              height: "24px",
+              height: "25px",
+              minHeight: "25px",
+              boxSizing: "border-box",
               border: "none",
-              borderRadius: "6px",
+              borderRadius: "4px",
               background: "var(--bg-elevated)",
               color: activeInput ? "var(--fg-base)" : "var(--fg-subtle)",
               fontFamily: "var(--font-mono)",
               fontSize: "10px",
               lineHeight: 1,
-              padding: "5px 16px 5px 6px",
+              padding: "0 16px 0 8px",
               cursor: activeInput ? "pointer" : "not-allowed",
               textAlign: "left",
               position: "relative",
@@ -380,7 +393,7 @@ export function StatusBar({
                 zIndex: 20,
                 width: "72px",
                 border: "none",
-                borderRadius: "8px",
+                borderRadius: "5px",
                 background: "var(--bg-elevated)",
                 boxShadow: "var(--shadow-md)",
                 padding: "4px",
@@ -394,6 +407,7 @@ export function StatusBar({
                     key={channel}
                     type="button"
                     role="option"
+                    className="ss-compact-menu-item"
                     aria-selected={selected}
                     onClick={() => {
                       onInputChannelChange?.(channel);
@@ -401,13 +415,16 @@ export function StatusBar({
                     }}
                     style={{
                       width: "100%",
+                      height: "25px",
+                      minHeight: "25px",
+                      boxSizing: "border-box",
                       border: "none",
-                      borderRadius: "6px",
+                      borderRadius: "3px",
                       background: selected ? "var(--color-primary-muted)" : "transparent",
                       color: selected ? "var(--fg-base)" : "var(--fg-muted)",
                       fontFamily: "var(--font-mono)",
                       fontSize: "10px",
-                      padding: "7px 6px",
+                      padding: "0 8px",
                       cursor: "pointer",
                       textAlign: "left",
                     }}

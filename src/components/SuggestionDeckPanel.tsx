@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { lookupScriptureVerse } from "../lib/sidecarClient";
 import { useConfigStore } from "../stores/configStore";
 import type { ProjectorSlide, SuggestionCard } from "../types/state";
+import { Dropdown } from "./Settings/primitives";
 
 function referenceLabel(card: SuggestionCard) {
   return `${card.reference.book} ${card.reference.chapter}:${card.reference.verse}`;
@@ -30,7 +31,6 @@ interface SuggestionDeckPanelProps {
   onClearAll: () => void;
 }
 
-const PAGE_SIZE = 5;
 const MAX_DECK_SIZE = 20;
 
 export function SuggestionDeckPanel({
@@ -52,19 +52,14 @@ export function SuggestionDeckPanel({
       return (b.createdAt ?? 0) - (a.createdAt ?? 0);
     });
   }, [cards]);
-  const [renderCount, setRenderCount] = useState(PAGE_SIZE);
   const visibleCards = useMemo(
-    () => orderedCards.slice(0, Math.min(renderCount, MAX_DECK_SIZE)),
-    [orderedCards, renderCount],
+    () => orderedCards.slice(0, MAX_DECK_SIZE),
+    [orderedCards],
   );
   const [exitingCards, setExitingCards] = useState<SuggestionCard[]>([]);
-  const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
   const [editingCard, setEditingCard] = useState<SuggestionCard | null>(null);
   const [dismissingCardIds, setDismissingCardIds] = useState<Set<string>>(() => new Set());
-  const viewportRef = useRef<HTMLDivElement | null>(null);
   const previousCardsRef = useRef<SuggestionCard[]>(visibleCards);
-
-  const hasMore = visibleCards.length < orderedCards.length;
 
   const stageCardsForExit = (cardsToExit: SuggestionCard[]) => {
     if (cardsToExit.length === 0) return;
@@ -114,28 +109,6 @@ export function SuggestionDeckPanel({
     previousCardsRef.current = visibleCards;
   }, [visibleCards]);
 
-  useEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport) {
-      return;
-    }
-
-    viewport.style.scrollBehavior = "smooth";
-
-    const onScroll = () => {
-      if (!hasMore) {
-        return;
-      }
-      const remaining = viewport.scrollHeight - (viewport.scrollTop + viewport.clientHeight);
-      if (remaining < 180) {
-        setRenderCount((current) => Math.min(current + PAGE_SIZE, Math.min(orderedCards.length, MAX_DECK_SIZE)));
-      }
-    };
-
-    viewport.addEventListener("scroll", onScroll, { passive: true });
-    return () => viewport.removeEventListener("scroll", onScroll);
-  }, [hasMore, orderedCards.length]);
-
   return (
     <div
       style={{
@@ -143,6 +116,7 @@ export function SuggestionDeckPanel({
         minHeight: 0,
         display: "flex",
         flexDirection: "column",
+        overflow: "hidden",
         gap: "var(--space-2)",
         background: "var(--bg-surface)",
         border: "none",
@@ -232,15 +206,14 @@ export function SuggestionDeckPanel({
       <div style={{ height: "1px", background: "var(--border-base)" }} />
 
       <div
-        ref={viewportRef}
-        className="scripture-scroll-pane"
+        className="ss-suggestion-scroll-pane"
         style={{
           flex: 1,
           minHeight: 0,
           display: "flex",
           flexDirection: "column",
           gap: "8px",
-          paddingRight: "4px",
+          paddingRight: "8px",
           paddingBottom: "2px",
           scrollbarGutter: "stable",
         }}
@@ -250,46 +223,26 @@ export function SuggestionDeckPanel({
           const confidencePercent = Math.round(card.confidence * 100);
           const confidenceColor = confidenceTone(card.confidence);
           const isPreview = previewReference === label;
-          const isHovered = hoveredCardId === card.id;
           const isDismissing = dismissingCardIds.has(card.id);
           const previewRing = isPreview ? "inset 0 0 0 1px rgba(123, 47, 247, 0.2)" : "none";
-          const hoverGlow = isHovered ? "0 0 0 1px rgba(255, 75, 96, 0.82), 0 0 8px rgba(255, 36, 74, 0.35)" : "none";
-          const accentColor = card.status === "sent" ? "var(--color-success)" : card.status === "dismissed" ? "var(--fg-subtle)" : "var(--color-error)";
 
           return (
             <article
               key={card.id}
               onClick={() => onPreview(card)}
               onDoubleClick={() => onSendLive(card)}
-              onMouseEnter={() => setHoveredCardId(card.id)}
-              onMouseLeave={() => setHoveredCardId((current) => (current === card.id ? null : current))}
               style={{
                 position: "relative",
-                overflow: "hidden",
                 border: isPreview ? "1px solid var(--color-primary)" : "none",
                 background: "var(--bg-elevated)",
-                borderRadius: "12px",
-                padding: "8px 10px 8px 16px",
+                borderRadius: 0,
+                padding: "8px 10px",
                 flexShrink: 0,
-                boxShadow: hoverGlow !== "none" ? `${previewRing !== "none" ? `${previewRing}, ` : ""}${hoverGlow}` : previewRing,
+                boxShadow: previewRing,
                 cursor: "pointer",
-                transition: "box-shadow 140ms ease",
               }}
               className={isDismissing ? "ss-suggestion-exit" : "ss-suggestion-enter"}
             >
-              <div
-                aria-hidden="true"
-                style={{
-                  position: "absolute",
-                  left: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: "6px",
-                  background: accentColor,
-                  boxShadow: `0 0 10px color-mix(in srgb, ${accentColor} 60%, transparent)`,
-                }}
-              />
-
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginBottom: "6px" }}>
                 <div style={{ minWidth: 0, color: "var(--fg-base)", fontWeight: 800, fontSize: "14px", lineHeight: 1.1, fontFamily: "Georgia, serif", overflowWrap: "anywhere" }}>{label}</div>
                 <div style={{ display: "flex", flexShrink: 0, alignItems: "center", gap: "6px" }}>
@@ -412,10 +365,7 @@ export function SuggestionDeckPanel({
                   fontStyle: "italic",
                   lineHeight: 1.32,
                   fontFamily: "Georgia, serif",
-                  display: "-webkit-box",
-                  WebkitBoxOrient: "vertical",
-                  WebkitLineClamp: 2,
-                  overflow: "hidden",
+                  overflowWrap: "anywhere",
                 }}
               >
                 {card.text}
@@ -429,7 +379,6 @@ export function SuggestionDeckPanel({
           const confidencePercent = Math.round(card.confidence * 100);
           const confidenceColor = confidenceTone(card.confidence);
           const isPreview = previewReference === label;
-          const accentColor = card.status === "sent" ? "var(--color-success)" : card.status === "dismissed" ? "var(--fg-subtle)" : "var(--color-error)";
 
           return (
             <article
@@ -440,24 +389,11 @@ export function SuggestionDeckPanel({
                 overflow: "hidden",
                 border: isPreview ? "1px solid var(--color-primary)" : "none",
                 background: "var(--bg-elevated)",
-                borderRadius: "12px",
-                padding: "8px 10px 8px 16px",
+                borderRadius: 0,
+                padding: "8px 10px",
                 flexShrink: 0,
               }}
             >
-              <div
-                aria-hidden="true"
-                style={{
-                  position: "absolute",
-                  left: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: "6px",
-                  background: accentColor,
-                  boxShadow: `0 0 10px color-mix(in srgb, ${accentColor} 60%, transparent)`,
-                }}
-              />
-
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "8px", marginBottom: "6px" }}>
                 <div style={{ color: "var(--fg-base)", fontWeight: 800, fontSize: "14px", lineHeight: 1.1, fontFamily: "Georgia, serif" }}>{label}</div>
                 <span style={{ color: "var(--fg-muted)", fontFamily: "var(--font-mono)", fontSize: "9px", whiteSpace: "nowrap" }}>
@@ -471,10 +407,7 @@ export function SuggestionDeckPanel({
                   fontStyle: "italic",
                   lineHeight: 1.32,
                   fontFamily: "Georgia, serif",
-                  display: "-webkit-box",
-                  WebkitBoxOrient: "vertical",
-                  WebkitLineClamp: 2,
-                  overflow: "hidden",
+                  overflowWrap: "anywhere",
                 }}
               >
                 {card.text}
@@ -616,9 +549,13 @@ function ReferenceEditorModal({
           </div>
           <label style={{ display: "grid", gap: 5, color: "var(--fg-muted)", fontSize: "var(--text-xs)" }}>
             Version
-            <select value={version} onChange={(event) => setVersion(event.target.value)} style={inputStyle}>
-              {versions.map((entry) => <option key={entry.abbreviation} value={entry.abbreviation}>{entry.abbreviation} - {entry.name}</option>)}
-            </select>
+            <Dropdown
+              ariaLabel="Bible version"
+              value={version}
+              options={versions.map((entry) => ({ value: entry.abbreviation, label: `${entry.abbreviation} - ${entry.name}` }))}
+              onChange={setVersion}
+              triggerStyle={inputStyle}
+            />
           </label>
           <div style={{ border: "1px solid var(--border-base)", borderRadius: "var(--radius-sm)", background: "var(--bg-base)", padding: "12px", minHeight: 104 }}>
             <div style={{ color: "var(--color-primary)", fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 700, letterSpacing: "0.06em", marginBottom: 7 }}>VERSE PREVIEW</div>
