@@ -43,12 +43,13 @@ describe("settings panel persistence", () => {
       lastUpdateCheck: "2026-10-05 00:00",
       activeProfile: "midweek-study",
       transitions: {
-        scriptures: { effect: "slide-left", durationMs: 777, easing: "spring", crossfade: false, motionBlur: true },
-        songs: { effect: "cut", durationMs: 0, easing: "linear", crossfade: false, motionBlur: false },
-        layout: { effect: "zoom-in", durationMs: 450, easing: "ease-out", crossfade: true, motionBlur: true },
-        logo: { effect: "fade", durationMs: 250, easing: "ease", crossfade: true, motionBlur: false },
-        black: { effect: "cut", durationMs: 0, easing: "linear", crossfade: false, motionBlur: false },
-        clear: { effect: "dissolve", durationMs: 310, easing: "ease-in-out", crossfade: true, motionBlur: false },
+        enabled: true,
+        scriptures: { effect: "slide-left", durationMs: 777, easing: "spring" },
+        songs: { effect: "cut", durationMs: 0, easing: "linear" },
+        layout: { effect: "zoom-in", durationMs: 450, easing: "ease-out" },
+        logo: { effect: "fade", durationMs: 250, easing: "ease" },
+        black: { effect: "cut", durationMs: 0, easing: "linear" },
+        clear: { effect: "fade", durationMs: 310, easing: "ease-in-out" },
       },
     };
 

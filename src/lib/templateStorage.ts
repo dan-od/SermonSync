@@ -61,6 +61,9 @@ function ensureScene(theme: TemplateCanvasTheme): TemplateScene {
   if (!input) {
     return fallback;
   }
+  const savedBackgroundMedia = sanitizeBackgroundMedia(input.backgroundMedia);
+  const legacyCameraMedia = savedBackgroundMedia?.type === "camera" ? savedBackgroundMedia : null;
+  const savedCameraMedia = sanitizeBackgroundMedia(input.cameraMedia);
 
   const layers: TemplateLayer[] = Array.isArray(input.layers)
     ? input.layers
@@ -203,7 +206,10 @@ function ensureScene(theme: TemplateCanvasTheme): TemplateScene {
     backgroundStart: isHexColor(input.backgroundStart) ? input.backgroundStart : fallback.backgroundStart,
     backgroundEnd: isHexColor(input.backgroundEnd) ? input.backgroundEnd : fallback.backgroundEnd,
     backgroundOverlayOpacity: coerceNumber(input.backgroundOverlayOpacity, 0.35, 0, 1),
-    backgroundMedia: sanitizeBackgroundMedia(input.backgroundMedia),
+    backgroundMedia: legacyCameraMedia ? null : savedBackgroundMedia,
+    cameraMedia: savedCameraMedia?.type === "camera"
+      ? savedCameraMedia
+      : legacyCameraMedia,
     layers: layers.length > 0 ? layers : fallback.layers,
   };
 }
@@ -272,23 +278,34 @@ function sanitizeStudioDocument(input: unknown, category: TemplateCategory, name
   if (!input || typeof input !== "object") return undefined;
   const value = input as Partial<StudioDocument>;
   if (!Array.isArray(value.objects)) return undefined;
+  const savedBackgroundMedia = sanitizeBackgroundMedia(value.backgroundMedia);
+  const legacyCameraMedia = savedBackgroundMedia?.type === "camera" ? savedBackgroundMedia : null;
+  const savedCameraMedia = sanitizeBackgroundMedia(value.cameraMedia);
   const width = coerceNumber(value.width, DEFAULT_CANVAS_WIDTH, 320, 7680);
   const height = coerceNumber(value.height, DEFAULT_CANVAS_HEIGHT, 180, 4320);
+  const background = typeof value.background === "string" && value.background
+    ? value.background
+    : legacyCameraMedia && typeof value.backgroundColor === "string" && value.backgroundColor
+      ? value.backgroundColor
+      : "#0f1117";
   return {
     id: typeof value.id === "string" && value.id ? value.id : `studio-${Date.now()}`,
     name: typeof value.name === "string" && value.name.trim() ? value.name.trim().slice(0, 80) : name,
     category,
     width,
     height,
-    background: typeof value.background === "string" && value.background ? value.background : "#0f1117",
-    backgroundMode: value.backgroundMode === "gradient" || value.backgroundMode === "media" ? value.backgroundMode : "color",
-    backgroundColor: typeof value.backgroundColor === "string" ? value.backgroundColor : value.background,
+    background,
+    backgroundMode: legacyCameraMedia ? "color" : value.backgroundMode === "gradient" || value.backgroundMode === "media" ? value.backgroundMode : "color",
+    backgroundColor: typeof value.backgroundColor === "string" ? value.backgroundColor : background,
     backgroundGradientStart: typeof value.backgroundGradientStart === "string" ? value.backgroundGradientStart : "#0f1117",
     backgroundGradientEnd: typeof value.backgroundGradientEnd === "string" ? value.backgroundGradientEnd : "#25204a",
     backgroundGradientAngle: typeof value.backgroundGradientAngle === "number" && Number.isFinite(value.backgroundGradientAngle) ? value.backgroundGradientAngle : 135,
     backgroundGradientStyle: value.backgroundGradientStyle === "radial" || value.backgroundGradientStyle === "conic" ? value.backgroundGradientStyle : "linear",
     backgroundBlur: coerceNumber(value.backgroundBlur, 0, 0, 100),
-    backgroundMedia: sanitizeBackgroundMedia(value.backgroundMedia),
+    backgroundMedia: legacyCameraMedia ? null : savedBackgroundMedia,
+    cameraMedia: savedCameraMedia?.type === "camera"
+      ? savedCameraMedia
+      : legacyCameraMedia,
     fabricVersion: typeof value.fabricVersion === "string" && value.fabricVersion ? value.fabricVersion : "7.0.0",
     objects: value.objects.filter((object): object is Record<string, unknown> => Boolean(object) && typeof object === "object"),
     createdAt: typeof value.createdAt === "number" && Number.isFinite(value.createdAt) ? value.createdAt : Date.now(),
@@ -308,6 +325,7 @@ function createDefaultScene(
     backgroundEnd,
     backgroundOverlayOpacity: 0.35,
     backgroundMedia: null,
+    cameraMedia: null,
     // New templates are intentionally blank. Layers only appear after the user adds them.
     layers: [],
   };

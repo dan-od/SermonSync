@@ -7,6 +7,7 @@ vi.mock("@tauri-apps/api/core", () => ({ convertFileSrc: (path: string) => path,
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 
 import { LocalLibraryPanel } from "../LocalLibraryPanel";
+import { useSongStore } from "../../stores/songStore";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -16,6 +17,7 @@ describe("scripture scheduling", () => {
 
   beforeEach(() => {
     vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+    useSongStore.setState({ songs: [], initialized: true });
     vi.stubGlobal("fetch", vi.fn(async (input: string | URL) => {
       const url = String(input);
       const body = url.includes("/api/bible/versions")
@@ -35,6 +37,7 @@ describe("scripture scheduling", () => {
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
+    useSongStore.setState({ songs: [], initialized: false });
     vi.unstubAllGlobals();
   });
 
@@ -77,5 +80,42 @@ describe("scripture scheduling", () => {
     });
     expect(onPreviewSlide).toHaveBeenCalled();
     expect(onSendLive).not.toHaveBeenCalled();
+  });
+
+  it("reports the selected song and its slides to the schedule owner", async () => {
+    const song = {
+      id: "song-schedule-test",
+      title: "Test Schedule Song",
+      artist: "Choir",
+      slides: [
+        { label: "Verse 1", text: "First verse" },
+        { label: "Chorus", text: "First chorus" },
+      ],
+    };
+    const onSelectedSongChange = vi.fn();
+    useSongStore.setState({ songs: [song], initialized: true });
+
+    await act(async () => root.render(
+      <LocalLibraryPanel
+        activeTab="songs"
+        searchQuery=""
+        searchMode="words"
+        onActiveTabChange={vi.fn()}
+        previewReference={null}
+        liveReference={null}
+        onPreviewSlide={vi.fn()}
+        onSendLive={vi.fn()}
+        onSelectedSongChange={onSelectedSongChange}
+        onPreviewMedia={vi.fn()}
+        onSendMedia={vi.fn()}
+      />,
+    ));
+
+    const songRow = [...container.querySelectorAll<HTMLButtonElement>("button")]
+      .find((button) => button.textContent?.includes(song.title));
+    expect(songRow).toBeDefined();
+    await act(async () => songRow!.click());
+
+    expect(onSelectedSongChange).toHaveBeenCalledWith(song);
   });
 });

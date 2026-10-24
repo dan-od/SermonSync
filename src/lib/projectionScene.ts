@@ -140,8 +140,11 @@ export function projectionScene(template: TemplateCanvasTheme): TemplateScene {
     gradientAngle: studioDocument.backgroundGradientAngle ?? template.scene.gradientAngle ?? 135,
     gradientStyle: studioDocument.backgroundGradientStyle ?? template.scene.gradientStyle ?? "linear",
     backgroundMedia: studioDocument.backgroundMode === "media"
-      ? studioDocument.backgroundMedia ?? null
+      ? studioDocument.backgroundMedia?.type === "camera" ? null : studioDocument.backgroundMedia ?? null
       : null,
+    cameraMedia: studioDocument.cameraMedia?.type === "camera"
+      ? studioDocument.cameraMedia
+      : studioDocument.backgroundMedia?.type === "camera" ? studioDocument.backgroundMedia : null,
     layers: template.scene.layers.map((layer) => {
       if (layer.type !== "text") return layer;
       const object = studioObjects.get(layer.id);

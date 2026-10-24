@@ -3,7 +3,10 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { cameraFeeds } = vi.hoisted(() => ({ cameraFeeds: vi.fn() }));
+const { cameraFeeds, projectedScene } = vi.hoisted(() => ({
+  cameraFeeds: vi.fn(),
+  projectedScene: { current: null as null | Record<string, unknown> },
+}));
 
 vi.mock("../CameraFeed", () => ({
   CameraFeed: ({ paused }: { paused?: boolean }) => {
@@ -12,13 +15,7 @@ vi.mock("../CameraFeed", () => ({
   },
 }));
 vi.mock("../../lib/projectionScene", () => ({
-  projectionScene: () => ({
-    layers: [],
-    backgroundMedia: {
-      type: "camera", src: "", fit: "cover", x: 0, y: 0, width: 100, height: 100,
-      opacity: 1, cameraSourceType: "local", cameraDeviceId: "test-camera",
-    },
-  }),
+  projectionScene: () => projectedScene.current,
 }));
 vi.mock("../../stores/templateStore", () => ({
   useTemplateStore: (selector: (state: unknown) => unknown) => selector({
@@ -42,6 +39,13 @@ describe("camera preview controls", () => {
 
   beforeEach(() => {
     vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+    projectedScene.current = {
+      layers: [],
+      backgroundMedia: {
+        type: "camera", src: "", fit: "cover", x: 0, y: 0, width: 100, height: 100,
+        opacity: 1, cameraSourceType: "local", cameraDeviceId: "test-camera",
+      },
+    };
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -75,5 +79,29 @@ describe("camera preview controls", () => {
 
     act(() => container.querySelector<HTMLButtonElement>('button[aria-label="Resume PREVIEW camera"]')?.click());
     expect(container.querySelectorAll('[data-camera-paused="false"]')).toHaveLength(2);
+  });
+
+  it("renders a camera layer over an independent background image", () => {
+    projectedScene.current = {
+      layers: [],
+      backgroundStart: "#112233",
+      backgroundEnd: "#112233",
+      backgroundMedia: {
+        type: "image", src: "data:image/png;base64,bG9n", fit: "cover", x: 0, y: 0,
+        width: 100, height: 100, opacity: 1,
+      },
+      cameraMedia: {
+        type: "camera", src: "", fit: "cover", x: 50, y: 0, width: 50, height: 100,
+        opacity: 1, cameraSourceType: "local", cameraDeviceId: "test-camera",
+      },
+    };
+    const slide = { reference: { book: "John", chapter: 3, verse: 16 }, text: "Verse", version: "KJV" };
+
+    act(() => root.render(
+      <ProjectorView title="PREVIEW" slide={slide} feedOverride="live" overlayMode="widescreen" theme="cross" isLive={false} fontSizePx={48} />,
+    ));
+
+    expect(container.querySelector('img[src="data:image/png;base64,bG9n"]')).not.toBeNull();
+    expect(container.querySelector('[data-camera-paused="false"]')).not.toBeNull();
   });
 });

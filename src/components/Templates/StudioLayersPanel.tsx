@@ -39,6 +39,8 @@ interface StudioLayersPanelProps {
   backgroundGradientStyle: "linear" | "radial" | "conic";
   backgroundBlur: number;
   backgroundMedia: TemplateBackgroundMedia | null;
+  cameraMedia: TemplateBackgroundMedia | null;
+  onCameraMediaChange: (media: TemplateBackgroundMedia | null) => void;
   cameraEditMode: CameraEditMode;
   onCameraEditModeChange: (mode: CameraEditMode) => void;
   onBackgroundVideoStagingChange?: (staging: boolean) => void;
@@ -54,7 +56,7 @@ function layerLabel(object: StudioFabricObjectData, index: number): string {
   return `${type} ${index + 1}`;
 }
 
-export function StudioLayersPanel({ objects, selectedIds, textSelection, onSelect, onToggleVisibility, onToggleLock, onDelete, onUpdate, onSetShapeMedia, onClearShapeMedia, onReorder, canUndo, canRedo, onUndo, onRedo, background, onBackgroundChange, backgroundMode, backgroundColor, backgroundGradientStart, backgroundGradientEnd, backgroundGradientAngle, backgroundGradientStyle, backgroundBlur, backgroundMedia, cameraEditMode, onCameraEditModeChange, onBackgroundConfigChange, onBackgroundVideoStagingChange, screenLayout, onScreenLayoutChange }: StudioLayersPanelProps) {
+export function StudioLayersPanel({ objects, selectedIds, textSelection, onSelect, onToggleVisibility, onToggleLock, onDelete, onUpdate, onSetShapeMedia, onClearShapeMedia, onReorder, canUndo, canRedo, onUndo, onRedo, background, onBackgroundChange, backgroundMode, backgroundColor, backgroundGradientStart, backgroundGradientEnd, backgroundGradientAngle, backgroundGradientStyle, backgroundBlur, backgroundMedia, cameraMedia, onCameraMediaChange, cameraEditMode, onCameraEditModeChange, onBackgroundConfigChange, onBackgroundVideoStagingChange, screenLayout, onScreenLayoutChange }: StudioLayersPanelProps) {
   // Fabric stacks objects back-to-front; the panel lists front-to-back like most design tools.
   const ordered = [...objects].map((object, index) => ({ object, index })).reverse();
 
@@ -188,9 +190,10 @@ export function StudioLayersPanel({ objects, selectedIds, textSelection, onSelec
         <div style={labelStyle}><span>Background type</span><Dropdown value={backgroundMode} options={["color", "gradient", "media"].map((mode) => ({ value: mode, label: mode[0].toUpperCase() + mode.slice(1) }))} onChange={(mode) => onBackgroundConfigChange({ mode: mode as StudioBackgroundMode, color: backgroundColor, gradientStart: backgroundGradientStart, gradientEnd: backgroundGradientEnd, gradientAngle: backgroundGradientAngle, gradientStyle: backgroundGradientStyle, backgroundBlur, media: backgroundMedia })} triggerStyle={inputStyle} /></div>
         {backgroundMode === "color" ? <InspectorField label="Background color" type="color" value={backgroundColor || background} onChange={(color) => { onBackgroundChange(color); onBackgroundConfigChange({ mode: "color", color, backgroundBlur }); }} /> : null}
         {backgroundMode === "gradient" ? <><div style={labelStyle}><span>Gradient style</span><Dropdown value={backgroundGradientStyle} options={[{ value: "linear", label: "Linear" }, { value: "radial", label: "Radial" }, { value: "conic", label: "Conic" }]} onChange={(style) => onBackgroundConfigChange({ mode: "gradient", gradientStart: backgroundGradientStart, gradientEnd: backgroundGradientEnd, gradientAngle: backgroundGradientAngle, gradientStyle: style as "linear" | "radial" | "conic", backgroundBlur })} triggerStyle={inputStyle} /></div><div style={twoColumn}><InspectorField label="Start color" type="color" value={backgroundGradientStart} onChange={(color) => onBackgroundConfigChange({ mode: "gradient", gradientStart: color, gradientEnd: backgroundGradientEnd, gradientAngle: backgroundGradientAngle, gradientStyle: backgroundGradientStyle, backgroundBlur })} /><InspectorField label="End color" type="color" value={backgroundGradientEnd} onChange={(color) => onBackgroundConfigChange({ mode: "gradient", gradientStart: backgroundGradientStart, gradientEnd: color, gradientAngle: backgroundGradientAngle, gradientStyle: backgroundGradientStyle, backgroundBlur })} /></div><InspectorField label="Angle (degrees)" type="number" value={String(backgroundGradientAngle)} onChange={(angle) => onBackgroundConfigChange({ mode: "gradient", gradientStart: backgroundGradientStart, gradientEnd: backgroundGradientEnd, gradientAngle: Number(angle) || 0, gradientStyle: backgroundGradientStyle, backgroundBlur })} /></> : null}
-        {backgroundMode === "media" ? <MediaBackgroundControls media={backgroundMedia} onChange={(media) => onBackgroundConfigChange({ mode: "media", media, backgroundBlur })} onStagingChange={onBackgroundVideoStagingChange} cameraEditMode={cameraEditMode} onCameraEditModeChange={onCameraEditModeChange} /> : null}
+        {backgroundMode === "media" ? <MediaBackgroundControls media={backgroundMedia} onChange={(media) => onBackgroundConfigChange({ mode: "media", media, backgroundBlur })} onStagingChange={onBackgroundVideoStagingChange} /> : null}
         <InspectorField label="Background blur (px)" type="number" value={String(backgroundBlur)} onChange={(value) => onBackgroundConfigChange({ mode: backgroundMode, color: backgroundColor, gradientStart: backgroundGradientStart, gradientEnd: backgroundGradientEnd, gradientAngle: backgroundGradientAngle, gradientStyle: backgroundGradientStyle, backgroundBlur: Math.max(0, Math.min(100, Number(value) || 0)), media: backgroundMedia })} />
       </div>
+      <CameraLayerControls media={cameraMedia} onChange={onCameraMediaChange} editMode={cameraEditMode} onEditModeChange={onCameraEditModeChange} />
     </div>
   );
 }
@@ -330,7 +333,49 @@ function isImagePath(path: string): boolean {
   return /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(path);
 }
 
-function MediaBackgroundControls({ media, onChange, onStagingChange, cameraEditMode, onCameraEditModeChange }: { media: TemplateBackgroundMedia | null; onChange: (media: TemplateBackgroundMedia | null) => void; onStagingChange?: (staging: boolean) => void; cameraEditMode: CameraEditMode; onCameraEditModeChange: (mode: CameraEditMode) => void }) {
+function CameraLayerControls({ media, onChange, editMode, onEditModeChange }: {
+  media: TemplateBackgroundMedia | null;
+  onChange: (media: TemplateBackgroundMedia | null) => void;
+  editMode: CameraEditMode;
+  onEditModeChange: (mode: CameraEditMode) => void;
+}) {
+  const camera = media?.type === "camera" ? media : null;
+  const patch = (changes: Partial<TemplateBackgroundMedia>) => camera && onChange({ ...camera, ...changes });
+  return (
+    <div style={{ padding: "10px", borderTop: "1px solid var(--border-base)" }}>
+      <div style={{ ...sectionTitle, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span>Camera layer</span>
+        {camera ? <button type="button" onClick={() => { onChange(null); onEditModeChange("off"); }} style={removeMediaButton} title="Remove camera layer" aria-label="Remove camera layer">×</button> : null}
+      </div>
+      <CameraBackgroundPicker media={camera} onChange={(next) => { onChange(next); onEditModeChange(next ? "frame" : "off"); }} />
+      {camera ? <>
+        <div style={twoColumn}>
+          <InspectorField label="X (%)" type="number" value={String(Math.round(camera.x))} onChange={(value) => patch({ x: Math.max(0, Math.min(100 - camera.width, Number(value) || 0)) })} />
+          <InspectorField label="Y (%)" type="number" value={String(Math.round(camera.y))} onChange={(value) => patch({ y: Math.max(0, Math.min(100 - camera.height, Number(value) || 0)) })} />
+          <InspectorField label="Width (%)" type="number" value={String(Math.round(camera.width))} onChange={(value) => patch({ width: Math.max(5, Math.min(100 - camera.x, Number(value) || 5)) })} />
+          <InspectorField label="Height (%)" type="number" value={String(Math.round(camera.height))} onChange={(value) => patch({ height: Math.max(5, Math.min(100 - camera.y, Number(value) || 5)) })} />
+        </div>
+        <div style={twoColumn}>
+          <div style={labelStyle}><span>Fit</span><Dropdown value={camera.fit} options={["cover", "contain", "fill"].map((fit) => ({ value: fit, label: fit[0].toUpperCase() + fit.slice(1) }))} onChange={(fit) => patch({ fit: fit as TemplateBackgroundMedia["fit"] })} triggerStyle={inputStyle} /></div>
+          <div style={labelStyle}><span>Blend mode</span><Dropdown value={camera.blendMode ?? "normal"} options={["normal", "multiply", "screen", "overlay", "darken", "lighten"].map((mode) => ({ value: mode, label: mode[0].toUpperCase() + mode.slice(1) }))} onChange={(blendMode) => patch({ blendMode })} triggerStyle={inputStyle} /></div>
+        </div>
+        <div style={buttonRow}><button type="button" style={toggleStyle(Boolean(camera.flipX))} onClick={() => patch({ flipX: !camera.flipX })}>Mirror horizontally</button></div>
+        <InspectorSection title="Cropping">
+          <div style={buttonRow}><button type="button" aria-pressed={editMode === "crop"} style={toggleStyle(editMode === "crop")} onClick={() => onEditModeChange(editMode === "crop" ? "frame" : "crop")}>{editMode === "crop" ? "Done cropping" : "Crop on canvas"}</button></div>
+          <div style={twoColumn}>
+            <InspectorField label="Top (%)" type="number" value={String(Math.round(camera.cropTop ?? 0))} onChange={(value) => patch({ cropTop: Math.max(0, Math.min(95 - (camera.cropBottom ?? 0), Number(value) || 0)) })} />
+            <InspectorField label="Right (%)" type="number" value={String(Math.round(camera.cropRight ?? 0))} onChange={(value) => patch({ cropRight: Math.max(0, Math.min(95 - (camera.cropLeft ?? 0), Number(value) || 0)) })} />
+            <InspectorField label="Bottom (%)" type="number" value={String(Math.round(camera.cropBottom ?? 0))} onChange={(value) => patch({ cropBottom: Math.max(0, Math.min(95 - (camera.cropTop ?? 0), Number(value) || 0)) })} />
+            <InspectorField label="Left (%)" type="number" value={String(Math.round(camera.cropLeft ?? 0))} onChange={(value) => patch({ cropLeft: Math.max(0, Math.min(95 - (camera.cropRight ?? 0), Number(value) || 0)) })} />
+          </div>
+        </InspectorSection>
+        <InspectorField label="Opacity (%)" type="number" value={String(Math.round((camera.opacity ?? 1) * 100))} onChange={(value) => patch({ opacity: Math.max(0, Math.min(1, (Number(value) || 0) / 100)) })} />
+      </> : null}
+    </div>
+  );
+}
+
+function MediaBackgroundControls({ media, onChange, onStagingChange }: { media: TemplateBackgroundMedia | null; onChange: (media: TemplateBackgroundMedia | null) => void; onStagingChange?: (staging: boolean) => void }) {
   const mediaInputRef = useRef<HTMLInputElement | null>(null);
   const latestMediaRef = useRef(media);
   const preparationIdRef = useRef(0);
@@ -339,7 +384,6 @@ function MediaBackgroundControls({ media, onChange, onStagingChange, cameraEditM
   const [videoImportState, setVideoImportState] = useState<"idle" | "importing" | "preparing">("idle");
   const [videoImportPercent, setVideoImportPercent] = useState<number | null>(null);
   const [removeHovered, setRemoveHovered] = useState(false);
-  const [sourceKind, setSourceKind] = useState<"file" | "camera">(media?.type === "camera" ? "camera" : "file");
   const chooseMedia = async () => {
     if (!("__TAURI_INTERNALS__" in window)) {
       mediaInputRef.current?.click();
@@ -454,52 +498,8 @@ function MediaBackgroundControls({ media, onChange, onStagingChange, cameraEditM
     </div>
   );
 
-  if (!media || media.type === "camera" || sourceKind === "camera") {
-    const cameraMedia = media?.type === "camera" ? media : null;
-    return (
-      <>
-        <div style={buttonRow}>
-          <button type="button" style={toggleStyle(sourceKind === "file")} onClick={() => setSourceKind("file")}>Photo / Video</button>
-          <button type="button" style={toggleStyle(sourceKind === "camera")} onClick={() => setSourceKind("camera")}>Live Camera</button>
-        </div>
-        {sourceKind === "camera" ? (
-          <>
-            <CameraBackgroundPicker media={cameraMedia} onChange={onChange} />
-            {cameraMedia ? (
-              <>
-                <div style={twoColumn}>
-                  <InspectorField label="X (%)" type="number" value={String(Math.round(cameraMedia.x))} onChange={(value) => patch({ x: Math.max(0, Math.min(100 - cameraMedia.width, Number(value) || 0)) })} />
-                  <InspectorField label="Y (%)" type="number" value={String(Math.round(cameraMedia.y))} onChange={(value) => patch({ y: Math.max(0, Math.min(100 - cameraMedia.height, Number(value) || 0)) })} />
-                  <InspectorField label="Width (%)" type="number" value={String(Math.round(cameraMedia.width))} onChange={(value) => patch({ width: Math.max(5, Math.min(100 - cameraMedia.x, Number(value) || 5)) })} />
-                  <InspectorField label="Height (%)" type="number" value={String(Math.round(cameraMedia.height))} onChange={(value) => patch({ height: Math.max(5, Math.min(100 - cameraMedia.y, Number(value) || 5)) })} />
-                </div>
-                <div style={twoColumn}>
-                  <div style={labelStyle}><span>Fit</span><Dropdown value={cameraMedia.fit} options={["cover", "contain", "fill"].map((fit) => ({ value: fit, label: fit[0].toUpperCase() + fit.slice(1) }))} onChange={(fit) => patch({ fit: fit as TemplateBackgroundMedia["fit"] })} triggerStyle={inputStyle} /></div>
-                  <div style={labelStyle}><span>Blend mode</span><Dropdown value={cameraMedia.blendMode ?? "normal"} options={["normal", "multiply", "screen", "overlay", "darken", "lighten"].map((mode) => ({ value: mode, label: mode[0].toUpperCase() + mode.slice(1) }))} onChange={(blendMode) => patch({ blendMode })} triggerStyle={inputStyle} /></div>
-                </div>
-                <div style={buttonRow}><button type="button" style={toggleStyle(Boolean(cameraMedia.flipX))} onClick={() => patch({ flipX: !cameraMedia.flipX })}>Mirror horizontally</button></div>
-                <InspectorSection title="Cropping">
-                  <div style={buttonRow}><button type="button" aria-pressed={cameraEditMode === "crop"} style={toggleStyle(cameraEditMode === "crop")} onClick={() => onCameraEditModeChange(cameraEditMode === "crop" ? "frame" : "crop")}>{cameraEditMode === "crop" ? "Done cropping" : "Crop on canvas"}</button></div>
-                  <div style={twoColumn}>
-                  <InspectorField label="Top (%)" type="number" value={String(Math.round(cameraMedia.cropTop ?? 0))} onChange={(value) => patch({ cropTop: Math.max(0, Math.min(95 - (cameraMedia.cropBottom ?? 0), Number(value) || 0)) })} />
-                  <InspectorField label="Right (%)" type="number" value={String(Math.round(cameraMedia.cropRight ?? 0))} onChange={(value) => patch({ cropRight: Math.max(0, Math.min(95 - (cameraMedia.cropLeft ?? 0), Number(value) || 0)) })} />
-                  <InspectorField label="Bottom (%)" type="number" value={String(Math.round(cameraMedia.cropBottom ?? 0))} onChange={(value) => patch({ cropBottom: Math.max(0, Math.min(95 - (cameraMedia.cropTop ?? 0), Number(value) || 0)) })} />
-                  <InspectorField label="Left (%)" type="number" value={String(Math.round(cameraMedia.cropLeft ?? 0))} onChange={(value) => patch({ cropLeft: Math.max(0, Math.min(95 - (cameraMedia.cropRight ?? 0), Number(value) || 0)) })} />
-                  </div>
-                </InspectorSection>
-                <InspectorField label="Opacity (%)" type="number" value={String(Math.round((cameraMedia.opacity ?? 1) * 100))} onChange={(value) => patch({ opacity: Math.max(0, Math.min(1, (Number(value) || 0) / 100)) })} />
-              </>
-            ) : null}
-          </>
-        ) : filePicker}
-      </>
-    );
-  }
+  if (!media || media.type === "camera") return filePicker;
   return <>
-    <div style={buttonRow}>
-      <button type="button" style={toggleStyle(true)} onClick={() => setSourceKind("file")}>Photo / Video</button>
-      <button type="button" style={toggleStyle(false)} onClick={() => setSourceKind("camera")}>Live Camera</button>
-    </div>
     {filePicker}
     <div style={twoColumn}>
       <div style={labelStyle}><span>Fit</span><Dropdown value={media.fit} options={["cover", "contain", "fill"].map((fit) => ({ value: fit, label: fit[0].toUpperCase() + fit.slice(1) }))} onChange={(fit) => patch({ fit: fit as TemplateBackgroundMedia["fit"] })} triggerStyle={inputStyle} /></div>
