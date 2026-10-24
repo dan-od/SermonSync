@@ -13,12 +13,62 @@ import time
 
 from ws_hub import manager
 
+from ..eval import tap
 from ..monitoring import monitor
 from . import whisper_engine
 from .buffer import transcript_buffer
 
 logger = logging.getLogger("sermonsync.transcription.streaming")
 STALE_BUFFER_SECONDS = 3.0
+# Interim-pass modes: re-run the main model (default), skip interim passes, or
+# run them on a small model so they stop competing with finals for compute.
+PARTIAL_MODES = ("main", "off", "tiny.en", "base.en")
+
+# Whisper copies a prompt's style and spelling: written references and local
+# names, not instructions. Well under the 224-token prompt limit.
+STYLE_PROMPT = (
+    "Turn with me to John 3:16, 1 Corinthians 13:4-7 and Philippians 4:13. "
+    "Foursquare Gospel Church."
+)
+FINAL_TAIL_CHARS = 200
+
+# Text Whisper produces from silence, music and noise (its training data's
+# subtitle credits). Dropped only when a chunk yields nothing else.
+HALLUCINATION_PHRASES = frozenset({
+    "thank you", "thank you very much", "thanks", "thanks for watching",
+    "thank you for watching", "thank you so much for watching", "please subscribe",
+    "like and subscribe", "you", "bye", "bye bye", "music", "applause",
+})
+HALLUCINATION_PREFIXES = ("subtitles by", "captions by", "transcription by", "translated by")
+# A chunk this short that decodes to one or two words is almost always noise
+# or music read as speech ("Three", "Zoom!", "haha"). Measured on six sermon
+# runs with the VAD fix: catches 13 of 28 caption-free finals and drops 12 of
+# 13,435 real words. A no_speech_prob/avg_logprob rule did far worse
+# (3 caught, 2.2% of real words lost): most hallucinations score as speech.
+# faster-whisper already skips segments with no_speech > 0.6 and logprob < -1.
+SHORT_CHUNK_SECONDS = 1.2
+SHORT_CHUNK_MAX_WORDS = 2
+
+
+def _bare(text: str) -> str:
+    return " ".join("".join(c if c.isalnum() or c == " " else " " for c in text.lower()).split())
+
+
+def hallucination_reason(
+    segment: dict, alone: bool, chunk_seconds: float | None = None
+) -> str | None:
+    """Why a segment should be dropped, or None to keep it."""
+    bare = _bare(segment.get("text") or "")
+    if (
+        alone
+        and chunk_seconds is not None
+        and chunk_seconds < SHORT_CHUNK_SECONDS
+        and len(bare.split()) <= SHORT_CHUNK_MAX_WORDS
+    ):
+        return "short_chunk"
+    if alone and (bare in HALLUCINATION_PHRASES or bare.startswith(HALLUCINATION_PREFIXES)):
+        return "blocklist"
+    return None
 
 try:
     import numpy as np
@@ -43,7 +93,7 @@ class StreamingTranscriber:
         language: str | None = "en",
         matching_enabled: bool = True,
         min_flush_seconds: float = 0.4,
-        silence_flush_seconds: float = 0.45,
+        silence_flush_seconds: float = 0.8,
         partial_interval: float = 1.0,
         partial_min_seconds: float = 0.8,
         partial_max_seconds: float = 3.0,
@@ -58,7 +108,9 @@ class StreamingTranscriber:
         self.max_buffer_seconds = max_buffer_seconds
         self.poll_interval = poll_interval
         # A pause this long ends the utterance. Also the latency floor: text
-        # lands this soon after you stop speaking.
+        # lands this soon after you stop speaking. 0.8 s (was 0.45) stops
+        # cutting at breaths mid-sentence: WER −0.01 to −0.04 for +0.05 to
+        # +0.2 s word delay in the SS-072 sweep (eval/results/utterance-segmentation).
         self.min_flush_seconds = min_flush_seconds
         self.silence_flush_seconds = silence_flush_seconds
         # Interim hypotheses while the speaker is still going, so the UI shows
@@ -70,16 +122,31 @@ class StreamingTranscriber:
         # ~78% of a core sustained. The interim line only needs recent words.
         self.partial_max_seconds = partial_max_seconds
         self._last_partial_ts = 0.0
+        self.partial_mode = "main"
         # Pin the language (default English) so short/quiet clips aren't
         # mis-detected as another language. Set None to auto-detect.
         self.language = language
         self.matching_enabled = matching_enabled
+        # Decoding hints (fix C): "none", "final_tail" (last ~200 chars of
+        # final text) or "style" (STYLE_PROMPT); optionally passed as
+        # faster-whisper hotwords instead of initial_prompt.
+        self.prompt_mode = "none"
+        self.style_prompt = STYLE_PROMPT
+        self.prompt_as_hotwords = False
+        self.hallucination_filter = True
+        self._final_tail = ""
         self._buf = bytearray()
         self._lock = None  # created lazily on the loop's thread
         self._running = False
         self._task: asyncio.Task | None = None
         self._first_chunk_ts: float | None = None
         self._last_feed_ts: float | None = None
+        # Cumulative byte offsets into the fed stream: total bytes ever fed,
+        # and the offset of _buf[0]. Lets the eval harness (SS-072) map every
+        # chunk, drop and trim back to the audio it came from.
+        self._fed_bytes = 0
+        self._buf_offset = 0
+        self._chunk_seq = 0
         # Optional callback(segment: dict) for downstream (buffer/matching).
         self.on_segment = None
 
@@ -93,10 +160,15 @@ class StreamingTranscriber:
             self._first_chunk_ts = now
         self._last_feed_ts = now
         self._buf.extend(pcm)
+        self._fed_bytes += len(pcm)
         # Keep only a short recent window while inference is busy.
         max_bytes = int(self.max_buffer_seconds * self.sample_rate * 2)
         if len(self._buf) > max_bytes:
-            del self._buf[: len(self._buf) - max_bytes]
+            dropped = len(self._buf) - max_bytes
+            del self._buf[:dropped]
+            start = self._buf_offset
+            self._buf_offset += dropped
+            tap.emit("chunk_drop", reason="trim", byte_start=start, byte_end=start + dropped)
 
     # --- lifecycle --------------------------------------------------------
     async def start(self) -> None:
@@ -115,9 +187,23 @@ class StreamingTranscriber:
             self._task.cancel()
             self._task = None
         self._buf.clear()
+        self._buf_offset = self._fed_bytes
         self._first_chunk_ts = None
         self._last_feed_ts = None
         logger.info("streaming transcriber stopped")
+
+    def reset(self) -> None:
+        """Drop buffered audio without stopping (a new, unrelated stream)."""
+        self._final_tail = ""
+        self._buf.clear()
+        self._buf_offset = self._fed_bytes
+        self._first_chunk_ts = None
+        self._last_feed_ts = None
+        self._last_partial_ts = 0.0
+
+    @property
+    def fed_bytes(self) -> int:
+        return self._fed_bytes
 
     def _buffered_seconds(self) -> float:
         return len(self._buf) / (self.sample_rate * 2)
@@ -129,7 +215,11 @@ class StreamingTranscriber:
         # Sub-threshold fragments cannot be flushed. Drop them after a long
         # pause so the next utterance does not inherit stale audio.
         if current_time - self._last_feed_ts >= STALE_BUFFER_SECONDS:
+            start, n = self._buf_offset, len(self._buf)
             self._buf.clear()
+            self._buf_offset = self._fed_bytes
+            if n:
+                tap.emit("chunk_drop", reason="stale_drop", byte_start=start, byte_end=start + n)
             self._first_chunk_ts = None
             self._last_feed_ts = None
 
@@ -145,8 +235,37 @@ class StreamingTranscriber:
         now = now if now is not None else time.time()
         return (now - self._last_feed_ts) >= self.silence_flush_seconds
 
+    def _decode_hints(self) -> dict:
+        """Keyword arguments for engine.transcribe (only when set, so engines
+        without prompt support keep working)."""
+        text = None
+        if self.prompt_mode == "final_tail":
+            text = self._final_tail[-FINAL_TAIL_CHARS:].strip() or None
+        elif self.prompt_mode == "style":
+            text = self.style_prompt
+        if not text:
+            return {}
+        return {"hotwords": text} if self.prompt_as_hotwords else {"prompt": text}
+
+    def _cut_reason(self) -> str:
+        """Why the buffer is being cut: the ceiling, or a speaker pause."""
+        return "ceiling" if self._buffered_seconds() >= self.max_chunk_seconds else "pause"
+
+    def set_partial_mode(self, mode: str) -> None:
+        if mode not in PARTIAL_MODES:
+            raise ValueError(f"partial mode must be one of {PARTIAL_MODES}")
+        self.partial_mode = mode
+        logger.info("interim transcription: %s", mode)
+
+    def _partial_engine(self):
+        if self.partial_mode in ("main", "off"):
+            return whisper_engine.get_engine()
+        return whisper_engine.get_partial_engine(self.partial_mode)
+
     def _ready_for_partial(self, now: float | None = None) -> bool:
         """True when an interim hypothesis is worth emitting mid-utterance."""
+        if self.partial_mode == "off":
+            return False
         if self._buffered_seconds() < self.partial_min_seconds:
             return False
         now = now if now is not None else time.time()
@@ -157,12 +276,21 @@ class StreamingTranscriber:
             while self._running:
                 await asyncio.sleep(self.poll_interval)
                 if self._ready_to_infer():
+                    reason = self._cut_reason()
                     chunk = bytes(self._buf)
+                    start = self._buf_offset
                     self._buf.clear()
+                    self._buf_offset = self._fed_bytes
+                    self._chunk_seq += 1
+                    tap.emit(
+                        "chunk", seq=self._chunk_seq, reason=reason,
+                        byte_start=start, byte_end=start + len(chunk),
+                        duration=round(len(chunk) / (self.sample_rate * 2), 3),
+                    )
                     received_ts = self._first_chunk_ts or time.time()
                     self._first_chunk_ts = None
                     self._last_partial_ts = time.time()
-                    await self._infer_and_emit(chunk, received_ts)
+                    await self._infer_and_emit(chunk, received_ts, self._chunk_seq)
                 else:
                     self._expire_stale_buffer()
                     if not self._ready_for_partial():
@@ -178,15 +306,24 @@ class StreamingTranscriber:
     async def _emit_partial(self, pcm: bytes) -> None:
         """Broadcast an interim hypothesis (is_final=False). Never assembled
         into sentences and never matched — it will be revised."""
-        engine = whisper_engine.get_engine()
+        # Loading a small partial model can take seconds: never on the loop.
+        engine = await asyncio.to_thread(self._partial_engine)
+        infer_start = time.time()
         try:
             segments = await asyncio.to_thread(
-                engine.transcribe, pcm16_to_float(pcm), self.language
+                engine.transcribe, pcm16_to_float(pcm), self.language, **self._decode_hints()
             )
         except Exception as exc:  # pragma: no cover
             logger.debug("partial transcription failed: %s", exc)
             return
+        if self.hallucination_filter:
+            alone = len([s for s in segments if s["text"]]) == 1
+            segments = [s for s in segments if hallucination_reason(s, alone) is None]
         text = " ".join(seg["text"] for seg in segments if seg["text"]).strip()
+        tap.emit(
+            "partial", text=text, infer_ms=round((time.time() - infer_start) * 1000, 1),
+            duration=round(len(pcm) / (self.sample_rate * 2), 3),
+        )
         if not text:
             return
         transcript_buffer.add_fragment(text, is_final=False, timestamp=time.time())
@@ -202,12 +339,14 @@ class StreamingTranscriber:
             }
         )
 
-    async def _infer_and_emit(self, pcm: bytes, received_ts: float) -> None:
+    async def _infer_and_emit(self, pcm: bytes, received_ts: float, seq: int = 0) -> None:
         engine = whisper_engine.get_engine()
         audio = pcm16_to_float(pcm)
         infer_start = time.time()
         try:
-            segments = await asyncio.to_thread(engine.transcribe, audio, self.language)
+            segments = await asyncio.to_thread(
+                engine.transcribe, audio, self.language, **self._decode_hints()
+            )
         except Exception as exc:  # pragma: no cover
             logger.error("transcription failed: %s", exc)
             monitor.flag_error("transcription")
@@ -218,9 +357,29 @@ class StreamingTranscriber:
         monitor.record_stage("transcription", (emit_ts - infer_start) * 1000)
         monitor.record_end_to_end(latency_ms)
         monitor.clear_error("transcription")
+        if self.hallucination_filter:
+            alone = len([s for s in segments if s["text"]]) == 1
+            for seg in segments:
+                reason = hallucination_reason(seg, alone, len(audio) / self.sample_rate)
+                if reason:
+                    seg["dropped"] = reason
+                    logger.info("dropped likely hallucination (%s): %r", reason, seg["text"])
+        if tap.active():
+            tap.emit(
+                "inference", seq=seq, infer_ms=round((emit_ts - infer_start) * 1000, 1),
+                latency_ms=latency_ms, duration=round(len(audio) / self.sample_rate, 3),
+                segments=[
+                    {k: seg.get(k) for k in (
+                        "text", "start", "end", "confidence", "no_speech_prob",
+                        "avg_logprob", "compression_ratio", "dropped",
+                    )}
+                    for seg in segments
+                ],
+            )
         for seg in segments:
-            if not seg["text"]:
+            if not seg["text"] or seg.get("dropped"):
                 continue
+            self._final_tail = (self._final_tail + " " + seg["text"])[-FINAL_TAIL_CHARS * 2:]
             payload = {
                 "type": "transcription",
                 "text": seg["text"],

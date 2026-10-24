@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { getSidecarHttpBase } from "../lib/sidecarClient";
+import { useTestFeedStore } from "../stores/testFeedStore";
+import type { SidecarTestFeedEvent } from "../types/state";
 
 export function useEngineStatus(enabled: boolean) {
   // SS-065: report the transcription model actually running, never a guess.
@@ -16,6 +18,8 @@ export function useEngineStatus(enabled: boolean) {
     const controller = new AbortController();
     interface EngineStatus {
       version?: string;
+      dev_feed?: boolean;
+      test_feed?: SidecarTestFeedEvent | null;
       transcription?: {
         configured_model?: string;
         loaded_model?: string | null;
@@ -34,6 +38,10 @@ export function useEngineStatus(enabled: boolean) {
         .then((d: EngineStatus | null) => {
           if (!d || disposed) return;
           if (d.version) setEngineVersion(`v${d.version}`);
+          const testFeed = useTestFeedStore.getState();
+          const feedEnabled = Boolean(d.dev_feed);
+          if (testFeed.enabled !== feedEnabled) testFeed.setEnabled(feedEnabled);
+          if (d.test_feed && testFeed.status === null) testFeed.setStatus(d.test_feed);
           const t = d.transcription;
           if (!t) return;
           const model = t.loaded_model ?? t.configured_model ?? "unknown";

@@ -41,6 +41,13 @@ class TranscriptBuffer:
     def get_context(self) -> list[str]:
         return list(self.context)
 
+    def reset(self) -> None:
+        """Forget all buffered text and context (a new, unrelated stream)."""
+        self.context.clear()
+        self._buffer = ""
+        self._partial = ""
+        self._last_ts = None
+
     def add_fragment(
         self, text: str, is_final: bool = True, timestamp: float | None = None
     ) -> list[dict]:

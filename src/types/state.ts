@@ -110,7 +110,8 @@ export interface ScriptureReference {
 }
 
 /** Which pipeline stage produced a suggestion (1=Trie … 4=Neural). */
-export type PipelineStage = 1 | 2 | 3 | 4;
+/** 0 = explicitly spoken reference ("John 3:16"); 1–4 = matcher stages. */
+export type PipelineStage = 0 | 1 | 2 | 3 | 4;
 
 export type SuggestionStatus = "pending" | "sent" | "dismissed" | "edited";
 
@@ -395,7 +396,29 @@ export interface SidecarSystemStatusEvent {
   stages: Record<string, StageMetrics>;
 }
 
+/**
+ * Dev-only live-feed test harness (SS-072): a file or YouTube URL is playing
+ * through the live pipeline instead of the microphone.
+ */
+export interface SidecarTestFeedEvent {
+  type: "test_feed";
+  state: "idle" | "loading" | "playing" | "draining" | "stopped" | "error";
+  title: string | null;
+  source: string | null;
+  /** Seconds into the source media. */
+  position: number;
+  start: number;
+  end: number | null;
+  speed: number;
+  label?: string | null;
+  captions?: string | null;
+  run_dir?: string | null;
+  report?: string | null;
+  error?: string | null;
+}
+
 export type SidecarWsEvent =
+  | SidecarTestFeedEvent
   | SidecarAckEvent
   | SidecarAudioLevelEvent
   | SidecarVadStateEvent

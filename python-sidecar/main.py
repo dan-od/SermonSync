@@ -93,6 +93,11 @@ async def lifespan(app: FastAPI):
     vad.set_sensitivity(saved_vad_sensitivity)
     audio_state.vad_sensitivity = saved_vad_sensitivity
 
+    # Interim-transcription mode persisted from Settings (SS-067 groundwork).
+    from api.transcription import apply_persisted_partials
+
+    apply_persisted_partials()
+
     # Route VAD-passed speech chunks into the streaming transcriber.
     capture_manager.speech_sink = streaming_transcriber.feed
     await streaming_transcriber.start()
@@ -110,6 +115,9 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("failed to end session during sidecar shutdown")
     status_task.cancel()
+    from engine.eval.feed import test_feed
+
+    await test_feed.stop()
     await streaming_transcriber.stop()
     await capture_manager.stop()
     await camera_manager.stop_all()
@@ -141,6 +149,15 @@ app.include_router(presets_router)
 app.include_router(units_router)
 app.include_router(settings_router)
 app.include_router(groq_router)
+
+# SS-072: dev-only live-feed test harness (file/YouTube -> live pipeline).
+from engine.eval.feed import dev_feed_enabled  # noqa: E402
+
+if dev_feed_enabled():
+    from api.dev_feed import router as test_feed_router
+
+    app.include_router(test_feed_router)
+    logger.warning("DEV TEST FEED ENABLED (SERMONSYNC_DEV_FEED=1)")
 
 
 @app.get("/health")

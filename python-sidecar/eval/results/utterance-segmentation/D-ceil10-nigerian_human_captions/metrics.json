@@ -1,0 +1,175 @@
+{
+  "run": {
+    "dir": "20261016-084952_d-ceil10-nigerian-human-captions",
+    "label": "D-ceil10-nigerian_human_captions",
+    "title": "God Doesn't Joke About These 3 Things\u2014You Need to Beware of Them | Pastor E.A. Adeboye",
+    "source": "https://www.youtube.com/watch?v=ooaB4z653Aw",
+    "window": [
+      60.0,
+      660.0
+    ],
+    "duration_s": 600.0,
+    "speed": 1.0,
+    "overrides": {
+      "streaming.max_chunk_seconds": 10
+    },
+    "captions": "auto",
+    "engine": {
+      "model": "base",
+      "device": "cpu",
+      "compute_type": "int8",
+      "backend": "faster-whisper"
+    },
+    "vad": "SileroVAD",
+    "git": {
+      "branch": "HEAD",
+      "commit": "abf3ab0",
+      "dirty": false
+    },
+    "normalizer": "whisper EnglishTextNormalizer"
+  },
+  "wer": {
+    "captions": {
+      "source": "auto captions",
+      "label": "agreement with YouTube ASR (auto-captions), not accuracy",
+      "window": [
+        60.0,
+        660.0
+      ],
+      "ref_words": 849,
+      "hyp_words": 848,
+      "wer": 0.2945,
+      "substitutions": 163,
+      "deletions": 44,
+      "insertions": 43,
+      "hits": 642
+    },
+    "primary": "captions",
+    "ref_spans": {
+      "ref_words": 31,
+      "spans": 5,
+      "wer": 0.4194,
+      "substitutions": 7,
+      "deletions": 1,
+      "insertions": 5
+    }
+  },
+  "worship_gate": {
+    "caption_speech_in_worship_s": 0,
+    "blocked_speech_s": 0,
+    "blocked_pct_of_speech": 0.0
+  },
+  "vad": {
+    "vad_open_s": 340.0,
+    "forwarded_s": 340.0,
+    "reached_whisper_s": 384.4,
+    "stale_dropped_s": 0,
+    "trimmed_s": 0,
+    "worship_s": 0,
+    "caption_speech_s": 267.6,
+    "recall": 99.8,
+    "recall_vad_only": 93.3,
+    "recall_gate": 93.3,
+    "false_open_s": 53.6,
+    "false_open_s_per_10min": 53.59,
+    "speech_lost_to_stale_drop_s": 0
+  },
+  "hallucinations": {
+    "count": 1,
+    "per_10min": 1.0,
+    "during_music": 0,
+    "words": 4
+  },
+  "chunks": {
+    "count": 102,
+    "median_s": 2.87,
+    "mean_s": 3.82,
+    "reasons": {
+      "pause": 97,
+      "ceiling": 5
+    },
+    "histogram": {
+      "0-1s": 2,
+      "1-2s": 29,
+      "2-3s": 21,
+      "3-4s": 17,
+      "4-5s": 11,
+      "5-6s": 4,
+      "6-8s": 4,
+      "8-10s": 9,
+      "10-15s": 5,
+      "15s+": 0
+    }
+  },
+  "latency": {
+    "final_infer_ms_median": 347.95,
+    "final_infer_ms_p90": 513.5,
+    "speech_end_to_final_s_median": 0.97,
+    "speech_end_to_final_s_p90": 1.42
+  },
+  "compute": {
+    "final_inference_s": 42.1,
+    "partial_inference_s": 166.0,
+    "partial_count": 327,
+    "partial_infer_ms_median": 341.3,
+    "partial_share_pct": 79.8,
+    "inference_realtime_factor": 0.347
+  },
+  "detection": {
+    "expected": 5,
+    "found": 3,
+    "recall": 60.0,
+    "suggestions": 834,
+    "suggestions_per_10min": 834.0,
+    "precision": 0.4,
+    "precision_top1": 3.3,
+    "latency_median_s": 8.417,
+    "latency_mean_s": 7.967,
+    "stages": {
+      "4": 387,
+      "2": 443,
+      "0": 3,
+      "1": 1
+    },
+    "by_stage": {
+      "4": {
+        "suggestions": 387,
+        "matched": 0,
+        "precision": 0.0,
+        "found": 0
+      },
+      "2": {
+        "suggestions": 443,
+        "matched": 1,
+        "precision": 0.2,
+        "found": 1
+      },
+      "0": {
+        "suggestions": 3,
+        "matched": 2,
+        "precision": 66.7,
+        "found": 2
+      },
+      "1": {
+        "suggestions": 1,
+        "matched": 0,
+        "precision": 0.0,
+        "found": 0
+      }
+    },
+    "expected_source": "reference parser over auto captions"
+  },
+  "headline": {
+    "wer": 0.2945,
+    "wer_source": "auto captions",
+    "ref_span_wer": 0.4194,
+    "vad_recall_pct": 99.8,
+    "vad_false_open_s": 53.6,
+    "hallucinations_per_10min": 1.0,
+    "refs_expected": 5,
+    "refs_precision_pct": 0.4,
+    "refs_recall_pct": 60.0,
+    "spoken_to_suggestion_median_s": 8.417,
+    "engine": "faster-whisper/base/cpu-int8"
+  }
+}
