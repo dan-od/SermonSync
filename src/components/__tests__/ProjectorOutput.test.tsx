@@ -8,11 +8,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // `vi.mock` factories are hoisted above imports/consts, so shared mock state
 // must be created via `vi.hoisted` to avoid a TDZ error.
-const { postMessageMock, subscribeChannelMock, unsubscribeChannelMock, initializeTemplatesMock, reloadTemplatesMock, projectorViewMock, getListenCallback, clearListenCallbacks } = vi.hoisted(() => {
-  let channelCallback: ((message: { type: string; snapshot?: unknown; revision?: number }) => void) | undefined;
+const { postMessageMock, subscribeChannelMock, unsubscribeChannelMock, initializeTemplatesMock, reloadTemplatesMock, projectorViewMock, getListenCallback, sendChannelMessage, clearListenCallbacks } = vi.hoisted(() => {
+  let channelCallback: ((message: { type: string; snapshot?: unknown; revision?: number; progress?: unknown }) => void) | undefined;
   const postMessageMock = vi.fn();
   const unlistenMock = vi.fn();
-  const subscribeChannelMock = vi.fn((callback: (message: { type: string; snapshot?: unknown; revision?: number }) => void) => {
+  const subscribeChannelMock = vi.fn((callback: (message: { type: string; snapshot?: unknown; revision?: number; progress?: unknown }) => void) => {
     channelCallback = callback;
     return unlistenMock;
   });
@@ -29,6 +29,7 @@ const { postMessageMock, subscribeChannelMock, unsubscribeChannelMock, initializ
     getListenCallback: (event = "projector://state") => event === "templates://changed"
       ? () => channelCallback?.({ type: "templates-changed" })
       : (incoming: { payload: unknown }) => channelCallback?.({ type: "state", snapshot: incoming.payload }),
+    sendChannelMessage: (message: { type: string; progress: unknown }) => channelCallback?.(message),
     clearListenCallbacks: () => { channelCallback = undefined; },
   };
 });
@@ -43,10 +44,10 @@ vi.mock("../../stores/templateStore", () => ({
   ),
 }));
 vi.mock("../ProjectorView", () => ({
-  ProjectorView: (props: { slide: { text: string } | null; feedOverride: string; overlays?: Array<{ definition: { id: string } }>; playback?: { playing: boolean; looping: boolean; seekRevision: number } }) => {
+  ProjectorView: (props: { slide: { text: string } | null; feedOverride: string; overlays?: Array<{ definition: { id: string } }>; playback?: { playing: boolean; looping: boolean; seekRevision: number }; audioProgress?: { time: number } | null }) => {
     projectorViewMock(props);
     return (
-      <div data-testid="projector-view" data-feed={props.feedOverride} data-slide={props.slide?.text ?? ""} data-overlays={props.overlays?.map((entry) => entry.definition.id).join(",") ?? ""} data-playing={String(props.playback?.playing)} data-looping={String(props.playback?.looping)} data-seek-revision={props.playback?.seekRevision} />
+      <div data-testid="projector-view" data-feed={props.feedOverride} data-slide={props.slide?.text ?? ""} data-overlays={props.overlays?.map((entry) => entry.definition.id).join(",") ?? ""} data-playing={String(props.playback?.playing)} data-looping={String(props.playback?.looping)} data-seek-revision={props.playback?.seekRevision} data-audio-time={props.audioProgress?.time ?? ""} />
     );
   },
 }));
@@ -55,12 +56,12 @@ import { ProjectorOutput } from "../ProjectorOutput";
 import { TEMPLATE_THEMES_CHANGED_EVENT } from "../../lib/templateStorage";
 
 const TRANSITIONS = {
-  scriptures: { effect: "fade", durationMs: 350, easing: "ease-in-out", crossfade: true, motionBlur: false },
-  songs: { effect: "fade", durationMs: 350, easing: "ease-in-out", crossfade: true, motionBlur: false },
-  layout: { effect: "fade", durationMs: 350, easing: "ease-in-out", crossfade: true, motionBlur: false },
-  logo: { effect: "fade", durationMs: 350, easing: "ease-in-out", crossfade: true, motionBlur: false },
-  black: { effect: "cut", durationMs: 0, easing: "linear", crossfade: false, motionBlur: false },
-  clear: { effect: "fade", durationMs: 350, easing: "ease-in-out", crossfade: true, motionBlur: false },
+  scriptures: { effect: "fade", durationMs: 350, easing: "ease-in-out" },
+  songs: { effect: "fade", durationMs: 350, easing: "ease-in-out" },
+  layout: { effect: "fade", durationMs: 350, easing: "ease-in-out" },
+  logo: { effect: "fade", durationMs: 350, easing: "ease-in-out" },
+  black: { effect: "cut", durationMs: 0, easing: "linear" },
+  clear: { effect: "fade", durationMs: 350, easing: "ease-in-out" },
 } as const;
 
 describe("ProjectorOutput", () => {
@@ -136,6 +137,41 @@ describe("ProjectorOutput", () => {
     const updated = container.querySelector('[data-testid="projector-view"]');
     expect(updated?.getAttribute("data-feed")).toBe("live");
     expect(updated?.getAttribute("data-slide")).toBe("For God so loved the world");
+  });
+
+  it("applies updated audio peaks when the media path is unchanged", async () => {
+    await act(async () => root.render(<ProjectorOutput />));
+    const snapshot = {
+      slide: null,
+      media: { path: "/media/choir.mp3", name: "Choir", category: "audio", fit: "cover", opacity: 1, audioWaveform: [0.2, 0.4], audioWaveformMin: [-0.2, -0.4], audioWaveformMax: [0.2, 0.4], audioDuration: 12 },
+      feedOverride: "live",
+      overlayMode: "widescreen",
+      theme: "cross",
+      transitions: TRANSITIONS,
+    };
+    await act(async () => getListenCallback()?.({ payload: snapshot }));
+    const callsBeforeWaveformUpdate = projectorViewMock.mock.calls.length;
+
+    await act(async () => getListenCallback()?.({ payload: {
+      ...snapshot,
+      media: { ...snapshot.media, audioWaveform: [0.2, 0.9], audioWaveformMin: [-0.2, -0.8], audioWaveformMax: [0.2, 0.9], audioDuration: 12 },
+    } }));
+
+    expect(projectorViewMock).toHaveBeenCalledTimes(callsBeforeWaveformUpdate + 1);
+    expect((projectorViewMock.mock.calls.at(-1)?.[0] as { media: { audioWaveform: number[] } }).media.audioWaveform).toEqual([0.2, 0.9]);
+    expect((projectorViewMock.mock.calls.at(-1)?.[0] as { media: { audioWaveformMin: number[] } }).media.audioWaveformMin).toEqual([-0.2, -0.8]);
+  });
+
+  it("tracks the active audio playhead without playing audio in the output", async () => {
+    await act(async () => root.render(<ProjectorOutput />));
+    await act(async () => getListenCallback()?.({ payload: {
+      slide: null, media: { path: "/media/choir.mp3", name: "Choir", category: "audio", fit: "cover", opacity: 1 },
+      feedOverride: "live", overlayMode: "widescreen", theme: "cross", transitions: TRANSITIONS,
+    } }));
+    await act(async () => sendChannelMessage({ type: "audio-progress", progress: { path: "/media/choir.mp3", time: 5, duration: 12 } }));
+    expect(container.querySelector('[data-testid="projector-view"]')?.getAttribute("data-audio-time")).toBe("5");
+    await act(async () => sendChannelMessage({ type: "audio-progress", progress: { path: "/media/other.mp3", time: 9, duration: 20 } }));
+    expect(container.querySelector('[data-testid="projector-view"]')?.getAttribute("data-audio-time")).toBe("");
   });
 
   it("acknowledges a received LIVE snapshot", async () => {

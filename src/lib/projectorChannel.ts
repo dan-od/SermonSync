@@ -1,10 +1,11 @@
-import type { ProjectorOutputSnapshot } from "../types/state";
+import type { ProjectorAudioProgress, ProjectorOutputSnapshot } from "../types/state";
 
 export type ProjectorChannelMessage =
   | { type: "state"; snapshot: ProjectorOutputSnapshot }
   | { type: "ready" }
   | { type: "ack"; revision: number }
-  | { type: "templates-changed" };
+  | { type: "templates-changed" }
+  | { type: "audio-progress"; progress: ProjectorAudioProgress };
 
 const CHANNEL_NAME = "sermonsync-projector-v1";
 const localSubscribers = new Set<(message: ProjectorChannelMessage) => void>();

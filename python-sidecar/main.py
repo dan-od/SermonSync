@@ -71,6 +71,11 @@ logging.getLogger().addHandler(_BufferingLogHandler())
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Close sessions left by an interrupted run before the sidecar reports ready.
+    from engine.session.manager import get_manager
+
+    get_manager()
+
     # State what the transcription engine will load, before anything else can
     # obscure it (SS-065). One greppable line; the model itself loads lazily.
     from engine.transcription.whisper_engine import log_engine_configuration
@@ -105,6 +110,10 @@ async def lifespan(app: FastAPI):
     _pipeline_ready = True
     logger.info("sidecar pipeline ready")
     yield
+    try:
+        get_manager().end()
+    except Exception:
+        logger.exception("failed to end session during sidecar shutdown")
     status_task.cancel()
     from engine.eval.feed import test_feed
 
@@ -202,6 +211,21 @@ async def managed_video_poster(asset_id: str) -> FileResponse:
     return FileResponse(poster, media_type="image/jpeg")
 
 
+@app.get("/api/media-audio/{asset_id}/playback.mp3")
+async def managed_audio(asset_id: str) -> FileResponse:
+    """Serve only committed MP3 assets; FileResponse handles byte ranges."""
+    if not re.fullmatch(r"[0-9a-f]{64}-sermonsync-audio-v1", asset_id):
+        raise HTTPException(status_code=404)
+    directory = Path(os.environ.get(
+        "SERMONSYNC_MANAGED_AUDIO_DIR",
+        Path.home() / ".local" / "share" / "com.sermonsync.app" / "media" / "audio" / "assets",
+    ))
+    audio = directory / asset_id / "playback.mp3"
+    if not audio.is_file():
+        raise HTTPException(status_code=404)
+    return FileResponse(audio, media_type="audio/mpeg")
+
+
 @app.get("/api/status")
 async def status() -> dict:
     """Engine metadata for the frontend SYS/engine-version displays."""
@@ -240,4 +264,9 @@ async def ws_audio(websocket: WebSocket) -> None:
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")
+    uvicorn.run(
+        app,
+        host="127.0.0.1",
+        port=int(os.environ.get("SERMONSYNC_PORT", "8000")),
+        log_level="info",
+    )

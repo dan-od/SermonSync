@@ -148,20 +148,14 @@ export interface LogoConfig {
 }
 
 export type TransitionEffect =
+  | "cut"
   | "fade"
-  | "dissolve"
   | "slide-left"
   | "slide-right"
   | "slide-up"
   | "slide-down"
   | "zoom-in"
-  | "zoom-out"
-  | "wipe-left"
-  | "wipe-right"
-  | "push-left"
-  | "push-right"
-  | "push-up-crossfade"
-  | "cut";
+  | "zoom-out";
 
 export type TransitionEasing =
   | "ease"
@@ -175,13 +169,11 @@ export interface TransitionSetting {
   effect: TransitionEffect;
   durationMs: number;
   easing: TransitionEasing;
-  crossfade: boolean;
-  motionBlur: boolean;
 }
 
 export type TransitionCategory = "scriptures" | "songs" | "layout" | "logo" | "black" | "clear";
 
-export type TransitionsConfig = Record<TransitionCategory, TransitionSetting>;
+export type TransitionsConfig = Record<TransitionCategory, TransitionSetting> & { enabled?: boolean };
 
 export interface ProjectorSlide {
   reference: ScriptureReference;
@@ -192,9 +184,20 @@ export interface ProjectorSlide {
 export interface ProjectorMedia {
   path: string;
   name: string;
-  category: "images" | "videos";
+  category: "audio" | "images" | "videos";
   fit: "cover" | "contain" | "fill";
   opacity: number;
+  audioSettings?: {
+    volume: number;
+    trimStart: number;
+    trimEnd: number | null;
+  };
+  audioWaveform?: number[];
+  audioWaveformMin?: number[];
+  audioWaveformMax?: number[];
+  audioDuration?: number;
+  audioWaveformError?: string | null;
+  audioPlaybackError?: string | null;
 }
 
 export interface DisplayInfo {
@@ -224,6 +227,12 @@ export interface ProjectorPlaybackState {
   looping: boolean;
   seekTime: number | null;
   seekRevision: number;
+}
+
+export interface ProjectorAudioProgress {
+  path: string;
+  time: number;
+  duration: number;
 }
 
 export interface ProjectorOutputSnapshot {

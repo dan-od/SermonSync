@@ -13,8 +13,9 @@ import type { TemplateBackgroundMedia } from "../../types/templates";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-function PickerHarness({ initialMedia = null }: { initialMedia?: TemplateBackgroundMedia | null }) {
+function PickerHarness({ initialMedia = null, initialCamera = null }: { initialMedia?: TemplateBackgroundMedia | null; initialCamera?: TemplateBackgroundMedia | null }) {
   const [media, setMedia] = useState<TemplateBackgroundMedia | null>(initialMedia);
+  const [camera, setCamera] = useState<TemplateBackgroundMedia | null>(initialCamera);
   const [cameraEditMode, setCameraEditMode] = useState<"frame" | "crop">("frame");
   return <StudioLayersPanel
     objects={[]}
@@ -40,6 +41,8 @@ function PickerHarness({ initialMedia = null }: { initialMedia?: TemplateBackgro
     backgroundGradientStyle="linear"
     backgroundBlur={0}
     backgroundMedia={media}
+    cameraMedia={camera}
+    onCameraMediaChange={setCamera}
     cameraEditMode={cameraEditMode}
     onCameraEditModeChange={(mode) => { if (mode !== "off") setCameraEditMode(mode); }}
     onBackgroundConfigChange={({ media: next }) => setMedia(next ?? null)}
@@ -108,7 +111,7 @@ describe("template background media picker", () => {
 
   it("places camera crop mode inside Cropping without a frame edit button", async () => {
     const camera: TemplateBackgroundMedia = { type: "camera", src: "", fit: "cover", loop: false, x: 0, y: 0, width: 100, height: 100, opacity: 1, cameraSourceType: "local", cameraDeviceId: "/dev/video0" };
-    await act(async () => root.render(<PickerHarness initialMedia={camera} />));
+    await act(async () => root.render(<PickerHarness initialCamera={camera} />));
     expect(container.textContent).not.toContain("Edit camera frame");
     const cropping = [...container.querySelectorAll("details")].find((section) => section.querySelector("summary")?.textContent === "Cropping");
     expect(cropping?.querySelector("button")?.textContent).toBe("Crop on canvas");

@@ -136,6 +136,20 @@ describe("projectorOutput display manager", () => {
     expect(snapshotProjectorState().playback).toEqual({ playing: false, looping: false, seekTime: 8, seekRevision: 1 });
   });
 
+  it("includes live audio waveform metadata in projector snapshots", () => {
+    const store = useProjectorStore.getState();
+    store.sendLiveMedia({ path: "/media/choir.mp3", name: "Choir", category: "audio", fit: "cover", opacity: 1 });
+    store.setLiveAudioWaveform("/media/choir.mp3", [0.15, 0.7, 0.3], 24, null, [-0.1, -0.6, -0.2], [0.15, 0.7, 0.3]);
+
+    expect(snapshotProjectorState().media).toMatchObject({
+      path: "/media/choir.mp3",
+      audioWaveform: [0.15, 0.7, 0.3],
+      audioWaveformMin: [-0.1, -0.6, -0.2],
+      audioWaveformMax: [0.15, 0.7, 0.3],
+      audioDuration: 24,
+    });
+  });
+
   it("retries the latest LIVE state while the output is connected", async () => {
     const cleanup = await startProjectorOutputBridge();
     const browserWindow = window as unknown as { setInterval: ReturnType<typeof vi.fn>; clearInterval: ReturnType<typeof vi.fn> };

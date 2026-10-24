@@ -6,8 +6,6 @@ export const MEDIA_CATEGORIES: { id: MediaCategory; label: string; extensions: s
   { id: "videos", label: "Videos", extensions: ["mp4", "mov", "webm", "mkv", "avi", "m4v", "mpg", "mpeg", "wmv", "flv", "ogv", "ts", "mts", "m2ts", "3gp"] },
 ];
 
-export const MEDIA_FILE_EXTENSIONS = MEDIA_CATEGORIES.flatMap((category) => category.extensions);
-
 export function mediaCategoryForPath(path: string): MediaCategory | null {
   const filename = path.split(/[\\/]/).pop() ?? "";
   const extension = filename.includes(".") ? filename.slice(filename.lastIndexOf(".") + 1).toLowerCase() : "";
