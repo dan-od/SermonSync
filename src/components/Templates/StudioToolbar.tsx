@@ -42,9 +42,10 @@ export function StudioToolbar({ onAddText, onAddShape, onAddMedia }: StudioToolb
   return (
     <div ref={rootRef} style={{ position: "absolute", right: "24px", bottom: "24px", zIndex: 5 }}>
       {menuOpen ? (
-        <div style={menuStyle}>
+        <div className="ss-compact-menu" style={menuStyle}>
           <button
             type="button"
+            className="ss-compact-menu-item"
             style={menuItemStyle(hoveredAddon === "textbox")}
             onMouseEnter={() => {
               setHoveredAddon("textbox");
@@ -60,6 +61,7 @@ export function StudioToolbar({ onAddText, onAddShape, onAddMedia }: StudioToolb
           </button>
           <button
             type="button"
+            className="ss-compact-menu-item"
             aria-haspopup="menu"
             aria-expanded={shapesOpen}
             style={menuItemStyle(shapesOpen || hoveredAddon === "shapes")}
@@ -73,6 +75,7 @@ export function StudioToolbar({ onAddText, onAddShape, onAddMedia }: StudioToolb
           </button>
           <button
             type="button"
+            className="ss-compact-menu-item"
             style={menuItemStyle(hoveredAddon === "media")}
             onMouseEnter={() => {
               setHoveredAddon("media");
@@ -87,11 +90,12 @@ export function StudioToolbar({ onAddText, onAddShape, onAddMedia }: StudioToolb
             Media
           </button>
           {shapesOpen ? (
-            <div role="menu" aria-label="Shape categories" style={sideMenuStyle}>
+            <div role="menu" aria-label="Shape categories" className="ss-compact-menu" style={sideMenuStyle}>
               {SHAPE_GROUPS.map((group) => (
                 <button
                   key={group.label}
                   type="button"
+                  className="ss-compact-menu-item"
                   aria-haspopup="menu"
                   aria-expanded={hoveredShapeGroup === group.label}
                   style={menuItemStyle(hoveredShapeGroup === group.label)}
@@ -104,11 +108,12 @@ export function StudioToolbar({ onAddText, onAddShape, onAddMedia }: StudioToolb
             </div>
           ) : null}
           {shapesOpen && hoveredShapeGroup ? (
-            <div role="menu" aria-label={`${hoveredShapeGroup} shapes`} style={shapeOptionsMenuStyle}>
+            <div role="menu" aria-label={`${hoveredShapeGroup} shapes`} className="ss-compact-menu" style={shapeOptionsMenuStyle}>
               {SHAPE_GROUPS.find((group) => group.label === hoveredShapeGroup)?.options.map((shape) => (
                 <button
                   key={shape.kind}
                   type="button"
+                  className="ss-compact-menu-item"
                   style={menuItemStyle(hoveredAddon === shape.kind)}
                   onMouseEnter={() => setHoveredAddon(shape.kind)}
                   onClick={() => {
@@ -161,8 +166,8 @@ const menuStyle: CSSProperties = {
   gap: "4px",
   background: "var(--bg-elevated)",
   border: "none",
-  borderRadius: "10px",
-  padding: "6px",
+  borderRadius: "5px",
+  padding: "4px",
   boxShadow: "var(--shadow-md)",
   minWidth: "120px",
 };
@@ -172,11 +177,11 @@ const sideMenuStyle: CSSProperties = {
   right: "calc(100% + 6px)",
   bottom: 0,
   display: "grid",
-  gap: "3px",
+  gap: "2px",
   minWidth: "124px",
-  padding: "6px",
+  padding: "4px",
   border: "none",
-  borderRadius: "10px",
+  borderRadius: "5px",
   background: "var(--bg-elevated)",
   boxShadow: "var(--shadow-md)",
 };
@@ -187,12 +192,15 @@ const shapeOptionsMenuStyle: CSSProperties = {
 };
 
 const menuItemStyle = (active = false): CSSProperties => ({
+  height: "25px",
+  minHeight: "25px",
+  boxSizing: "border-box",
   border: "none",
   background: active ? "var(--color-primary-muted)" : "transparent",
   color: active ? "var(--color-primary)" : "var(--fg-base)",
   textAlign: "left",
-  padding: "8px 10px",
-  borderRadius: "6px",
+  padding: "0 8px",
+  borderRadius: "3px",
   cursor: "pointer",
   fontSize: "12px",
   display: "flex",

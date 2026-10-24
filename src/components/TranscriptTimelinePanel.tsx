@@ -1,53 +1,23 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
+import { useTranscriptionStore } from "../stores/transcriptionStore";
 import type { TranscriptItem } from "./desktop/uiTypes";
 
 interface TranscriptTimelinePanelProps {
   items: TranscriptItem[];
   onAddManualTranscript: (text: string) => void;
-  /** Interim hypothesis for what is being said right now; revised until final. */
-  interimText?: string;
 }
 
 export function TranscriptTimelinePanel({
   items,
   onAddManualTranscript,
-  interimText = "",
 }: TranscriptTimelinePanelProps) {
+  const interimText = useTranscriptionStore((state) => state.latestPartial);
   const [manualText, setManualText] = useState("");
-  const [exitingItems, setExitingItems] = useState<TranscriptItem[]>([]);
-  const displayedItems = useMemo(() => items, [items]);
+  const displayedItems = items;
   const viewportRef = useRef<HTMLDivElement | null>(null);
-  const previousItemsRef = useRef<TranscriptItem[]>(displayedItems);
 
   const totalEvents = items.length;
-
-  useEffect(() => {
-    const previousItems = previousItemsRef.current;
-    const removed = previousItems.filter((prev) => !displayedItems.some((item) => item.id === prev.id));
-
-    if (removed.length > 0) {
-      setExitingItems((current) => {
-        const existingIds = new Set(current.map((entry) => entry.id));
-        const next = removed.filter((entry) => !existingIds.has(entry.id));
-        return [...current, ...next];
-      });
-
-      const removedIds = new Set(removed.map((entry) => entry.id));
-      const timeout = window.setTimeout(() => {
-        setExitingItems((current) => current.filter((entry) => !removedIds.has(entry.id)));
-      }, 280);
-
-      return () => window.clearTimeout(timeout);
-    }
-
-    previousItemsRef.current = displayedItems;
-    return undefined;
-  }, [displayedItems]);
-
-  useEffect(() => {
-    previousItemsRef.current = displayedItems;
-  }, [displayedItems]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -79,10 +49,6 @@ export function TranscriptTimelinePanel({
           animation: ssTranscriptEnter 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
         }
 
-        .ss-transcript-exit {
-          animation: ssTranscriptExit 260ms cubic-bezier(0.4, 0, 1, 1) both;
-        }
-
         @keyframes ssTranscriptEnter {
           from {
             opacity: 0;
@@ -96,22 +62,6 @@ export function TranscriptTimelinePanel({
           }
         }
 
-        @keyframes ssTranscriptExit {
-          from {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-            filter: blur(0);
-            max-height: 120px;
-            margin-bottom: 4px;
-          }
-          to {
-            opacity: 0;
-            transform: translateY(-8px) scale(0.985);
-            filter: blur(1.5px);
-            max-height: 0;
-            margin-bottom: 0;
-          }
-        }
       `}</style>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-2)", minHeight: "28px" }}>
@@ -202,6 +152,7 @@ export function TranscriptTimelinePanel({
           gap: "3px",
           paddingRight: "2px",
           paddingBottom: "2px",
+          overscrollBehaviorY: "contain",
         }}
       >
         {interimText ? (
@@ -210,6 +161,7 @@ export function TranscriptTimelinePanel({
               background: "var(--bg-elevated)",
               padding: "5px 8px",
               borderRadius: 0,
+              flexShrink: 0,
               opacity: 0.72,
               borderLeft: "2px solid var(--color-primary)",
             }}
@@ -230,6 +182,7 @@ export function TranscriptTimelinePanel({
               background: "var(--bg-elevated)",
               padding: "5px 8px",
               borderRadius: 0,
+              flexShrink: 0,
             }}
           >
             <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", lineHeight: 1.34, color: "var(--fg-base)" }}>
@@ -240,24 +193,6 @@ export function TranscriptTimelinePanel({
           </div>
         ))}
 
-        {exitingItems.map((item) => (
-          <div
-            key={`exit-${item.id}`}
-            className="ss-transcript-exit"
-            style={{
-              overflow: "hidden",
-              background: "var(--bg-elevated)",
-              padding: "5px 8px",
-              borderRadius: 0,
-            }}
-          >
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", lineHeight: 1.34, color: "var(--fg-base)" }}>
-              <span style={{ color: "var(--fg-subtle)" }}>{item.timestamp} </span>
-              <strong style={{ color: "var(--color-primary)" }}>[SPEECH]</strong>{" "}
-              <span>{item.text}</span>
-            </div>
-          </div>
-        ))}
       </div>
     </div>
   );

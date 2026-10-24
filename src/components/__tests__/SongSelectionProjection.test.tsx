@@ -59,10 +59,12 @@ describe("song selection projection", () => {
       />,
     ));
 
-    const buttonContaining = (text: string) => [...(container.querySelector('[data-library-tab="songs"]')?.querySelectorAll("button") ?? [])].find((button) => button.textContent?.includes(text));
+    const buttonContaining = (text: string) => [...container.querySelectorAll("button")].find((button) => button.textContent?.includes(text));
     act(() => buttonContaining("Test Song")?.click());
-    expect(onPreviewSlide).not.toHaveBeenCalled();
+    expect(onPreviewSlide).toHaveBeenCalledOnce();
+    expect(onPreviewSlide.mock.calls[0][0].text).toBe("First lyrics");
     expect(onSendLive).not.toHaveBeenCalled();
+    onPreviewSlide.mockClear();
 
     act(() => buttonContaining("First lyrics")?.click());
     expect(onSendLive).toHaveBeenCalledOnce();

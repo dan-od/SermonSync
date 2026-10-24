@@ -9,7 +9,11 @@ DB_PATH = os.path.join(os.path.dirname(__file__), "data", "bible.db")
 
 # Mutable application state (sessions, archive, presets, config) lives in a
 # SEPARATE writable DB so the bundled read-only bible.db is never polluted.
-APP_DB_PATH = os.path.join(os.path.dirname(__file__), "data", "app.db")
+# Installed builds are read-only, so SERMONSYNC_DATA_DIR points at a per-user dir.
+USER_DATA_DIR = os.environ.get("SERMONSYNC_DATA_DIR") or os.path.join(
+    os.path.dirname(__file__), "data"
+)
+APP_DB_PATH = os.path.join(USER_DATA_DIR, "app.db")
 
 
 def db_exists() -> bool:

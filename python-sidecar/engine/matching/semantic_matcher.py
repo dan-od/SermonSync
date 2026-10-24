@@ -30,7 +30,11 @@ logger = logging.getLogger("sermonsync.matching.semantic")
 
 EMBED_DIM = 384  # matches all-MiniLM-L6-v2
 COLLECTION = "active_verses"
-DEFAULT_PERSIST_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "chroma")
+DEFAULT_PERSIST_DIR = os.path.join(
+    os.environ.get("SERMONSYNC_DATA_DIR")
+    or os.path.join(os.path.dirname(__file__), "..", "..", "data"),
+    "chroma",
+)
 
 
 class MockEmbedder:

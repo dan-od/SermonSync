@@ -1,0 +1,29 @@
+{
+  "bundle": {
+    "targets": ["rpm"],
+    "externalBin": [],
+    "resources": {
+      "resources/media-engine/": "media-engine/",
+      "resources/sidecar/": "sidecar/",
+      "resources/whisper/": "whisper/"
+    },
+    "category": "Utility",
+    "shortDescription": "Live scripture projection driven by speech recognition",
+    "longDescription": "SermonSync listens to the sermon and projects matching scripture, lyrics and media.",
+    "linux": {
+      "rpm": {
+        "release": "1",
+        "depends": [
+          "webkit2gtk4.1",
+          "gtk3",
+          "alsa-lib",
+          "portaudio",
+          "libappindicator-gtk3",
+          "gstreamer1-plugins-good",
+          "gstreamer1-plugins-bad-free",
+          "gstreamer1-plugins-ugly-free"
+        ]
+      }
+    }
+  }
+}

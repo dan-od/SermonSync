@@ -3,16 +3,10 @@
 # Freezes the FastAPI sidecar into a single executable that Tauri spawns via
 # `externalBin` (src-tauri/binaries/python-sidecar-<target-triple>[.exe]).
 #
-# Build:
-#   cd python-sidecar
-#   pip install pyinstaller -r requirements.txt
-#   pyinstaller sidecar.spec --noconfirm
-#   # then rename dist/python-sidecar[.exe] with the target triple and place it
-#   # in ../src-tauri/binaries/  (see docs/PACKAGING.md)
-#
-# NOTE: verified as a spec; the actual freeze + resulting installer are produced
-# on each target OS in CI (macOS/Windows/Linux) — a Windows .msi must be built
-# on Windows.
+# Build (Linux RPM flow): scripts/build-sidecar.sh
+#   Produces an ONEDIR bundle (no per-launch unpacking) at
+#   src-tauri/resources/sidecar/, shipped as a Tauri resource and launched by
+#   src-tauri/src/lib.rs.
 
 from PyInstaller.utils.hooks import collect_all
 
@@ -49,7 +43,7 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],
-    excludes=["tkinter", "matplotlib", "pytest"],
+    excludes=["tkinter", "matplotlib", "pytest", "torch", "pandas", "IPython", "notebook", "PIL.ImageTk"],
     noarchive=False,
 )
 pyz = PYZ(a.pure)
@@ -57,12 +51,18 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name="python-sidecar",
     console=True,
     upx=False,
-    onefile=True,
     disable_windowed_traceback=False,
+)
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=False,
+    name="sidecar",
 )

@@ -8,8 +8,8 @@ import { OverlayStage, OverlayVisual } from "./OverlayVisual";
 import { OverlayStudioModal } from "./OverlayStudioModal";
 
 const menuButtonStyle: React.CSSProperties = {
-  display: "block", width: "100%", border: 0, borderRadius: 6, padding: "8px 10px",
-  background: "transparent", color: "var(--fg-base)", textAlign: "left", cursor: "pointer", fontSize: 12,
+  display: "block", width: "100%", height: 25, minHeight: 25, boxSizing: "border-box", border: 0, borderRadius: 3, padding: "0 8px",
+  background: "transparent", color: "var(--fg-base)", textAlign: "left", cursor: "pointer", fontSize: 11,
 };
 const secondaryButtonStyle: React.CSSProperties = { border: 0, borderRadius: 6, padding: "8px 12px", background: "var(--bg-elevated)", color: "var(--fg-base)", cursor: "pointer" };
 const primaryButtonStyle: React.CSSProperties = { border: 0, borderRadius: 6, padding: "8px 12px", background: "var(--color-primary)", color: "white", cursor: "pointer", fontWeight: 700 };
@@ -84,10 +84,10 @@ export function OverlaysTab() {
       </div>
 
       {menu && selected ? (
-        <div ref={menuRef} role="menu" style={{ position: "fixed", left: Math.max(0, Math.min(menu.x, window.innerWidth - 170)), top: Math.max(0, Math.min(menu.y, window.innerHeight - 130)), width: 160, padding: 4, borderRadius: 8, background: "var(--bg-surface)", boxShadow: "var(--shadow-lg)", zIndex: 1200 }}>
-          <button type="button" role="menuitem" onMouseEnter={() => setHoveredAction("edit")} onMouseLeave={() => setHoveredAction(null)} onClick={() => { setStudioOverlay(selected); setMenu(null); }} style={{ ...menuButtonStyle, background: hoveredAction === "edit" ? "var(--color-primary-muted)" : "transparent" }}>Edit</button>
-          <button type="button" role="menuitem" onMouseEnter={() => setHoveredAction("rename")} onMouseLeave={() => setHoveredAction(null)} onClick={() => { setRenameId(selected.id); setRenameValue(selected.name); setMenu(null); }} style={{ ...menuButtonStyle, background: hoveredAction === "rename" ? "var(--color-primary-muted)" : "transparent" }}>Rename</button>
-          <button type="button" role="menuitem" onMouseEnter={() => setHoveredAction("delete")} onMouseLeave={() => setHoveredAction(null)} onClick={() => { setDeleteId(selected.id); setMenu(null); }} style={{ ...menuButtonStyle, color: "var(--color-error)", background: hoveredAction === "delete" ? "var(--color-error-muted)" : "transparent" }}>Delete</button>
+        <div ref={menuRef} role="menu" className="ss-compact-menu" style={{ position: "fixed", left: Math.max(0, Math.min(menu.x, window.innerWidth - 170)), top: Math.max(0, Math.min(menu.y, window.innerHeight - 130)), width: 160, zIndex: 1200 }}>
+          <button type="button" role="menuitem" className="ss-compact-menu-item" onMouseEnter={() => setHoveredAction("edit")} onMouseLeave={() => setHoveredAction(null)} onClick={() => { setStudioOverlay(selected); setMenu(null); }} style={{ ...menuButtonStyle, background: hoveredAction === "edit" ? "var(--color-primary-muted)" : "transparent" }}>Edit</button>
+          <button type="button" role="menuitem" className="ss-compact-menu-item" onMouseEnter={() => setHoveredAction("rename")} onMouseLeave={() => setHoveredAction(null)} onClick={() => { setRenameId(selected.id); setRenameValue(selected.name); setMenu(null); }} style={{ ...menuButtonStyle, background: hoveredAction === "rename" ? "var(--color-primary-muted)" : "transparent" }}>Rename</button>
+          <button type="button" role="menuitem" className="ss-compact-menu-item" onMouseEnter={() => setHoveredAction("delete")} onMouseLeave={() => setHoveredAction(null)} onClick={() => { setDeleteId(selected.id); setMenu(null); }} style={{ ...menuButtonStyle, color: "var(--color-error)", background: hoveredAction === "delete" ? "var(--color-error-muted)" : "transparent" }}>Delete</button>
         </div>
       ) : null}
 

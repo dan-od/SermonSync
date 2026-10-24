@@ -56,7 +56,7 @@ class SessionManager:
         self._db_path = db_path
         self._current_id: str | None = None
         self._ensure_schema()
-        self._recover_active()
+        self._close_interrupted_sessions()
 
     # ------------------------------------------------------------------
     def _conn(self):
@@ -70,15 +70,27 @@ class SessionManager:
         finally:
             conn.close()
 
-    def _recover_active(self) -> None:
-        """On startup, re-attach to an active session if one was left open."""
+    def _close_interrupted_sessions(self) -> None:
+        """Archive sessions left active by an earlier app run without resuming them."""
         conn = self._conn()
         try:
-            row = conn.execute(
-                "SELECT id FROM sessions WHERE status = 'active' "
-                "ORDER BY started_at DESC LIMIT 1"
-            ).fetchone()
-            self._current_id = row["id"] if row else None
+            rows = conn.execute(
+                "SELECT id, started_at FROM sessions WHERE status = 'active'"
+            ).fetchall()
+            for row in rows:
+                last_event = conn.execute(
+                    "SELECT MAX(created_at) AS last_at FROM session_events "
+                    "WHERE session_id = ?", (row["id"],)
+                ).fetchone()["last_at"]
+                ended_at = max(row["started_at"], last_event or row["started_at"])
+                conn.execute(
+                    "UPDATE sessions SET status = 'ended', ended_at = ?, "
+                    "elapsed_seconds = ? WHERE id = ?",
+                    (ended_at, int(ended_at - row["started_at"]), row["id"]),
+                )
+            conn.commit()
+            if rows:
+                logger.info("archived %d interrupted session(s)", len(rows))
         finally:
             conn.close()
 

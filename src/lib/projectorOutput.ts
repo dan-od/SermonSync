@@ -42,6 +42,9 @@ let publishScheduled = false;
 let publishWaiters: Array<() => void> = [];
 let displayDiscoveryInFlight: Promise<DisplayInfo[]> | null = null;
 let outputOperation: Promise<void> = Promise.resolve();
+let outputReadySignal = 0;
+let outputReadyWaiters: Array<{ signal: number; resolve: () => void; reject: (error: Error) => void; timeout: number }> = [];
+let outputBridgeActive = false;
 
 function makeSnapshot(): ProjectorOutputSnapshot {
   const state = useProjectorStore.getState();
@@ -207,8 +210,17 @@ export function publishProjectorSnapshot(snapshot = snapshotProjectorState()): P
 }
 
 export async function startProjectorOutputBridge(): Promise<() => void> {
+  outputBridgeActive = true;
   const unsubscribe = subscribeProjectorChannel((message) => {
     if (message.type === "ready") {
+      outputReadySignal += 1;
+      const readyWaiters = outputReadyWaiters;
+      outputReadyWaiters = [];
+      readyWaiters.forEach(({ signal, resolve, reject, timeout }) => {
+        window.clearTimeout(timeout);
+        if (outputReadySignal > signal) resolve();
+        else reject(new Error("Projector output readiness signal was not advanced"));
+      });
       void publishProjectorSnapshot();
     } else if (message.type === "ack") {
       lastAcknowledgedRevision = Math.max(lastAcknowledgedRevision, message.revision);
@@ -225,9 +237,21 @@ export async function startProjectorOutputBridge(): Promise<() => void> {
     return undefined;
   }, 2000);
   return () => {
+    outputBridgeActive = false;
     window.clearInterval(retry);
     unsubscribe();
   };
+}
+
+function waitForProjectorOutputReady(signal: number): Promise<void> {
+  if (outputReadySignal > signal) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      outputReadyWaiters = outputReadyWaiters.filter((waiter) => waiter.resolve !== resolve);
+      reject(new Error("Timed out waiting for projector output to become ready"));
+    }, 10000);
+    outputReadyWaiters.push({ signal, resolve, reject, timeout });
+  });
 }
 
 async function getOutputWindow() {
@@ -265,7 +289,9 @@ async function performOpenProjectorOutput(display: DisplayInfo | null): Promise<
   const fingerprint = displayFingerprint(display);
 
   try {
+    const readySignal = outputReadySignal;
     let outputWindow = await getOutputWindow();
+    let created = false;
     if (!outputWindow) {
       const outputUrl = new URL(window.location.href);
       outputUrl.searchParams.set("window", "projector");
@@ -282,6 +308,7 @@ async function performOpenProjectorOutput(display: DisplayInfo | null): Promise<
         width: display.width,
         height: display.height,
       });
+      created = true;
 
       await new Promise<void>((resolve, reject) => {
         let settled = false;
@@ -305,6 +332,7 @@ async function performOpenProjectorOutput(display: DisplayInfo | null): Promise<
     }
 
     await positionOutputWindow(display);
+    if (created && outputBridgeActive) await waitForProjectorOutputReady(readySignal);
     await publishProjectorSnapshot();
     await outputWindow.show();
     lastAppliedDisplayFingerprint = fingerprint;

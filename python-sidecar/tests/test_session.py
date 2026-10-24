@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from database import get_app_connection
 from engine.session.manager import SessionManager
 
 
@@ -64,17 +65,42 @@ def test_history_newest_first(mgr):
     assert [h["id"] for h in hist][:2] == [b["id"], a["id"]]
 
 
-def test_persistence_across_instances(tmp_path):
+def test_restart_archives_interrupted_session_and_waits_for_manual_start(tmp_path):
     path = str(tmp_path / "app.db")
     m1 = SessionManager(db_path=path)
     s = m1.start(unit_name="Test Unit")
     m1.record_event("sentence", {"text": "persisted"})
 
-    # New manager on the same DB recovers the active session.
+    # A new app run keeps the archive but never resumes the old session.
     m2 = SessionManager(db_path=path)
-    assert m2.current() is not None
-    assert m2.current()["id"] == s["id"]
+    assert m2.current() is None
+    assert m2.get(s["id"])["status"] == "ended"
+    assert m2.get(s["id"])["ended_at"] is not None
     assert m2.events(s["id"])[0]["payload"]["text"] == "persisted"
+
+    new_session = m2.start(unit_name="Next Unit")
+    assert new_session["id"] != s["id"]
+    assert new_session["elapsed_seconds"] == 0
+    assert m2.current()["id"] == new_session["id"]
+
+
+def test_restart_archives_every_interrupted_session(tmp_path):
+    path = str(tmp_path / "app.db")
+    first = SessionManager(db_path=path).start()
+    conn = get_app_connection(path)
+    try:
+        conn.execute(
+            "INSERT INTO sessions (id, status, started_at) VALUES (?, 'active', ?)",
+            ("another_interrupted_session", first["started_at"]),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    restarted = SessionManager(db_path=path)
+
+    assert restarted.current() is None
+    assert restarted.get(first["id"])["status"] == "ended"
+    assert restarted.get("another_interrupted_session")["status"] == "ended"
 
 
 def test_elapsed_grows_for_active(mgr, monkeypatch):
