@@ -25,13 +25,18 @@ def test_whisper_load_failure_falls_back_to_mock(monkeypatch):
     from engine.transcription import whisper_engine
 
     whisper_engine.set_engine(None)
+
+    def _boom(cls, candidates=None):
+        raise RuntimeError("no model")
+
     monkeypatch.setattr(
-        whisper_engine.WhisperEngine, "load",
-        classmethod(lambda cls, candidates=None: (_ for _ in ()).throw(RuntimeError("no model"))),
+        whisper_engine.FasterWhisperEngine, "load", classmethod(_boom),
+    )
+    monkeypatch.setattr(
+        whisper_engine.MLXWhisperEngine, "load", classmethod(_boom),
     )
     engine = whisper_engine.get_engine()
     assert getattr(engine, "is_mock", False) is True
-    # still transcribes (dummy) without raising
     import numpy as np
     assert engine.transcribe(np.zeros(16000, dtype="float32"))
     whisper_engine.set_engine(None)

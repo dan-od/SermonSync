@@ -29,6 +29,8 @@ python-sidecar/data/chroma/
 # Writable app state (sessions, archive, presets, config) — created at runtime
 python-sidecar/data/app.db
 python-sidecar/data/app.db-*
+# SS-066: Tauri reads this before spawning the sidecar to set WHISPER_MODEL env
+python-sidecar/data/whisper_config.json
 # Downloaded models (Whisper/LLM/embeddings)
 python-sidecar/models/
 

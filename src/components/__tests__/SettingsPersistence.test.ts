@@ -15,6 +15,7 @@ describe("settings panel persistence", () => {
       audioInputDeviceId: "USB Mixer",
       audioLevelDb: -9,
       sttMode: "whisper",
+      whisperModel: "base",
       worshipDetectorSensitivity: 72,
       autoSendConfidenceThreshold: 91,
       contextualDetectionEnabled: false,

@@ -131,3 +131,35 @@ def test_dropped_segments_are_not_broadcast(monkeypatch):
         whisper_engine.set_engine(None)
     assert not [p for p in sent if p.get("type") == "transcription"]
     assert st._final_tail == ""
+
+
+def test_mlx_engine_maps_decode_options_and_keeps_filter_fields(monkeypatch):
+    """SS-066: the MLX engine honours the same contract as faster-whisper, so
+    prompts reach the model and the hallucination filter has its fields."""
+    import sys
+    import types
+
+    calls = []
+
+    def fake_transcribe(audio, **kwargs):
+        calls.append(kwargs)
+        return {"language": "en", "segments": [{
+            "text": " John 3:16 ", "start": 0.0, "end": 1.0, "avg_logprob": -0.1,
+            "no_speech_prob": 0.01, "compression_ratio": 1.5,
+        }]}
+
+    monkeypatch.setitem(
+        sys.modules, "mlx_whisper", types.SimpleNamespace(transcribe=fake_transcribe)
+    )
+    eng = whisper_engine.MLXWhisperEngine("large-v3-turbo", "repo")
+    segs = eng.transcribe(np.zeros(1600, dtype="float32"), "en", prompt="John 3:16", hotwords="x")
+
+    kwargs = calls[0]
+    assert kwargs["initial_prompt"] == "John 3:16"
+    assert kwargs["logprob_threshold"] == -1.0
+    assert kwargs["temperature"] == (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
+    for unsupported in ("beam_size", "log_prob_threshold", "hotwords"):
+        assert unsupported not in kwargs
+    assert segs[0]["text"] == "John 3:16"
+    assert segs[0]["avg_logprob"] == -0.1
+    assert segs[0]["compression_ratio"] == 1.5
