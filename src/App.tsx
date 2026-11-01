@@ -8,6 +8,7 @@ import { TranscriptTimelinePanel } from "./components/TranscriptTimelinePanel";
 import { NotesModal } from "./components/NotesModal";
 import { type DbTable } from "./components/desktop/uiTypes";
 import { AppLayout } from "./components/layout/AppLayout";
+import { EngineFailureBanner } from "./components/layout/EngineFailureBanner";
 import type { LibraryNavigationHandler, LibraryTab, ScriptureSearchMode } from "./components/Library/types";
 import { setVadSensitivity } from "./lib/sidecarClient";
 import { useAudioStore, useConfigStore, useProjectorStore, useSessionStore, useSuggestionStore, useTemplateStore, useTranscriptionStore } from "./stores";
@@ -61,7 +62,7 @@ function App() {
   const transcripts = useTranscriptionStore((s) => s.timeline);
   const addManualTimelineItem = useTranscriptionStore((s) => s.addManualTimelineItem);
 
-  const { engineVersion, engineModel, engineModelDegraded } = useEngineStatus(Boolean(authenticatedBranch));
+  const { engineVersion, engineModel, engineModelDegraded, engineLoadError } = useEngineStatus(Boolean(authenticatedBranch));
 
   const cards = useSuggestionStore((s) => s.cards);
   const addCards = useSuggestionStore((s) => s.addCards);
@@ -421,6 +422,7 @@ function App() {
       <style>{shellReset}</style>
       <AppLayout
         header={headerProps}
+        alert={engineLoadError ? <EngineFailureBanner error={engineLoadError} /> : null}
         status={{
           inputName,
           inputDevices,

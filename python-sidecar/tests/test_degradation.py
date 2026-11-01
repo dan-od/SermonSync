@@ -88,7 +88,9 @@ def test_whisper_load_failure_never_serves_mock_in_production(monkeypatch, whisp
     with pytest.raises(RuntimeError, match="no model"):
         whisper_engine.get_engine()
     assert len(calls) == loads_after_first
-    assert "no model" in whisper_engine.engine_status()["load_error"]
+    from api.engine import engine_status
+
+    assert "no model" in engine_status()["transcription"]["load_error"]
 
 
 def test_missing_cuda_dlls_on_windows_runs_on_cpu(monkeypatch, caplog, whisper_engine):

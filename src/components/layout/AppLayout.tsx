@@ -7,6 +7,7 @@ import { StatusBar, type StatusBarProps } from "./StatusBar";
 interface AppLayoutProps {
   header: HeaderBarProps;
   status: StatusBarProps;
+  alert?: ReactNode;
   leftPanel: ReactNode;
   centerPanel: ReactNode;
   rightPanel: ReactNode;
@@ -147,7 +148,7 @@ function clampWidths(containerWidth: number, left: number, center: number): [num
   return [clampedLeft, clampedCenter];
 }
 
-export function AppLayout({ header, status, leftPanel, centerPanel, rightPanel, library, librarySidePanel }: AppLayoutProps) {
+export function AppLayout({ header, status, alert, leftPanel, centerPanel, rightPanel, library, librarySidePanel }: AppLayoutProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const libraryRowRef = useRef<HTMLDivElement>(null);
   const [widths, setWidths] = useState({ left: DEFAULT_LEFT_WIDTH, center: DEFAULT_CENTER_WIDTH });
@@ -256,6 +257,7 @@ export function AppLayout({ header, status, leftPanel, centerPanel, rightPanel, 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100dvh", background: "var(--bg-base)" }}>
       <HeaderBar {...header} />
+      {alert}
       <div
         ref={containerRef}
         style={{

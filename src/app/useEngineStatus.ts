@@ -10,6 +10,7 @@ export function useEngineStatus(enabled: boolean) {
   const [engineVersion, setEngineVersion] = useState("v0.1.0-native");
   const [engineModel, setEngineModel] = useState("");
   const [engineModelDegraded, setEngineModelDegraded] = useState(false);
+  const [engineLoadError, setEngineLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
@@ -25,6 +26,7 @@ export function useEngineStatus(enabled: boolean) {
         loaded_model?: string | null;
         loaded?: boolean;
         degraded?: boolean | null;
+        load_error?: string | null;
         device?: string;
         compute_type?: string;
       };
@@ -45,9 +47,10 @@ export function useEngineStatus(enabled: boolean) {
           const t = d.transcription;
           if (!t) return;
           const model = t.loaded_model ?? t.configured_model ?? "unknown";
-          const pending = t.loaded ? "" : " \u22ef";
+          const pending = t.load_error ? " \u00b7 failed" : t.loaded ? "" : " \u22ef";
           setEngineModel(`${model} \u00b7 ${t.device}/${t.compute_type}${pending}`);
-          setEngineModelDegraded(Boolean(t.degraded));
+          setEngineModelDegraded(Boolean(t.degraded || t.load_error));
+          setEngineLoadError(t.load_error ?? null);
         })
         .catch(() => undefined)
         .finally(() => { inFlight = false; });
@@ -62,5 +65,5 @@ export function useEngineStatus(enabled: boolean) {
     };
   }, [enabled]);
 
-  return { engineVersion, engineModel, engineModelDegraded };
+  return { engineVersion, engineModel, engineModelDegraded, engineLoadError };
 }

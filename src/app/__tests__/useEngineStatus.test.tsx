@@ -6,14 +6,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../lib/sidecarClient", () => ({ getSidecarHttpBase: () => "http://127.0.0.1:8000" }));
 
 import { useEngineStatus } from "../useEngineStatus";
+import { EngineFailureBanner } from "../../components/layout/EngineFailureBanner";
 import { useTestFeedStore } from "../../stores/testFeedStore";
 import type { SidecarTestFeedEvent } from "../../types/state";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 function Probe({ enabled }: { enabled: boolean }) {
-  useEngineStatus(enabled);
-  return null;
+  const { engineModel, engineModelDegraded, engineLoadError } = useEngineStatus(enabled);
+  return (
+    <>
+      <span data-testid="model">{engineModel}</span>
+      <span data-testid="degraded">{String(engineModelDegraded)}</span>
+      {engineLoadError ? <EngineFailureBanner error={engineLoadError} /> : null}
+    </>
+  );
 }
 
 describe("engine status test feed handoff", () => {
@@ -53,5 +60,39 @@ describe("engine status test feed handoff", () => {
     );
     expect(useTestFeedStore.getState().enabled).toBe(true);
     expect(useTestFeedStore.getState().status).toEqual(feed);
+  });
+
+  function stubTranscription(transcription: object) {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ transcription }) }));
+  }
+
+  const text = (id: string) => container.querySelector(`[data-testid="${id}"]`)?.textContent;
+
+  it("alerts the operator when no Whisper engine could load", async () => {
+    stubTranscription({
+      configured_model: "large-v3-turbo", loaded: false, degraded: null, device: "cpu", compute_type: "int8",
+      load_error: "no Whisper engine could be loaded: disk full",
+    });
+
+    await act(async () => root.render(<Probe enabled={true} />));
+
+    const alert = container.querySelector('[role="alert"]');
+    expect(alert?.textContent).toContain("Transcription is not running.");
+    expect(alert?.textContent).toContain("disk full");
+    expect(text("model")).toBe("large-v3-turbo \u00b7 cpu/int8 \u00b7 failed");
+    expect(text("degraded")).toBe("true");
+  });
+
+  it("shows no alert while the model is loading or loaded", async () => {
+    stubTranscription({
+      configured_model: "large-v3-turbo", loaded: false, degraded: null, device: "cpu", compute_type: "int8",
+      load_error: null,
+    });
+
+    await act(async () => root.render(<Probe enabled={true} />));
+
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    expect(text("model")).toBe("large-v3-turbo \u00b7 cpu/int8 \u22ef");
+    expect(text("degraded")).toBe("false");
   });
 });
