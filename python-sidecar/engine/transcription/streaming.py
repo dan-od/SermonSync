@@ -178,7 +178,11 @@ class StreamingTranscriber:
         self._task = asyncio.create_task(self._run())
         # Pay model-load cost during sidecar startup so the first spoken word
         # is not delayed by lazy initialization.
-        await asyncio.to_thread(whisper_engine.get_engine)
+        try:
+            await asyncio.to_thread(whisper_engine.get_engine)
+        except Exception as exc:
+            logger.error("streaming without a transcription engine: %s", exc)
+            monitor.flag_error("transcription")
         logger.info("streaming transcriber started")
 
     async def stop(self) -> None:
@@ -306,10 +310,10 @@ class StreamingTranscriber:
     async def _emit_partial(self, pcm: bytes) -> None:
         """Broadcast an interim hypothesis (is_final=False). Never assembled
         into sentences and never matched — it will be revised."""
-        # Loading a small partial model can take seconds: never on the loop.
-        engine = await asyncio.to_thread(self._partial_engine)
         infer_start = time.time()
         try:
+            # Loading a small partial model can take seconds: never on the loop.
+            engine = await asyncio.to_thread(self._partial_engine)
             segments = await asyncio.to_thread(
                 engine.transcribe, pcm16_to_float(pcm), self.language, **self._decode_hints()
             )
@@ -340,10 +344,10 @@ class StreamingTranscriber:
         )
 
     async def _infer_and_emit(self, pcm: bytes, received_ts: float, seq: int = 0) -> None:
-        engine = whisper_engine.get_engine()
         audio = pcm16_to_float(pcm)
         infer_start = time.time()
         try:
+            engine = whisper_engine.get_engine()
             segments = await asyncio.to_thread(
                 engine.transcribe, audio, self.language, **self._decode_hints()
             )

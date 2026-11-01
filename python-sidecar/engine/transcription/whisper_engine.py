@@ -9,8 +9,10 @@ Model selection priority:
     2. settings store key "whisper.model" (persisted by the Settings UI)
     3. code default "large-v3-turbo"
 
-If neither backend nor any model loads, a MockWhisperEngine returns
-deterministic dummy text so the rest of the pipeline keeps working.
+A machine without usable CUDA runs faster-whisper on CPU. If no model loads at
+all, get_engine() raises and transcription stops with an error: a live service
+must never receive fake transcripts, so MockWhisperEngine is for tests only
+(SERMONSYNC_TEST=1 or pytest).
 """
 
 from __future__ import annotations
@@ -91,6 +93,10 @@ def _pick_device_faster_whisper() -> tuple[str, str]:
     Priority: int8_float16 > float16 > int8 > auto (CPU fallback).
     GTX 1660 lacks tensor cores so float16 is slow; int8_float16 is safe.
     """
+    missing = _check_cuda_deps()
+    if missing:
+        logger.debug("CUDA libraries missing: %s", ", ".join(missing))
+        return "cpu", "int8"
     try:
         import ctranslate2
         if ctranslate2.get_cuda_device_count() > 0:
@@ -186,58 +192,59 @@ class FasterWhisperEngine:
     def load(cls, candidates: list[str] | None = None) -> FasterWhisperEngine:
         from faster_whisper import WhisperModel
 
-        if sys.platform == "win32":
-            missing = _check_cuda_deps()
-            if missing:
-                raise RuntimeError(
-                    f"CUDA/cuDNN libraries missing: {', '.join(missing)}. "
-                    "Install CUDA Toolkit 12.x and cuDNN 9.x, or the model "
-                    "will not load on GPU. https://developer.nvidia.com/cudnn"
-                )
-
         device, compute_type = _pick_device_faster_whisper()
+        if device == "cpu" and sys.platform != "darwin":
+            logger.warning("No CUDA found — running Whisper on CPU (slower but functional)")
         chain = candidates or _build_fallback_chain(_configured_model())
         requested = chain[0]
-        tried: list[str] = []
-        for size in chain:
-            if size in tried:
-                continue
-            tried.append(size)
-            try:
-                logger.info("loading Whisper model '%s' on %s/%s", size, device, compute_type)
-                bundled = os.environ.get("SERMONSYNC_WHISPER_DIR")
-                kwargs = (
-                    {"download_root": bundled, "local_files_only": size == "base"}
-                    if bundled else {}
-                )
+        # A broken GPU setup can pass the checks above and still fail to load,
+        # so CUDA always gets a CPU attempt behind it.
+        attempts = [(device, compute_type)]
+        if device != "cpu":
+            attempts.append(("cpu", "int8"))
+        for device, compute_type in attempts:
+            tried: list[str] = []
+            for size in chain:
+                if size in tried:
+                    continue
+                tried.append(size)
                 try:
-                    # Cached models must load without touching the network: an
-                    # unreachable Hugging Face otherwise stalls sidecar startup.
-                    local_kwargs = {**kwargs, "local_files_only": True}
-                    model = WhisperModel(
-                        size, device=device, compute_type=compute_type, **local_kwargs
+                    logger.info("loading Whisper model '%s' on %s/%s", size, device, compute_type)
+                    bundled = os.environ.get("SERMONSYNC_WHISPER_DIR")
+                    kwargs = (
+                        {"download_root": bundled, "local_files_only": size == "base"}
+                        if bundled else {}
                     )
-                except Exception:
-                    if kwargs.get("local_files_only"):
-                        raise
-                    model = WhisperModel(size, device=device, compute_type=compute_type, **kwargs)
-                degraded = size != requested
-                # WARNING so the operator can grep one line for the truth. A
-                # silent fallback to a smaller model is the failure mode this
-                # exists to expose.
-                logger.warning(
-                    "WHISPER ENGINE LOADED: backend=faster-whisper model=%s "
-                    "device=%s compute_type=%s%s",
-                    size, device, compute_type,
-                    f" (DEGRADED - requested '{requested}' failed)" if degraded else "",
-                )
-                engine = cls(size, device, compute_type, model)
-                engine.requested_model = requested
-                engine.degraded = degraded
-                return engine
-            except Exception as exc:
-                logger.warning("failed to load Whisper '%s': %s", size, exc)
-        raise RuntimeError(f"no Whisper model could be loaded (tried {tried})")
+                    try:
+                        # Cached models must load without touching the network: an
+                        # unreachable Hugging Face otherwise stalls sidecar startup.
+                        local_kwargs = {**kwargs, "local_files_only": True}
+                        model = WhisperModel(
+                            size, device=device, compute_type=compute_type, **local_kwargs
+                        )
+                    except Exception:
+                        if kwargs.get("local_files_only"):
+                            raise
+                        model = WhisperModel(
+                            size, device=device, compute_type=compute_type, **kwargs
+                        )
+                    degraded = size != requested
+                    # WARNING so the operator can grep one line for the truth. A
+                    # silent fallback to a smaller model is the failure mode this
+                    # exists to expose.
+                    logger.warning(
+                        "WHISPER ENGINE LOADED: backend=faster-whisper model=%s "
+                        "device=%s compute_type=%s%s",
+                        size, device, compute_type,
+                        f" (DEGRADED - requested '{requested}' failed)" if degraded else "",
+                    )
+                    engine = cls(size, device, compute_type, model)
+                    engine.requested_model = requested
+                    engine.degraded = degraded
+                    return engine
+                except Exception as exc:
+                    logger.warning("failed to load Whisper '%s': %s", size, exc)
+        raise RuntimeError(f"no Whisper model could be loaded (tried {chain})")
 
     def transcribe(
         self,
@@ -386,6 +393,7 @@ WhisperEngine = FasterWhisperEngine
 # ---------------------------------------------------------------------------
 
 _engine = None
+_engine_error: str | None = None
 _partial_engines: dict[str, object] = {}
 
 # Models the interim ("partial") passes may use instead of the main model.
@@ -419,27 +427,49 @@ def _select_backend() -> str:
     return "faster-whisper"
 
 
+def _mock_allowed() -> bool:
+    return os.environ.get("SERMONSYNC_TEST") == "1" or "PYTEST_CURRENT_TEST" in os.environ
+
+
+def _load_real_engine():
+    if _select_backend() == "mlx-whisper":
+        try:
+            return MLXWhisperEngine.load()
+        except Exception as exc:
+            logger.warning("mlx-whisper unavailable (%s); trying faster-whisper", exc)
+    return FasterWhisperEngine.load()
+
+
 def get_engine():
-    """Return the process-wide engine, loading it (or a mock) on first use."""
-    global _engine
+    """Return the process-wide engine, loading it on first use.
+
+    Raises RuntimeError if no model can be loaded. The failure is remembered for
+    the whole process rather than retried per chunk, since each retry can mean a
+    multi-gigabyte download. Only tests fall back to MockWhisperEngine.
+    """
+    global _engine, _engine_error
     if _engine is not None:
         return _engine
+    if _engine_error is not None:
+        raise RuntimeError(_engine_error)
     try:
-        backend = _select_backend()
-        if backend == "mlx-whisper":
-            _engine = MLXWhisperEngine.load()
-        else:
-            _engine = FasterWhisperEngine.load()
+        _engine = _load_real_engine()
     except Exception as exc:
-        logger.warning("using MockWhisperEngine (%s)", exc)
-        _engine = MockWhisperEngine()
+        if _mock_allowed():
+            logger.warning("using MockWhisperEngine (%s)", exc)
+            _engine = MockWhisperEngine()
+            return _engine
+        _engine_error = f"no Whisper engine could be loaded: {exc}"
+        logger.error("TRANSCRIPTION UNAVAILABLE: %s", _engine_error)
+        raise RuntimeError(_engine_error) from exc
     return _engine
 
 
 def set_engine(engine) -> None:
     """Override the engine (used by tests)."""
-    global _engine
+    global _engine, _engine_error
     _engine = engine
+    _engine_error = None
 
 
 def model_source() -> str:
@@ -473,6 +503,7 @@ def engine_status() -> dict:
         "loaded_model": None,
         "is_mock": None,
         "degraded": None,
+        "load_error": _engine_error,
     }
     if _engine is not None:
         status["loaded_model"] = getattr(_engine, "model_size", "unknown")

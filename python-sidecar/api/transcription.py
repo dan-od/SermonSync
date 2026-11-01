@@ -33,6 +33,7 @@ def engine_info() -> dict:
         "device": status["device"],
         "compute_type": status["compute_type"],
         "is_mock": status["is_mock"],
+        "load_error": status["load_error"],
         "streaming": streaming_transcriber._running,
         "max_chunk_seconds": streaming_transcriber.max_chunk_seconds,
         "silence_flush_seconds": streaming_transcriber.silence_flush_seconds,
