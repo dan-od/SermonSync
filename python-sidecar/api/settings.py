@@ -12,6 +12,7 @@ import os
 from typing import Any
 
 from engine.config.store import get_store
+from engine.matching.orchestrator import SPOKEN_ONLY_SETTING, get_orchestrator, setting_as_bool
 from fastapi import APIRouter
 from pydantic import BaseModel
 
@@ -47,4 +48,7 @@ def put_setting(req: SettingUpdate) -> dict:
     get_store().set_setting(req.key, req.value)
     if req.key == "whisper.model":
         _sync_whisper_config(req.value)
+    elif req.key == SPOKEN_ONLY_SETTING:
+        # SS-075: takes effect on the next sentence, no restart needed.
+        get_orchestrator().spoken_only = setting_as_bool(req.value)
     return {"key": req.key, "value": req.value}

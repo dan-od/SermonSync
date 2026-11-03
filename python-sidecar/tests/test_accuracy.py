@@ -26,6 +26,7 @@ class _EmptyMatcher:
 @pytest.fixture(scope="module")
 def orchestrator():
     return PipelineOrchestrator(
+        spoken_only=False,  # SS-075: this measures the broad cascade
         trie=trie_matcher(),
         keyword=keyword_matcher(),
         llm=llm_matcher(),
