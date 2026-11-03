@@ -89,12 +89,12 @@ class StreamingTranscriber:
         sample_rate: int = 16000,
         max_chunk_seconds: float = 6.0,
         max_buffer_seconds: float = 15.0,
-        poll_interval: float = 0.25,
+        poll_interval: float = 0.12,  # was 0.25; quicker silence detection
         language: str | None = "en",
         matching_enabled: bool = True,
         min_flush_seconds: float = 0.4,
         silence_flush_seconds: float = 0.8,
-        partial_interval: float = 1.0,
+        partial_interval: float = 0.6,  # was 1.0; faster visual feedback
         partial_min_seconds: float = 0.8,
         partial_max_seconds: float = 3.0,
     ) -> None:
