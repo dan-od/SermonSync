@@ -1,5 +1,5 @@
-import { type Ref } from "react";
-import type { Canvas } from "fabric";
+import { type Ref, type RefObject } from "react";
+import type { Canvas, FabricObject } from "fabric";
 import { type StudioBackgroundMode, type StudioDocument, type StudioFabricObjectData } from "../../../types/studioDocument";
 import { type TemplateBackgroundMedia } from "../../../types/templates";
 import { type CameraEditMode } from "../../../lib/cameraFrame";
@@ -60,3 +60,24 @@ export interface StudioCanvasSnapshot {
 // Media shapes already keep their source in studioShapeFillMediaSource, so a
 // tiny placeholder is enough for the serialized Fabric fill. This keeps history
 // and save operations from copying the same image payload twice.
+
+/** The component-owned mutable refs the canvas setup and handle operate on. */
+export interface StudioCanvasRefs {
+  clipboardRef: RefObject<FabricObject[]>;
+  pasteOffsetRef: RefObject<number>;
+  canvasRef: RefObject<Canvas | null>;
+  documentRef: RefObject<FabricStudioCanvasProps["document"]>;
+  callbacksRef: RefObject<Pick<FabricStudioCanvasProps, "onSelectionChange" | "onTextSelectionChange" | "onDocumentChange" | "onHistoryChange">>;
+  textSelectionRef: RefObject<Map<string, { start: number; end: number }>>;
+  historyPastRef: RefObject<StudioCanvasSnapshot[]>;
+  historyFutureRef: RefObject<StudioCanvasSnapshot[]>;
+  lastSnapshotRef: RefObject<StudioCanvasSnapshot | null>;
+  restoringHistoryRef: RefObject<boolean>;
+  historyOperationRef: RefObject<Promise<void> | null>;
+  undoRef: RefObject<() => Promise<void>>;
+  redoRef: RefObject<() => Promise<void>>;
+  emitDocumentChangeRef: RefObject<() => void>;
+  shapeMediaVideosRef: RefObject<Map<string, HTMLVideoElement>>;
+  mediaEditTargetRef: RefObject<FabricObject | null>;
+  mediaResizeStartRef: RefObject<{ target: FabricObject; scaleX: number; scaleY: number; mediaScale: number } | null>;
+}

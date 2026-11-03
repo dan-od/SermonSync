@@ -1,9 +1,13 @@
-import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { type CSSProperties, useEffect } from "react";
 
 import { useMicMuteDetection } from "../../lib/micMuteDetection";
 import { useAppUptime } from "../../app/useAppUptime";
-import { METER_BARS, useAudioStore } from "../../stores/audioStore";
+import { useAudioStore } from "../../stores/audioStore";
 import { useSessionStore } from "../../stores/sessionStore";
+import { AudioDeviceSelector } from "./AudioDeviceSelector";
+import { InputLevelMeter } from "./InputLevelMeter";
+import { EngineModelBadge, MicStatusLabel, ModelProviderBadge } from "./StatusBarBadges";
+import { DEFAULT_INPUT_DEVICES, STATUS_BAR_CSS, formatLatency, formatUptime } from "./statusBarUtils";
 
 export interface StatusBarProps {
   inputName: string;
@@ -27,29 +31,6 @@ export interface StatusBarProps {
   modelProvider?: { id: "groq" | "openai" | "anthropic" | "gemini"; label: string } | null;
 }
 
-const DEFAULT_INPUT_DEVICES = ["Default Device", "Built-in Microphone", "USB Audio Interface"];
-
-const MODEL_PROVIDER_COLORS: Record<string, string> = {
-  groq: "#f97316",
-  openai: "#10a37f",
-  anthropic: "#d97757",
-  gemini: "#4285f4",
-};
-
-
-function formatUptime(totalSeconds: number) {
-  const seconds = Math.max(0, Math.floor(totalSeconds));
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
-  const pad = (value: number) => value.toString().padStart(2, "0");
-  return hours > 0 ? `${hours}:${pad(minutes)}:${pad(secs)}` : `${pad(minutes)}:${pad(secs)}`;
-}
-
-function formatLatency(latencyMs: number) {
-  return `${Math.max(0, Math.round(latencyMs))}ms`;
-}
-
 export function StatusBar({
   inputName,
   inputDevices = DEFAULT_INPUT_DEVICES,
@@ -69,11 +50,6 @@ export function StatusBar({
   locationLabel,
   modelProvider = null,
 }: StatusBarProps) {
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const channelDropdownRef = useRef<HTMLDivElement>(null);
-  const [isInputMenuOpen, setIsInputMenuOpen] = useState(false);
-  const [isChannelMenuOpen, setIsChannelMenuOpen] = useState(false);
-  const [hoveredInputDevice, setHoveredInputDevice] = useState<string | null>(null);
   const clampedVad = Math.min(100, Math.max(0, vadPercent));
   // Real input meter: a rolling history of measured levels, oldest → newest.
   // Read high-frequency audio values here so they do not re-render App.
@@ -103,26 +79,6 @@ export function StatusBar({
     const timer = setInterval(decayMeter, 120);
     return () => clearInterval(timer);
   }, [decayMeter, hasSignal]);
-
-  useEffect(() => {
-    if (!isInputMenuOpen && !isChannelMenuOpen) {
-      return;
-    }
-
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (!dropdownRef.current?.contains(target)) {
-        setIsInputMenuOpen(false);
-      }
-      if (!channelDropdownRef.current?.contains(target)) {
-        setIsChannelMenuOpen(false);
-      }
-    };
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [isChannelMenuOpen, isInputMenuOpen]);
-
   return (
     <footer
       style={{
@@ -141,59 +97,7 @@ export function StatusBar({
         zIndex: 30,
       }}
     >
-      <style>{`
-        @keyframes ssLivePing {
-          0% { box-shadow: 0 0 0 0 rgba(18, 214, 146, 0.5); }
-          70% { box-shadow: 0 0 0 6px rgba(18, 214, 146, 0); }
-          100% { box-shadow: 0 0 0 0 rgba(18, 214, 146, 0); }
-        }
-
-        .ss-vad-range {
-          appearance: none;
-          width: 84px;
-          height: 16px;
-          background: transparent;
-          cursor: ew-resize;
-        }
-
-        .ss-vad-range::-webkit-slider-runnable-track {
-          height: 4px;
-          border-radius: 999px;
-          background: linear-gradient(90deg, var(--color-primary) var(--ss-vad-percent), var(--border-base) var(--ss-vad-percent));
-        }
-
-        .ss-vad-range::-webkit-slider-thumb {
-          appearance: none;
-          width: 12px;
-          height: 12px;
-          margin-top: -4px;
-          border-radius: 50%;
-          border: 1px solid var(--border-base);
-          background: var(--bg-surface);
-          box-shadow: 0 0 10px rgba(123, 47, 247, 0.55);
-        }
-
-        .ss-vad-range::-moz-range-track {
-          height: 4px;
-          border-radius: 999px;
-          background: var(--border-base);
-        }
-
-        .ss-vad-range::-moz-range-progress {
-          height: 4px;
-          border-radius: 999px;
-          background: var(--color-primary);
-        }
-
-        .ss-vad-range::-moz-range-thumb {
-          width: 12px;
-          height: 12px;
-          border-radius: 50%;
-          border: 1px solid var(--border-base);
-          background: var(--bg-surface);
-          box-shadow: 0 0 10px rgba(123, 47, 247, 0.55);
-        }
-      `}</style>
+      <style>{STATUS_BAR_CSS}</style>
       <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, flex: "0 0 auto" }}>
         <div
           style={{
@@ -222,30 +126,7 @@ export function StatusBar({
         <span style={{ color: "var(--fg-subtle)" }}>DB</span>
         <span style={{ color: "var(--fg-base)" }}>SQLite</span>
         {modelProvider ? (
-          <div
-            title={`Default model provider: ${modelProvider.label}`}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "5px",
-              background: `${MODEL_PROVIDER_COLORS[modelProvider.id] ?? "var(--color-primary)"}26`,
-              color: MODEL_PROVIDER_COLORS[modelProvider.id] ?? "var(--color-primary)",
-              border: "none",
-              borderRadius: "4px",
-              padding: "2px 7px",
-              lineHeight: 1,
-            }}
-          >
-            <span
-              style={{
-                width: "6px",
-                height: "6px",
-                borderRadius: "50%",
-                background: MODEL_PROVIDER_COLORS[modelProvider.id] ?? "var(--color-primary)",
-              }}
-            />
-            <span style={{ fontWeight: 700, letterSpacing: "0.04em" }}>{modelProvider.label.toUpperCase()}</span>
-          </div>
+          <ModelProviderBadge modelProvider={modelProvider} />
         ) : null}
       </div>
 
@@ -253,261 +134,28 @@ export function StatusBar({
 
       <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, flex: "1 1 auto" }}>
         <span style={{ color: "var(--fg-subtle)", letterSpacing: "0.05em" }}>INPUT</span>
-        <div ref={dropdownRef} style={{ position: "relative", minWidth: 0, flex: "0 1 172px" }}>
-          <button
-            type="button"
-            className="ss-compact-trigger"
-            onClick={() => setIsInputMenuOpen((current) => !current)}
-            aria-haspopup="listbox"
-            aria-expanded={isInputMenuOpen}
-            style={{
-              width: "100%",
-              minWidth: 0,
-              height: "25px",
-              boxSizing: "border-box",
-              border: "none",
-              borderRadius: "4px",
-              background: "var(--bg-elevated)",
-              color: "var(--fg-base)",
-              fontFamily: "var(--font-sans)",
-              fontSize: "12px",
-              lineHeight: 1,
-              padding: "0 23px 0 8px",
-              cursor: "pointer",
-              textAlign: "left",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              position: "relative",
-            }}
-          >
-            {inputName}
-            <span style={{ position: "absolute", right: "8px", top: "50%", transform: "translateY(-50%)", color: "var(--fg-subtle)" }}>⌄</span>
-          </button>
-          {isInputMenuOpen ? (
-            <div
-              role="listbox"
-              className="ss-compact-menu"
-              style={{
-                position: "absolute",
-                left: 0,
-                bottom: "calc(100% + 6px)",
-                zIndex: 20,
-                width: "220px",
-                border: "none",
-                borderRadius: "5px",
-                background: "var(--bg-elevated)",
-                boxShadow: "var(--shadow-md)",
-                padding: "4px",
-                boxSizing: "border-box",
-                maxHeight: "min(320px, calc(100vh - 44px))",
-                overflowY: "auto",
-                overflowX: "hidden",
-                overscrollBehaviorY: "contain",
-                scrollbarWidth: "thin",
-                scrollbarColor: "var(--border-base) transparent",
-              }}
-            >
-              {inputDevices.map((device) => {
-                const selected = device === inputName;
-
-                return (
-                  <button
-                    key={device}
-                    type="button"
-                    role="option"
-                    className="ss-compact-menu-item"
-                    aria-selected={selected}
-                    onClick={() => {
-                      onInputNameChange?.(device);
-                      setIsInputMenuOpen(false);
-                      setHoveredInputDevice(null);
-                    }}
-                    onMouseEnter={() => setHoveredInputDevice(device)}
-                    onMouseLeave={() => setHoveredInputDevice((current) => current === device ? null : current)}
-                    onFocus={() => setHoveredInputDevice(device)}
-                    onBlur={() => setHoveredInputDevice((current) => current === device ? null : current)}
-                    style={{
-                      width: "100%",
-                      height: "25px",
-                      minHeight: "25px",
-                      boxSizing: "border-box",
-                      border: "none",
-                      borderRadius: "3px",
-                      background: selected || hoveredInputDevice === device ? "var(--color-primary-muted)" : "transparent",
-                      color: selected || hoveredInputDevice === device ? "var(--fg-base)" : "var(--fg-muted)",
-                      fontFamily: "var(--font-sans)",
-                      fontSize: "12px",
-                      padding: "0 8px",
-                      cursor: "pointer",
-                      textAlign: "left",
-                      overflowWrap: "anywhere",
-                    }}
-                  >
-                    {device}
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
-        </div>
-        <div ref={channelDropdownRef} style={{ position: "relative", flex: "0 0 52px" }}>
-          <button
-            type="button"
-            className="ss-compact-trigger"
-            onClick={() => setIsChannelMenuOpen((current) => !current)}
-            disabled={!activeInput}
-            aria-label="Input channel"
-            aria-haspopup="listbox"
-            aria-expanded={isChannelMenuOpen}
-            style={{
-              width: "100%",
-              height: "25px",
-              minHeight: "25px",
-              boxSizing: "border-box",
-              border: "none",
-              borderRadius: "4px",
-              background: "var(--bg-elevated)",
-              color: activeInput ? "var(--fg-base)" : "var(--fg-subtle)",
-              fontFamily: "var(--font-mono)",
-              fontSize: "10px",
-              lineHeight: 1,
-              padding: "0 16px 0 8px",
-              cursor: activeInput ? "pointer" : "not-allowed",
-              textAlign: "left",
-              position: "relative",
-            }}
-            title="Input channel"
-          >
-            CH {inputChannel}
-            <span style={{ position: "absolute", right: "5px", top: "50%", transform: "translateY(-50%)", color: "var(--fg-subtle)" }}>⌄</span>
-          </button>
-          {isChannelMenuOpen ? (
-            <div
-              role="listbox"
-              aria-label="Input channel"
-              style={{
-                position: "absolute",
-                left: 0,
-                bottom: "calc(100% + 6px)",
-                zIndex: 20,
-                width: "72px",
-                border: "none",
-                borderRadius: "5px",
-                background: "var(--bg-elevated)",
-                boxShadow: "var(--shadow-md)",
-                padding: "4px",
-              }}
-            >
-              {Array.from({ length: Math.max(1, inputChannelCount) }, (_, index) => index + 1).map((channel) => {
-                const selected = channel === inputChannel;
-
-                return (
-                  <button
-                    key={channel}
-                    type="button"
-                    role="option"
-                    className="ss-compact-menu-item"
-                    aria-selected={selected}
-                    onClick={() => {
-                      onInputChannelChange?.(channel);
-                      setIsChannelMenuOpen(false);
-                    }}
-                    style={{
-                      width: "100%",
-                      height: "25px",
-                      minHeight: "25px",
-                      boxSizing: "border-box",
-                      border: "none",
-                      borderRadius: "3px",
-                      background: selected ? "var(--color-primary-muted)" : "transparent",
-                      color: selected ? "var(--fg-base)" : "var(--fg-muted)",
-                      fontFamily: "var(--font-mono)",
-                      fontSize: "10px",
-                      padding: "0 8px",
-                      cursor: "pointer",
-                      textAlign: "left",
-                    }}
-                  >
-                    CH {channel}
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
-        </div>
-        <span
-          title={
-            audioError ??
-            (audioStatus === "capturing"
-              ? isMicMuted
-                ? "No audio detected from this input — check that the microphone is not muted."
-                : "Microphone permission granted and audio capture is active."
-              : "Microphone permission has not been verified.")
-          }
-          style={{
-            color:
-              audioStatus === "capturing"
-                ? isMicMuted
-                  ? "var(--color-warning)"
-                  : "var(--color-success)"
-                : audioStatus === "error"
-                  ? "var(--color-error)"
-                  : "var(--fg-subtle)",
-            fontSize: "9px",
-            fontWeight: 700,
-            letterSpacing: "0.04em",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {audioStatus === "capturing"
-            ? isMicMuted
-              ? "MIC MUTED"
-              : "MIC READY"
-            : permissionBlocked
-              ? "MIC BLOCKED"
-              : audioStatus === "error"
-                ? "MIC ERROR"
-                : "MIC CHECK"}
-        </span>
-        <div
-          aria-label={
-            hasSignal
-              ? `Input level ${Math.round((levels[levels.length - 1] ?? 0) * 100)}%${speechActive ? ", speech detected" : ""}`
-              : "No input signal"
-          }
-          title={speechActive ? "Speech detected" : hasSignal ? "Input signal (no speech)" : "No input signal"}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "2px",
-            height: "22px",
-            padding: "0 2px",
-          }}
-        >
-          {Array.from({ length: METER_BARS }, (_, index) => {
-            const level = levels[index] ?? 0;
-            // 2px floor so the meter reads as present-but-silent, not absent.
-            const height = 2 + level * 20;
-            return (
-              <span
-                key={index}
-                style={{
-                  width: "3px",
-                  height: `${height}px`,
-                  borderRadius: "999px",
-                  background: !activeInput
-                    ? "var(--border-base)"
-                    : isSpeech
-                      ? "linear-gradient(180deg, #d6c2ff, #7b2ff7)"
-                      : "linear-gradient(180deg, #6f5a9c, #4a3572)",
-                  transformOrigin: "bottom",
-                  transition: "height 90ms linear, background 150ms linear",
-                }}
-              />
-            );
-          })}
-        </div>
+        <AudioDeviceSelector
+          inputName={inputName}
+          inputDevices={inputDevices}
+          onInputNameChange={onInputNameChange}
+          inputChannel={inputChannel}
+          inputChannelCount={inputChannelCount}
+          onInputChannelChange={onInputChannelChange}
+          activeInput={activeInput}
+        />
+        <MicStatusLabel
+          audioStatus={audioStatus}
+          audioError={audioError}
+          isMicMuted={isMicMuted}
+          permissionBlocked={permissionBlocked}
+        />
+        <InputLevelMeter
+          levels={levels}
+          hasSignal={hasSignal}
+          speechActive={speechActive}
+          activeInput={activeInput}
+          isSpeech={isSpeech}
+        />
         <span style={{ color: "var(--fg-subtle)" }}>|</span>
         <span style={{ color: "var(--fg-subtle)", letterSpacing: "0.05em" }}>VAD</span>
         <span style={{ color: "var(--fg-base)", minWidth: "34px" }}>{clampedVad}%</span>
@@ -546,25 +194,7 @@ export function StatusBar({
           {engineVersion}
         </span>
         {engineModel ? (
-          <span
-            title={
-              engineModelDegraded
-                ? "Transcription model DEGRADED — the configured model failed to load"
-                : "Transcription model actually loaded (model · device/compute type)"
-            }
-            style={{
-              padding: "2px 6px",
-              borderRadius: "4px",
-              background: "var(--bg-elevated)",
-              border: engineModelDegraded ? "1px solid #e0563f" : "none",
-              color: engineModelDegraded ? "#e0563f" : "var(--fg-muted)",
-              lineHeight: 1,
-              whiteSpace: "nowrap",
-            }}
-          >
-            {engineModelDegraded ? "⚠ " : ""}
-            {engineModel}
-          </span>
+          <EngineModelBadge engineModel={engineModel} engineModelDegraded={engineModelDegraded} />
         ) : null}
         <span
           style={{
