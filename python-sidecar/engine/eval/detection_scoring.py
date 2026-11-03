@@ -35,6 +35,15 @@ class Expected:
     hit_stage: int | None = None
 
 
+def expected_played(captions: cap.Captions, run: Run) -> list[Expected]:
+    """Expected references in each played stretch. The live Stage 0 window is
+    reset on every seek, so each stretch is parsed on its own."""
+    out = []
+    for a, b in run.played or [[run.start, run.end]]:
+        out.extend(expected_from_captions(captions, a, b))
+    return out
+
+
 def expected_from_captions(captions: cap.Captions, start: float, end: float) -> list[Expected]:
     tracker = ReferenceTracker()
     out = []

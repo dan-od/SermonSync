@@ -1,4 +1,9 @@
-import type { AudioInputDevice, SidecarSystemStatusEvent, SidecarTestFeedEvent } from "../types/state";
+import type {
+  AudioInputDevice,
+  SidecarSystemStatusEvent,
+  SidecarTestFeedEvent,
+  TestFeedSourceInfo,
+} from "../types/state";
 
 const SIDECAR_HTTP_BASE = import.meta.env.VITE_SIDECAR_HTTP_BASE ?? "http://127.0.0.1:8000";
 
@@ -138,6 +143,22 @@ export function startTestFeed(request: TestFeedRequest) {
 
 export function stopTestFeed() {
   return fetchJson<SidecarTestFeedEvent>("/api/audio/test-feed/stop", { method: "POST" });
+}
+
+/** Dev-only: resolve a source without playing it (duration, captions, reference markers). */
+export function prepareTestFeed(source: string) {
+  return fetchJson<TestFeedSourceInfo>("/api/audio/test-feed/prepare", {
+    method: "POST",
+    body: JSON.stringify({ source }),
+  });
+}
+
+/** Dev-only: jump the running feed to a point in the source. */
+export function seekTestFeed(position: number) {
+  return fetchJson<SidecarTestFeedEvent>("/api/audio/test-feed/seek", {
+    method: "POST",
+    body: JSON.stringify({ position }),
+  });
 }
 
 export function getSidecarStatus() {

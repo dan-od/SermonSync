@@ -89,12 +89,12 @@ class StreamingTranscriber:
         sample_rate: int = 16000,
         max_chunk_seconds: float = 6.0,
         max_buffer_seconds: float = 15.0,
-        poll_interval: float = 0.25,
+        poll_interval: float = 0.12,  # was 0.25; quicker silence detection
         language: str | None = "en",
         matching_enabled: bool = True,
         min_flush_seconds: float = 0.4,
         silence_flush_seconds: float = 0.8,
-        partial_interval: float = 1.0,
+        partial_interval: float = 0.6,  # was 1.0; faster visual feedback
         partial_min_seconds: float = 0.8,
         partial_max_seconds: float = 3.0,
     ) -> None:
@@ -147,6 +147,10 @@ class StreamingTranscriber:
         self._fed_bytes = 0
         self._buf_offset = 0
         self._chunk_seq = 0
+        # Bumped by reset(): inference started before a reset (a test-feed
+        # seek, a new stream) is discarded instead of gluing old words onto
+        # the new stream's sentences.
+        self._epoch = 0
         # Optional callback(segment: dict) for downstream (buffer/matching).
         self.on_segment = None
 
@@ -197,7 +201,9 @@ class StreamingTranscriber:
         logger.info("streaming transcriber stopped")
 
     def reset(self) -> None:
-        """Drop buffered audio without stopping (a new, unrelated stream)."""
+        """Drop buffered audio without stopping (a new, unrelated stream).
+        Results of inference already running are discarded when they land."""
+        self._epoch += 1
         self._final_tail = ""
         self._buf.clear()
         self._buf_offset = self._fed_bytes
@@ -310,6 +316,7 @@ class StreamingTranscriber:
     async def _emit_partial(self, pcm: bytes) -> None:
         """Broadcast an interim hypothesis (is_final=False). Never assembled
         into sentences and never matched — it will be revised."""
+        epoch = self._epoch
         infer_start = time.time()
         try:
             # Loading a small partial model can take seconds: never on the loop.
@@ -324,11 +331,13 @@ class StreamingTranscriber:
             alone = len([s for s in segments if s["text"]]) == 1
             segments = [s for s in segments if hallucination_reason(s, alone) is None]
         text = " ".join(seg["text"] for seg in segments if seg["text"]).strip()
+        stale = epoch != self._epoch
         tap.emit(
             "partial", text=text, infer_ms=round((time.time() - infer_start) * 1000, 1),
             duration=round(len(pcm) / (self.sample_rate * 2), 3),
+            **({"discarded": "reset"} if stale else {}),
         )
-        if not text:
+        if not text or stale:
             return
         transcript_buffer.add_fragment(text, is_final=False, timestamp=time.time())
         await manager.broadcast_json(
@@ -344,6 +353,7 @@ class StreamingTranscriber:
         )
 
     async def _infer_and_emit(self, pcm: bytes, received_ts: float, seq: int = 0) -> None:
+        epoch = self._epoch
         audio = pcm16_to_float(pcm)
         infer_start = time.time()
         try:
@@ -368,10 +378,12 @@ class StreamingTranscriber:
                 if reason:
                     seg["dropped"] = reason
                     logger.info("dropped likely hallucination (%s): %r", reason, seg["text"])
+        stale = epoch != self._epoch
         if tap.active():
             tap.emit(
                 "inference", seq=seq, infer_ms=round((emit_ts - infer_start) * 1000, 1),
                 latency_ms=latency_ms, duration=round(len(audio) / self.sample_rate, 3),
+                **({"discarded": "reset"} if stale else {}),
                 segments=[
                     {k: seg.get(k) for k in (
                         "text", "start", "end", "confidence", "no_speech_prob",
@@ -381,6 +393,9 @@ class StreamingTranscriber:
                 ],
             )
         for seg in segments:
+            # Re-checked per segment: a reset can land during any await below.
+            if epoch != self._epoch:
+                return
             if not seg["text"] or seg.get("dropped"):
                 continue
             self._final_tail = (self._final_tail + " " + seg["text"])[-FINAL_TAIL_CHARS * 2:]
@@ -394,6 +409,8 @@ class StreamingTranscriber:
                 "latency_ms": latency_ms,
             }
             await manager.broadcast_json(payload)
+            if epoch != self._epoch:
+                return
 
             # SS-016: assemble fragments into complete sentences and broadcast
             # them (with rolling context) for the scripture-matching pipeline.
@@ -401,6 +418,8 @@ class StreamingTranscriber:
                 seg["text"], is_final=True, timestamp=emit_ts
             ):
                 await manager.broadcast_json(sentence)
+                if epoch != self._epoch:
+                    return
                 # SS-044: tie the transcript to the active session for archival.
                 from ..session.manager import get_manager
 

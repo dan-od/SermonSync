@@ -45,6 +45,10 @@ async def start_pipeline() -> "asyncio.Task":
     from engine.matching.llm_matcher import apply_persisted_groq
 
     apply_persisted_groq()
+    # SS-075: explicit references only, unless Settings turned broad matching on.
+    from engine.matching.orchestrator import apply_persisted_spoken_only
+
+    apply_persisted_spoken_only()
     status_task = asyncio.create_task(status_emitter())
     return status_task
 

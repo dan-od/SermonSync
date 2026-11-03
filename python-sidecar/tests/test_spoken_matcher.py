@@ -32,9 +32,12 @@ def emitted(monkeypatch):
     return sent
 
 
-def _orch(spoken=None):
+def _orch(spoken=None, spoken_only=True):
     stages = {k: Never() for k in ("trie", "keyword", "llm", "semantic")}
-    return PipelineOrchestrator(spoken=spoken or SpokenReferenceMatcher(), **stages), stages
+    orch = PipelineOrchestrator(
+        spoken=spoken or SpokenReferenceMatcher(), spoken_only=spoken_only, **stages
+    )
+    return orch, stages
 
 
 def test_hydrates_verse_text_and_ranges():
@@ -63,8 +66,28 @@ def test_stage0_short_circuits_the_cascade():
 
 
 def test_no_reference_falls_through():
+    orch, stages = _orch(spoken_only=False)
+    assert orch.match("the wages of sin is death") == []
+    assert stages["trie"].called and stages["keyword"].called
+
+
+def test_spoken_only_stops_after_stage0():
     orch, stages = _orch()
     assert orch.match("the wages of sin is death") == []
+    assert not any(s.called for s in stages.values())
+
+
+def test_spoken_only_match_and_emit_skips_broad_matching(emitted):
+    orch, stages = _orch()
+    payload = asyncio.run(orch.match_and_emit("the wages of sin is death", None, 0.0))
+    assert payload["results"] == []
+    assert emitted == []
+    assert not any(s.called for s in stages.values())
+
+
+def test_broad_mode_match_and_emit_runs_the_cascade(emitted):
+    orch, stages = _orch(spoken_only=False)
+    asyncio.run(orch.match_and_emit("the wages of sin is death", None, 0.0))
     assert stages["trie"].called and stages["keyword"].called
 
 

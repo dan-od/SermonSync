@@ -29,6 +29,7 @@ from .detection_scoring import (
     detection,
     expected_from_captions,
     expected_from_json,
+    expected_played,
     predictions,
 )
 from .intervals import _median, _p90, _pct, clip, intersect, merge, pad, subtract, total
@@ -96,7 +97,11 @@ def score_run(run: Run) -> tuple[dict, dict]:
             "label": meta.get("request", {}).get("label"),
             "title": source.get("title"),
             "source": source.get("url") or source.get("source"),
-            "window": [round(run.start, 2), round(run.end, 2)],
+            "window": [round(run.segments[0][0], 2), round(run.segments[-1][1], 2)]
+            if run.segments
+            else [round(run.start, 2), round(run.end, 2)],
+            "played": [[round(a, 2), round(b, 2)] for a, b in run.played],
+            "seeks": sum(1 for e in run.events if e["type"] == "seek"),
             "duration_s": round(window, 1),
             "speed": meta.get("request", {}).get("speed"),
             "overrides": meta.get("request", {}).get("overrides") or {},
@@ -120,10 +125,10 @@ def score_run(run: Run) -> tuple[dict, dict]:
     ref_path = _find_file(run, "reference.txt")
     if ref_path is not None:
         ref = load_reference_txt(ref_path, run)
-        wer["reference"] = wer_block(ref, hypothesis_text(run, ref.start, ref.end))
+        wer["reference"] = wer_block(ref, hypothesis_text(run, ref.segments))
     captions_ref = caption_reference(captions, run) if captions else None
     if captions_ref is not None:
-        wer["captions"] = wer_block(captions_ref, hypothesis_text(run, run.start, run.end))
+        wer["captions"] = wer_block(captions_ref, hypothesis_text(run, run.segments))
     wer["primary"] = (
         "reference" if "reference" in wer else "captions" if "captions" in wer else None
     )
@@ -182,10 +187,10 @@ def score_run(run: Run) -> tuple[dict, dict]:
     expected: list[Expected] = []
     exp_source = None
     if exp_path is not None:
-        expected = [x for x in expected_from_json(exp_path) if run.start <= x.t < run.end]
+        expected = [x for x in expected_from_json(exp_path) if run.covers(x.t)]
         exp_source = f"expected_refs.json ({exp_path})"
     elif captions is not None:
-        expected = expected_from_captions(captions, run.start, run.end)
+        expected = expected_played(captions, run)
         exp_source = f"reference parser over {captions.kind} captions"
     preds = predictions(run)
     det = detection(expected, preds, window)
@@ -269,6 +274,15 @@ def render_report(metrics: dict, details: dict) -> str:
             ""
             if r.get("speed") in (1, 1.0, None)
             else " — **latency figures invalid (speed ≠ 1.0)**"
+        ),
+        *(
+            [
+                f"- Seeked {r['seeks']}×: only the played stretches are scored ("
+                + ", ".join(f"{a:.0f}–{b:.0f} s" for a, b in r.get("played") or [])
+                + ")"
+            ]
+            if r.get("seeks")
+            else []
         ),
         f"- Engine: {h['engine']} · VAD: {r.get('vad')} · captions: {r.get('captions')}",
         f"- Git: {(r.get('git') or {}).get('branch')} @ {(r.get('git') or {}).get('commit')}"

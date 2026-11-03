@@ -113,6 +113,43 @@ export interface SidecarTestFeedEvent {
   run_dir?: string | null;
   report?: string | null;
   error?: string | null;
+  /** Total length of the source media, seconds. */
+  duration?: number | null;
+  seeks?: number;
+  last_seek?: { from: number; to: number } | null;
+  /** References the matcher suggested during this run (SS-075). */
+  markers?: TestFeedDetectedMarker[];
+}
+
+/** A reference the matcher suggested during a feed, at the source position it was broadcast. */
+export interface TestFeedDetectedMarker {
+  time: number;
+  reference: string;
+  confidence: number;
+}
+
+/** A caption line of a test-feed source (dev-only, SS-072). */
+export interface TestFeedCue {
+  start: number;
+  end: number;
+  text: string;
+}
+
+/** A scripture reference spoken in a test-feed source's captions. */
+export interface TestFeedMarker {
+  time: number;
+  reference: string;
+  caption_text: string;
+}
+
+/** POST /api/audio/test-feed/prepare: what the seek bar needs to draw a source. */
+export interface TestFeedSourceInfo {
+  source: string;
+  title: string;
+  duration: number | null;
+  captions: string | null;
+  cues: TestFeedCue[];
+  markers: TestFeedMarker[];
 }
 
 export type SidecarWsEvent =

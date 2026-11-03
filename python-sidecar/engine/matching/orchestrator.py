@@ -6,6 +6,11 @@ semantic only as needed). Stage 0 — explicitly spoken references ("John 3:16",
 "Romans chapter eight verse twenty-eight") — runs before the four matchers.
 Results from the stages that ran are merged and deduplicated (same verse ->
 highest confidence), tagged with their source stage, and sorted by confidence.
+
+SS-075: `spoken_only` (on by default) stops after Stage 0. Stages 1-4 matched
+any sentence that shared words with a verse and flooded the deck (about 0.5 %
+precision against about 86 % for Stage 0), and their index builds compete with
+Whisper for CPU. The persisted `matching.spoken_only` setting turns them back on.
 """
 
 from __future__ import annotations
@@ -71,8 +76,10 @@ class PipelineOrchestrator:
         llm=None,
         semantic=None,
         spoken=None,
+        spoken_only: bool = True,
     ) -> None:
         self.thresholds = thresholds or PipelineThresholds()
+        self.spoken_only = spoken_only
         self._spoken = spoken
         self._trie = trie
         self._keyword = keyword
@@ -96,6 +103,10 @@ class PipelineOrchestrator:
             from .spoken_matcher import get_matcher
             self._spoken = get_matcher()
         return self._spoken
+
+    def reset_spoken(self) -> None:
+        """Forget Stage 0's rolling window, carry-over and dedupe (a new stream)."""
+        self._spoken_m().reset()
 
     def _trie_m(self):
         if self._trie is None:
@@ -141,7 +152,7 @@ class PipelineOrchestrator:
         s0 = spoken if spoken is not None else self._spoken_m().match(sentence, context)
         collected.extend(s0)
         stages_run.append(0)
-        if self._max_conf(s0) >= self.thresholds.spoken:
+        if self.spoken_only or self._max_conf(s0) >= self.thresholds.spoken:
             return self._finalize(collected, stages_run)
 
         # Stage 1 — Trie (explicit quotes)
@@ -264,6 +275,10 @@ class PipelineOrchestrator:
             logger.debug("skipping low-substance sentence: %r", sentence)
             return {"type": "suggestions", "sentence": sentence, "results": []}
 
+        if self.spoken_only:
+            logger.debug("spoken_only mode: skipping broad matching for: %r", sentence)
+            return {"type": "suggestions", "sentence": sentence, "results": []}
+
         try:
             # Matchers build large in-memory indexes on first use. Keep one
             # sentence at a time in flight so those builds cannot race each
@@ -289,8 +304,29 @@ class PipelineOrchestrator:
         get_manager().record_event("suggestion", payload)
 
 
+SPOKEN_ONLY_SETTING = "matching.spoken_only"
+
+
+def setting_as_bool(value) -> bool:
+    """Read a settings value as a flag; "false"/"0"/"off" strings are False."""
+    if isinstance(value, str):
+        return value.strip().lower() not in ("", "0", "false", "off", "no")
+    return bool(value)
+
 _orchestrator = PipelineOrchestrator()
 
 
 def get_orchestrator() -> PipelineOrchestrator:
     return _orchestrator
+
+
+def apply_persisted_spoken_only() -> None:
+    """Restore the persisted `matching.spoken_only` setting (default on)."""
+    from ..config.store import get_store
+
+    try:
+        saved = get_store().get_setting(SPOKEN_ONLY_SETTING, True)
+        _orchestrator.spoken_only = setting_as_bool(saved)
+    except Exception:
+        logger.exception("could not restore %s; keeping spoken-only matching", SPOKEN_ONLY_SETTING)
+        _orchestrator.spoken_only = True

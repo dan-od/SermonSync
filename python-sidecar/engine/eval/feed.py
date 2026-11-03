@@ -33,6 +33,9 @@ ENV_FLAG = "SERMONSYNC_DEV_FEED"
 # Longest we wait after the audio ends for the last chunk, its inference and
 # the matcher to finish, so trailing suggestions land in the run.
 DRAIN_TIMEOUT_SECONDS = 20.0
+# Longest a seek may take to land (the audio thread stops at the next 20 ms
+# frame, then the loop flushes the pipeline).
+SEEK_TIMEOUT_SECONDS = 10.0
 
 
 def dev_feed_enabled() -> bool:
@@ -41,6 +44,31 @@ def dev_feed_enabled() -> bool:
 
 class FeedBusyError(RuntimeError):
     pass
+
+
+class FeedNotRunningError(RuntimeError):
+    pass
+
+
+def reset_stream_state() -> None:
+    """Forget everything the pipeline holds about the audio so far: buffered
+    speech, the sentence being assembled, the Stage 0 rolling window, VAD /
+    worship history and pre-roll. Used at the start of a feed and on a seek,
+    so text from before a jump can't glue onto text after it."""
+    from ..audio import vad, worship_detector
+    from ..audio.capture import capture_manager
+    from ..context_detector import get_detector as get_context_detector
+    from ..matching.orchestrator import get_orchestrator
+    from ..transcription.buffer import transcript_buffer
+    from ..transcription.streaming import streaming_transcriber
+
+    vad.get_detector().reset()
+    worship_detector.get_detector().reset()
+    transcript_buffer.reset()
+    get_context_detector().reset()
+    get_orchestrator().reset_spoken()
+    streaming_transcriber.reset()
+    capture_manager.reset_frame_state()
 
 
 def _git_info() -> dict:
@@ -171,6 +199,17 @@ class FeedController:
         self._task: asyncio.Task | None = None
         self._end_wall: float | None = None
         self._end_position: float | None = None
+        self._recorder: RunRecorder | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._seek_done: asyncio.Event | None = None
+        self.last_seek: dict | None = None
+        # SS-075: references the matcher suggested during this run, stamped
+        # with the source position when they were broadcast (so a little after
+        # they were spoken). Kept after the run ends, cleared by the next start.
+        self.detected_markers: list[dict] = []
+        # describe_source() results by source string (parsing a long VTT and
+        # running the reference parser over it takes a moment).
+        self._described: dict[str, dict] = {}
         self.warm_matcher = True
 
     # ------------------------------------------------------------------
@@ -203,12 +242,16 @@ class FeedController:
             "end": start + duration
             if duration
             else (self._prepared.media_duration if self._prepared else None),
+            "duration": self._prepared.media_duration if self._prepared else None,
+            "seeks": src.seeks if src else 0,
+            "last_seek": self.last_seek,
             "speed": self.request.get("speed", 1.0),
             "label": self.request.get("label"),
             "captions": self._prepared.captions_kind if self._prepared else None,
             "run_dir": str(self.run_dir) if self.run_dir else None,
             "report": self.report_path,
             "late_frames": src.late_frames if src else 0,
+            "markers": list(self.detected_markers),
             "error": self.error,
         }
 
@@ -249,6 +292,7 @@ class FeedController:
         self.run_dir, self.report_path = None, None
         self._source, self._prepared = None, None
         self._end_wall = self._end_position = None
+        self.detected_markers = []
         self._task = asyncio.create_task(self._run())
         await self._broadcast()
         return self.status()
@@ -260,17 +304,74 @@ class FeedController:
             self._task.cancel()
         return self.status()
 
+    async def prepare(self, source: str) -> dict:
+        """Download/resolve `source` (cached) and describe it for the seek bar:
+        duration, title, caption cues and reference markers."""
+        from .source_info import describe_source
+
+        key = source.strip()
+        if key not in self._described:
+            prepared = await asyncio.to_thread(fs.prepare_source, key)
+            self._described[key] = await asyncio.to_thread(describe_source, prepared)
+        return self._described[key]
+
+    async def seek(self, position: float) -> dict:
+        """Jump the running feed to `position` (source seconds)."""
+        src = self._source
+        if self.state != "playing" or src is None or not src.is_running:
+            raise FeedNotRunningError("no test feed is playing")
+        position = max(0.0, float(position))
+        media = self._prepared.media_duration if self._prepared else None
+        if media and position >= media:
+            raise ValueError(f"position {position:.1f} s is past the end ({media:.1f} s)")
+        if src.end is not None and position >= src.end:
+            raise ValueError(f"position {position:.1f} s is past the requested window")
+        done = self._seek_done = asyncio.Event()
+        src.seek(position)
+        try:
+            await asyncio.wait_for(done.wait(), SEEK_TIMEOUT_SECONDS)
+        except asyncio.TimeoutError as exc:
+            raise RuntimeError("seek did not complete") from exc
+        return self.status()
+
+    def _on_seek(self, old: float, new: float) -> None:
+        """Audio thread: no frames flow until the loop has flushed the pipeline."""
+        if self._loop is None:
+            return
+        future = asyncio.run_coroutine_threadsafe(self._apply_seek(old, new), self._loop)
+        future.result(timeout=SEEK_TIMEOUT_SECONDS)
+
+    async def _apply_seek(self, old: float, new: float) -> None:
+        if self._recorder is not None:
+            self._recorder.seek(old, new)
+        reset_stream_state()
+        self.last_seek = {"from": round(old, 2), "to": round(new, 2)}
+        if self._seek_done is not None:
+            self._seek_done.set()
+        await self._broadcast()
+
+    def _on_broadcast(self, payload: dict) -> None:
+        """WS hub listener: keep a seek-bar marker for every suggestion."""
+        if payload.get("type") != "suggestions" or self.state not in ("playing", "draining"):
+            return
+        t = round(self.position(), 2)
+        for result in payload.get("results") or []:
+            self.detected_markers.append(
+                {
+                    "time": t,
+                    "reference": result.get("reference"),
+                    "confidence": result.get("confidence"),
+                }
+            )
+
     async def wait(self) -> None:
         if self._task is not None:
             await asyncio.shield(self._task)
 
     # ------------------------------------------------------------------
     async def _prepare_pipeline(self) -> None:
-        from ..audio import vad, worship_detector
         from ..audio.capture import capture_manager
-        from ..context_detector import get_detector as get_context_detector
         from ..matching.orchestrator import get_orchestrator
-        from ..transcription.buffer import transcript_buffer
         from ..transcription.streaming import streaming_transcriber
 
         # The mic and the file must never feed process_frame at the same time.
@@ -283,13 +384,8 @@ class FeedController:
             await asyncio.to_thread(
                 get_orchestrator().build_payload, "for God so loved the world", None
             )
-        vad.get_detector().reset()
-        worship_detector.get_detector().reset()
-        transcript_buffer.reset()
-        get_context_detector().reset()
-        streaming_transcriber.reset()
         capture_manager.bind_loop(asyncio.get_running_loop())
-        capture_manager.reset_frame_state()
+        reset_stream_state()
 
     async def _drain(self) -> None:
         """Let the last chunk be cut, transcribed and matched."""
@@ -311,7 +407,8 @@ class FeedController:
         req = self.request
         recorder: RunRecorder | None = None
         undo: list = []
-        loop = asyncio.get_running_loop()
+        loop = self._loop = asyncio.get_running_loop()
+        self.last_seek = None
         finished = asyncio.Event()
         ticker: asyncio.Task | None = None
         try:
@@ -340,6 +437,7 @@ class FeedController:
                 monitor=req["monitor"],
                 sample_rate=req.get("sample_rate") or fs.SAMPLE_RATE,
                 on_finish=lambda reason: loop.call_soon_threadsafe(finished.set),
+                on_seek=self._on_seek,
             )
             self._source = source
             recorder = RunRecorder(
@@ -348,6 +446,7 @@ class FeedController:
                 frame_seconds=source.frame_seconds,
                 byte_base=streaming_transcriber.fed_bytes,
             )
+            self._recorder = recorder
             recorder.open(
                 {
                     "request": req,
@@ -362,6 +461,7 @@ class FeedController:
             )
             tap.install(recorder)
             manager.add_listener(recorder.on_broadcast)
+            manager.add_listener(self._on_broadcast)
 
             source.start_thread()
             self.state = "playing"
@@ -392,6 +492,7 @@ class FeedController:
                 ticker.cancel()
             if self._source is not None:
                 self._source.stop()
+            manager.remove_listener(self._on_broadcast)
             if recorder is not None:
                 manager.remove_listener(recorder.on_broadcast)
                 tap.uninstall(recorder)
@@ -400,12 +501,17 @@ class FeedController:
                     {
                         "finish_reason": src.finish_reason if src else None,
                         "frames": src.frames_processed if src else 0,
+                        "end_position": round(self._end_position, 3)
+                        if self._end_position is not None
+                        else (round(src.position, 3) if src else None),
+                        "seeks": src.seeks if src else 0,
                         "late_frames": src.late_frames if src else 0,
                         "max_lag_seconds": round(src.max_lag_seconds, 3) if src else 0,
                         "error": self.error,
                         "counts": recorder.counts,
                     }
                 )
+                self._recorder = None
             restore_overrides(undo)
             self.state = "error" if self.error and recorder is None else "stopped"
             await self._broadcast()

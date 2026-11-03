@@ -70,7 +70,7 @@ def test_end_to_end_audio_to_suggestion(tmp_path):
         def match(self, *a, **k):
             return []
 
-    orch = PipelineOrchestrator(semantic=_Empty())  # skip heavy Stage 4
+    orch = PipelineOrchestrator(semantic=_Empty(), spoken_only=False)  # skip heavy Stage 4
     results = orch.match(assembled)
 
     # 4) the correct scripture is surfaced end-to-end
