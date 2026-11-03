@@ -6,7 +6,9 @@
  */
 import { create } from "zustand";
 
-import type { SidecarTestFeedEvent } from "../types/state";
+import { prepareTestFeed } from "../lib/sidecarClient";
+
+import type { SidecarTestFeedEvent, TestFeedDetectedMarker, TestFeedSourceInfo } from "../types/state";
 
 export const ACTIVE_TEST_FEED_STATES: ReadonlyArray<SidecarTestFeedEvent["state"]> = [
   "loading",
@@ -17,15 +19,49 @@ export const ACTIVE_TEST_FEED_STATES: ReadonlyArray<SidecarTestFeedEvent["state"
 interface TestFeedStore {
   enabled: boolean;
   status: SidecarTestFeedEvent | null;
+  /** Length of the feed's source media, from its status (null until it opens). */
+  duration: number | null;
+  /** References the matcher suggested during the current or last feed run. */
+  markers: TestFeedDetectedMarker[];
+  /** Duration, caption cues and reference markers of the loaded source (seek bar). */
+  sourceInfo: TestFeedSourceInfo | null;
+  /** Source being loaded (POST /prepare), and why the last load failed. */
+  sourceLoading: string | null;
+  sourceError: string | null;
   setEnabled: (enabled: boolean) => void;
   setStatus: (status: SidecarTestFeedEvent | null) => void;
+  setSourceInfo: (sourceInfo: TestFeedSourceInfo | null) => void;
+  /** Load `source` for the seek bar, once per source string. */
+  loadSource: (source: string) => Promise<void>;
 }
 
-export const useTestFeedStore = create<TestFeedStore>()((set) => ({
+export const useTestFeedStore = create<TestFeedStore>()((set, get) => ({
   enabled: false,
   status: null,
+  duration: null,
+  markers: [],
+  sourceInfo: null,
+  sourceLoading: null,
+  sourceError: null,
   setEnabled: (enabled) => set({ enabled }),
-  setStatus: (status) => set({ status }),
+  setStatus: (status) =>
+    set({ status, duration: status?.duration ?? null, markers: status?.markers ?? [] }),
+  setSourceInfo: (sourceInfo) => set({ sourceInfo }),
+  loadSource: async (source) => {
+    const key = source.trim();
+    const { sourceInfo, sourceLoading } = get();
+    if (!key || key === sourceInfo?.source || key === sourceLoading) return;
+    set({ sourceLoading: key, sourceError: null });
+    try {
+      const info = await prepareTestFeed(key);
+      // Keyed by what was asked for (the sidecar resolves local paths).
+      set({ sourceInfo: { ...info, source: key } });
+    } catch (err) {
+      set({ sourceError: err instanceof Error ? err.message : String(err) });
+    } finally {
+      if (get().sourceLoading === key) set({ sourceLoading: null });
+    }
+  },
 }));
 
 export function isTestFeedActive(status: SidecarTestFeedEvent | null): boolean {

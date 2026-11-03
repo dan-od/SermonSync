@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
 
+import { seekTestFeed } from "../lib/sidecarClient";
+import { clampTime, isEditableTarget, seekStepForKey } from "../lib/testFeedSeek";
+import { useTestFeedStore } from "../stores/testFeedStore";
 import { useTranscriptionStore } from "../stores/transcriptionStore";
 import type { TranscriptItem } from "./desktop/uiTypes";
 import { TestFeedBar } from "./TestFeedBar";
@@ -30,10 +34,26 @@ export function TranscriptTimelinePanel({
     viewport.scrollTop = 0;
   }, [displayedItems]);
 
+  // SS-075: ←/→ seek a playing test feed 5 s (Shift: 30 s) while focus is
+  // anywhere in the panel, except in a field that uses the arrows itself.
+  const onPanelKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const step = seekStepForKey(event);
+    if (step === null || isEditableTarget(event.target)) return;
+    const { status, duration } = useTestFeedStore.getState();
+    if (status?.state !== "playing") return;
+    event.preventDefault();
+    seekTestFeed(clampTime(status.position + step, duration)).catch((error: unknown) => {
+      console.warn("test feed seek failed", error);
+    });
+  };
+
   return (
     <div
+      tabIndex={-1}
+      onKeyDown={onPanelKeyDown}
       style={{
         height: "100%",
+        outline: "none",
         minHeight: 0,
         display: "flex",
         flexDirection: "column",
