@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .intervals import merge
+from .intervals import intersect, merge, total
 
 # ---------------------------------------------------------------------------
 # Run loading
@@ -44,10 +44,25 @@ class Run:
     start: float = 0.0
     end: float = 0.0
     finals: list[Final] = field(default_factory=list)
+    # Source spans actually played, in play order: [[start, end]] unless the
+    # feed was seeked, in which case audio between a seek's `from` and `to`
+    # was never heard and is not scored.
+    played: list[list[float]] = field(default_factory=list)
+
+    @property
+    def segments(self) -> list[list[float]]:
+        """Played spans, merged (a backward seek can replay audio)."""
+        return merge(self.played) if self.played else merge([[self.start, self.end]])
 
     @property
     def duration(self) -> float:
-        return max(0.0, self.end - self.start)
+        return total(self.segments)
+
+    def clip(self, intervals) -> list[list[float]]:
+        return intersect(intervals, self.segments)
+
+    def covers(self, t: float) -> bool:
+        return any(a <= t < b for a, b in self.segments)
 
 
 def load_run(run_dir: str | Path) -> Run:
@@ -59,17 +74,27 @@ def load_run(run_dir: str | Path) -> Run:
     req = meta.get("request", {})
     start = float(req.get("start") or 0.0)
     end_event = next((e for e in reversed(events) if e["type"] == "run_end"), None)
-    if end_event and end_event.get("frames"):
+    seeks = [e for e in events if e["type"] == "seek"]
+    if end_event and end_event.get("end_position") is not None:
+        end = float(end_event["end_position"])
+    elif end_event and end_event.get("frames") and not seeks:
         end = start + end_event["frames"] * 0.02
-    elif req.get("duration"):
+    elif req.get("duration") and not seeks:
         end = start + float(req["duration"])
     else:
         end = max((e["t"] for e in events), default=start)
-    run = Run(run_dir, meta, events, start, end)
+    played, cursor = [], start
+    for e in seeks:
+        played.append([cursor, float(e["from"])])
+        cursor = float(e["to"])
+    played.append([cursor, end])
+    played = [[a, b] for a, b in played if b > a]
+    run = Run(run_dir, meta, events, start, end, played=played)
 
     chunks = {e["seq"]: e for e in events if e["type"] == "chunk"}
     for e in events:
-        if e["type"] != "inference":
+        # Inference a seek overtook was never shown.
+        if e["type"] != "inference" or e.get("discarded"):
             continue
         chunk = chunks.get(e.get("seq"), {})
         for seg in e.get("segments", []):
@@ -98,9 +123,15 @@ def load_run(run_dir: str | Path) -> Run:
 
 
 def state_intervals(run: Run, key: str, value=True) -> list[list[float]]:
-    """Spans where frame_state[key] == value."""
+    """Spans where frame_state[key] == value. A seek closes the open span at
+    `from`; the pipeline restates its state right after landing at `to`."""
     out, opened = [], None
     for e in run.events:
+        if e["type"] == "seek":
+            if opened is not None:
+                out.append([opened, e["from"]])
+                opened = None
+            continue
         if e["type"] != "frame_state":
             continue
         on = e.get(key) == value

@@ -22,7 +22,11 @@ Event types:
 * `ws`           — every WebSocket broadcast except the high-rate meter /
   periodic status events (transcription partials and finals, sentences,
   suggestions, theme updates, test_feed). The payload is under `event`.
-* `run_start` / `run_end`.
+* `seek`         — the feed jumped: `t` = `from` (where playback left off),
+  `to` = the new position. Audio between them was never played, so the
+  scorer only scores the stretches actually heard. Inference already running
+  at the seek lands later with `discarded: "reset"`.
+* `run_start` / `run_end` (`end_position`: where playback stopped).
 
 The recorder is fed from three places: the eval tap (audio thread, event loop,
 inference workers), the WS hub listener (event loop), and the feed controller.
@@ -175,3 +179,9 @@ class RunRecorder:
 
     def note(self, kind: str, **fields) -> None:
         self._write(kind, fields)
+
+    def seek(self, old: float, new: float) -> None:
+        """Mark a jump from `old` to `new` (source seconds)."""
+        self._write("seek", {"from": round(old, 3), "to": round(new, 3)}, t=old)
+        # The next frame restates the pipeline state at the new position.
+        self._frame_state = None

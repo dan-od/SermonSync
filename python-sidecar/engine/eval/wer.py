@@ -47,6 +47,12 @@ class Reference:
     text: str
     start: float
     end: float
+    # Spans scored, when not just [start, end] (a seeked run).
+    spans: list[list[float]] | None = None
+
+    @property
+    def segments(self) -> list[list[float]]:
+        return self.spans if self.spans is not None else [[self.start, self.end]]
 
 
 def _find_file(run: Run, name: str) -> Path | None:
@@ -71,8 +77,16 @@ def load_reference_txt(path: Path, run: Run) -> Reference:
             start, end = float(m.group(1)), float(m.group(2))
         elif not line.lstrip().startswith("#"):
             body.append(line)
+    # Only the part of the window that was played; the reference text
+    # itself cannot be cut, so a window that was partly skipped scores as
+    # deletions. Keep reference.txt windows inside one played stretch.
     return Reference(
-        "reference.txt", "accuracy vs hand-corrected reference", " ".join(body), start, end
+        "reference.txt",
+        "accuracy vs hand-corrected reference",
+        " ".join(body),
+        start,
+        end,
+        run.clip([[start, end]]),
     )
 
 
@@ -97,14 +111,18 @@ def caption_reference(captions: cap.Captions, run: Run) -> Reference:
     return Reference(
         f"{captions.kind} captions",
         label,
-        captions.text_between(run.start, run.end),
+        " ".join(captions.text_between(a, b) for a, b in run.segments),
         run.start,
         run.end,
+        run.segments,
     )
 
 
-def hypothesis_text(run: Run, start: float, end: float) -> str:
-    return " ".join(f.text for f in run.finals if start <= f.midpoint < end)
+def hypothesis_text(run: Run, segments) -> str:
+    # In source order, like the reference: after a backward seek, play order
+    # is not source order.
+    finals = sorted(run.finals, key=lambda f: f.midpoint)
+    return " ".join(f.text for f in finals if any(a <= f.midpoint < b for a, b in segments))
 
 
 def wer_block(ref: Reference, hyp: str) -> dict:
@@ -113,6 +131,7 @@ def wer_block(ref: Reference, hyp: str) -> dict:
         "source": ref.source,
         "label": ref.label,
         "window": [round(ref.start, 2), round(ref.end, 2)],
+        "segments": [[round(a, 2), round(b, 2)] for a, b in ref.segments],
         "ref_words": len(r.split()),
         "hyp_words": len(h.split()),
     }
@@ -135,8 +154,9 @@ def ref_span_wer(
     """WER restricted to the words around each spoken reference (book names
     and numbers), via one global alignment of the caption and final text."""
     tokens: list[tuple[float, str]] = []
+    in_ref = lambda t: any(a <= t < b for a, b in captions_ref.segments)  # noqa: E731
     for seg in captions.segments:
-        words = [w for w in seg.words if captions_ref.start <= w.t < captions_ref.end]
+        words = [w for w in seg.words if in_ref(w.t)]
         if not words:
             continue
         norm = normalize(" ".join(w.text for w in words)).split()
@@ -148,7 +168,7 @@ def ref_span_wer(
     n = sum(in_span)
     if not tokens or n == 0:
         return {"ref_words": 0, "wer": None, "spans": len(spans)}
-    hyp = normalize(hypothesis_text(run, captions_ref.start, captions_ref.end)) or "<empty>"
+    hyp = normalize(hypothesis_text(run, captions_ref.segments)) or "<empty>"
     out = jiwer.process_words(" ".join(t for _, t in tokens), hyp)
     s = d = i = 0
     for chunk in out.alignments[0]:

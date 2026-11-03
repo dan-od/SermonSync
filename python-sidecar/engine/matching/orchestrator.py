@@ -104,6 +104,10 @@ class PipelineOrchestrator:
             self._spoken = get_matcher()
         return self._spoken
 
+    def reset_spoken(self) -> None:
+        """Forget Stage 0's rolling window, carry-over and dedupe (a new stream)."""
+        self._spoken_m().reset()
+
     def _trie_m(self):
         if self._trie is None:
             from .trie_matcher import get_matcher

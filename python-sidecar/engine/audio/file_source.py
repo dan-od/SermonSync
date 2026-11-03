@@ -269,6 +269,11 @@ class FileAudioSource:
     Runs on its own thread, like the PortAudio callback. `position` is the
     source time (seconds into the original media) of the start of the frame
     being processed — equivalently, the end of the audio already heard.
+
+    `seek(position)` jumps while running: the thread stops feeding at the next
+    frame boundary, calls `on_seek(old, new)` (blocking — the caller flushes
+    pipeline state while no audio flows), then decodes from the new point.
+    With a `duration`, the window's absolute end stays fixed.
     """
 
     def __init__(
@@ -282,6 +287,7 @@ class FileAudioSource:
         frame_seconds: float = FRAME_SECONDS,
         monitor: bool = False,
         on_finish=None,
+        on_seek=None,
     ) -> None:
         if speed <= 0:
             raise ValueError("speed must be > 0")
@@ -296,6 +302,15 @@ class FileAudioSource:
         # Play the audio out loud (real time only), to hear what the pipeline hears.
         self.monitor = monitor and self.speed == 1.0
         self.on_finish = on_finish
+        self.on_seek = on_seek
+        # Absolute end of the requested window (None = to the end of the media).
+        self.end = self.start + duration if duration is not None else None
+        # The current stretch since the start or the last seek.
+        self._seg_start = self.start
+        self._seg_frames = 0
+        self._seek_to: float | None = None
+        self.seeks = 0
+        # Every frame fed, across seeks.
         self.frames_processed = 0
         self.late_frames = 0
         self.max_lag_seconds = 0.0
@@ -307,7 +322,11 @@ class FileAudioSource:
 
     @property
     def position(self) -> float:
-        return self.start + self.frames_processed * self.frame_seconds
+        return self._seg_start + self._seg_frames * self.frame_seconds
+
+    def seek(self, position: float) -> None:
+        """Jump to `position` (source seconds) at the next frame boundary."""
+        self._seek_to = max(0.0, float(position))
 
     @property
     def is_running(self) -> bool:
@@ -327,15 +346,19 @@ class FileAudioSource:
         if self._thread is not None:
             self._thread.join(timeout)
 
-    def frames(self):
+    def frames(self, start: float | None = None):
         """Yield decoded float32 frames shaped (frame_samples, 1), like PortAudio."""
         if np is None:  # pragma: no cover
             raise RuntimeError("numpy required")
         if shutil.which("ffmpeg") is None:
             raise RuntimeError("ffmpeg not found on PATH")
         frame_bytes = self.frame_samples * 4 * 2
+        start = self.start if start is None else start
+        duration = None if self.end is None else self.end - start
+        if duration is not None and duration <= 0:
+            return
         self._proc = subprocess.Popen(
-            decode_command(self.audio_path, self.start, self.duration, self.sample_rate),
+            decode_command(self.audio_path, start, duration, self.sample_rate),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
@@ -382,25 +405,43 @@ class FileAudioSource:
         reason = "ended"
         out = self._open_monitor()
         try:
-            t0 = time.perf_counter()
-            for index, frame in enumerate(self.frames()):
-                if self._stop.is_set():
-                    reason = "stopped"
+            while True:
+                frames = self.frames(self._seg_start)
+                t0 = time.perf_counter()
+                try:
+                    for index, frame in enumerate(frames):
+                        if self._stop.is_set():
+                            reason = "stopped"
+                            break
+                        if self._seek_to is not None:
+                            break
+                        due = t0 + index * self.frame_seconds / self.speed
+                        lag = time.perf_counter() - due
+                        if lag < 0:
+                            time.sleep(-lag)
+                        elif lag > self.frame_seconds:
+                            self.late_frames += 1
+                            self.max_lag_seconds = max(self.max_lag_seconds, lag)
+                        self.process_frame(frame, self.sample_rate)
+                        self.frames_processed += 1
+                        self._seg_frames += 1
+                        if out is not None:
+                            try:
+                                out.write(frame)
+                            except Exception:  # pragma: no cover
+                                out = None
+                finally:
+                    frames.close()
+                target, self._seek_to = self._seek_to, None
+                if target is None or reason == "stopped" or self._stop.is_set():
+                    if self._stop.is_set():
+                        reason = "stopped"
                     break
-                due = t0 + index * self.frame_seconds / self.speed
-                lag = time.perf_counter() - due
-                if lag < 0:
-                    time.sleep(-lag)
-                elif lag > self.frame_seconds:
-                    self.late_frames += 1
-                    self.max_lag_seconds = max(self.max_lag_seconds, lag)
-                self.process_frame(frame, self.sample_rate)
-                self.frames_processed += 1
-                if out is not None:
-                    try:
-                        out.write(frame)
-                    except Exception:  # pragma: no cover
-                        out = None
+                old = self.position
+                self._seg_start, self._seg_frames = target, 0
+                self.seeks += 1
+                if self.on_seek is not None:
+                    self.on_seek(old, target)
         except Exception as exc:
             logger.exception("test feed source failed")
             self.error = str(exc)

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .intervals import CAPTION_PAD, _pct, clip, intersect, merge, pad, subtract, total
+from .intervals import CAPTION_PAD, _pct, intersect, merge, pad, subtract, total
 from .run_data import Run, event_intervals, state_intervals
 
 HALLUCINATION_SPEECH_FRACTION = 0.2
@@ -16,12 +16,12 @@ HALLUCINATION_SPEECH_FRACTION = 0.2
 def score_vad(run: Run, captions, per10, metrics: dict, details: dict) -> None:
     """Fills metrics["vad"], ["worship_gate"] and ["hallucinations"] for a run."""
     # --- VAD / gate / drops ------------------------------------------------
-    is_speech = clip(state_intervals(run, "is_speech"), run.start, run.end)
-    forwarded = clip(state_intervals(run, "forward"), run.start, run.end)
-    worship = clip(state_intervals(run, "scene", "worship"), run.start, run.end)
-    reached = clip(event_intervals(run, "chunk"), run.start, run.end)
-    stale = clip(event_intervals(run, "chunk_drop", "stale_drop"), run.start, run.end)
-    trimmed = clip(event_intervals(run, "chunk_drop", "trim"), run.start, run.end)
+    is_speech = run.clip(state_intervals(run, "is_speech"))
+    forwarded = run.clip(state_intervals(run, "forward"))
+    worship = run.clip(state_intervals(run, "scene", "worship"))
+    reached = run.clip(event_intervals(run, "chunk"))
+    stale = run.clip(event_intervals(run, "chunk_drop", "stale_drop"))
+    trimmed = run.clip(event_intervals(run, "chunk_drop", "trim"))
     vad: dict = {
         "vad_open_s": round(total(is_speech), 1),
         "forwarded_s": round(total(forwarded), 1),
@@ -32,7 +32,9 @@ def score_vad(run: Run, captions, per10, metrics: dict, details: dict) -> None:
     }
     speech = []
     if captions is not None:
-        speech = captions.speech_intervals(run.start, run.end)
+        speech = merge(
+            span for a, b in run.segments for span in captions.speech_intervals(a, b)
+        )
         speech_total = total(speech)
         padded = pad(speech, CAPTION_PAD)
         vad.update(
@@ -62,7 +64,7 @@ def score_vad(run: Run, captions, per10, metrics: dict, details: dict) -> None:
         music = merge(captions.music_intervals)
         halluc = []
         for f in run.finals:
-            if not (run.start <= f.midpoint < run.end) or not f.intervals:
+            if not run.covers(f.midpoint) or not f.intervals:
                 continue
             dur = total(f.intervals)
             overlap = total(intersect(f.intervals, padded))

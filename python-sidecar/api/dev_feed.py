@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from engine.eval.feed import FeedBusyError, test_feed
+from engine.eval.feed import FeedBusyError, FeedNotRunningError, test_feed
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 router = APIRouter(prefix="/api/audio/test-feed", tags=["dev"])
 
@@ -49,6 +49,42 @@ async def post_test_feed(req: FeedRequest) -> dict:
             captions_human=req.captions_human,
         )
     except FeedBusyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+class PrepareRequest(BaseModel):
+    source: str = Field(..., min_length=1, description="Local path or http(s) URL")
+
+
+class SeekRequest(BaseModel):
+    # `position_seconds` is the field's original name (SS-072); both are accepted.
+    position: float = Field(
+        ...,
+        ge=0,
+        description="Seek to this position in seconds",
+        validation_alias=AliasChoices("position", "position_seconds"),
+    )
+
+
+@router.post("/prepare")
+async def post_test_feed_prepare(req: PrepareRequest) -> dict:
+    """Resolve a source without playing it: duration, title, caption cues and
+    the references spoken in the captions (for the seek bar)."""
+    try:
+        return await test_feed.prepare(req.source)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:  # yt-dlp / ffprobe failures
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/seek")
+async def post_test_feed_seek(req: SeekRequest) -> dict:
+    try:
+        return await test_feed.seek(req.position)
+    except FeedNotRunningError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
