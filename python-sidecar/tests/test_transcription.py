@@ -158,6 +158,24 @@ def test_partial_yields_when_it_would_overrun_the_chunk_ceiling():
     assert st._ready_for_partial(now=now) is True
 
 
+def test_switching_partial_mode_re_measures_the_cost():
+    """SS-077: a cost measured on one partial engine must not gate another.
+
+    Found by measurement: a "main" pass measured ~5.8 s, then switching to
+    "tiny.en" kept that figure, and 5.8 s of assumed cost blocks every pass
+    under a 6.0 s ceiling — so the cheaper engine never ran once.
+    """
+    st = streaming.StreamingTranscriber(max_chunk_seconds=6.0, partial_min_seconds=0.8)
+    st._running = True
+    st.feed(b"\x00\x00" * 16000 * 2)  # 2.0 s buffered
+    st._partial_cost = 5.8  # as measured on the "main" engine
+    assert st._ready_for_partial(now=st._last_feed_ts) is False
+
+    st.set_partial_mode("tiny.en")
+    assert st._partial_cost == 0.0
+    assert st._ready_for_partial(now=st._last_feed_ts) is True
+
+
 def test_emitting_a_partial_measures_its_own_cost():
     """SS-077: the headroom check is driven by a measured cost, so emitting a
     partial has to record how long it took. Smoothed, so one slow pass (a cold

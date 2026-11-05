@@ -122,7 +122,15 @@ class StreamingTranscriber:
         # ~78% of a core sustained. The interim line only needs recent words.
         self.partial_max_seconds = partial_max_seconds
         self._last_partial_ts = 0.0
-        self.partial_mode = "main"
+        # SS-077: interims run on a small dedicated model, not the main one.
+        # Measured on the Selman sermon (420 s, large-v3-turbo, faster-whisper
+        # CPU int8, eval_runs/20261105-01*): "main" costs ~5 s a pass, which
+        # leaves no headroom under max_chunk_seconds, so _ready_for_partial
+        # yields and interims all but stop — 1 pass in 7 minutes. "tiny.en"
+        # gives 135 passes over the same window for 9.6% of inference time
+        # (against 44 passes for 47.7% before the headroom gate existed), with
+        # WER 0.0431 vs 0.0372 — inside the ±0.01–0.02 run-to-run band.
+        self.partial_mode = "tiny.en"
         # Pin the language (default English) so short/quiet clips aren't
         # mis-detected as another language. Set None to auto-detect.
         self.language = language
@@ -272,6 +280,12 @@ class StreamingTranscriber:
         if mode not in PARTIAL_MODES:
             raise ValueError(f"partial mode must be one of {PARTIAL_MODES}")
         self.partial_mode = mode
+        # SS-077: the headroom gate is driven by a measured cost, and that cost
+        # belongs to the engine that produced it — a "main" pass measures ~5.8 s
+        # where "tiny.en" is a fraction of that. Carrying it across a mode
+        # switch leaves a stale figure wide enough to block every pass on the
+        # new engine, silently and permanently. Re-measure instead.
+        self._partial_cost = 0.0
         logger.info("interim transcription: %s", mode)
 
     def _partial_engine(self):
