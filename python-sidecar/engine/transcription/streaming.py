@@ -122,7 +122,15 @@ class StreamingTranscriber:
         # ~78% of a core sustained. The interim line only needs recent words.
         self.partial_max_seconds = partial_max_seconds
         self._last_partial_ts = 0.0
-        self.partial_mode = "main"
+        # SS-077: interims run on a small dedicated model, not the main one.
+        # Measured on the Selman sermon (420 s, large-v3-turbo, faster-whisper
+        # CPU int8, eval_runs/20261105-01*): "main" costs ~5 s a pass, which
+        # leaves no headroom under max_chunk_seconds, so _ready_for_partial
+        # yields and interims all but stop — 1 pass in 7 minutes. "tiny.en"
+        # gives 135 passes over the same window for 9.6% of inference time
+        # (against 44 passes for 47.7% before the headroom gate existed), with
+        # WER 0.0431 vs 0.0372 — inside the ±0.01–0.02 run-to-run band.
+        self.partial_mode = "tiny.en"
         # Pin the language (default English) so short/quiet clips aren't
         # mis-detected as another language. Set None to auto-detect.
         self.language = language
@@ -151,6 +159,13 @@ class StreamingTranscriber:
         # seek, a new stream) is discarded instead of gluing old words onto
         # the new stream's sentences.
         self._epoch = 0
+        # SS-077: rolling estimate of what one interim pass costs in wall time.
+        # The poll loop is single-threaded, so a partial that takes longer than
+        # the headroom left under max_chunk_seconds guarantees a ceiling cut.
+        # Measured rather than assumed, because the cost depends entirely on
+        # partial_mode ("main" on large-v3-turbo measured ~4.5 s; "tiny.en" is
+        # a fraction of that). Starts at 0 so the first pass runs and measures.
+        self._partial_cost = 0.0
         # Optional callback(segment: dict) for downstream (buffer/matching).
         self.on_segment = None
 
@@ -265,6 +280,12 @@ class StreamingTranscriber:
         if mode not in PARTIAL_MODES:
             raise ValueError(f"partial mode must be one of {PARTIAL_MODES}")
         self.partial_mode = mode
+        # SS-077: the headroom gate is driven by a measured cost, and that cost
+        # belongs to the engine that produced it — a "main" pass measures ~5.8 s
+        # where "tiny.en" is a fraction of that. Carrying it across a mode
+        # switch leaves a stale figure wide enough to block every pass on the
+        # new engine, silently and permanently. Re-measure instead.
+        self._partial_cost = 0.0
         logger.info("interim transcription: %s", mode)
 
     def _partial_engine(self):
@@ -276,7 +297,19 @@ class StreamingTranscriber:
         """True when an interim hypothesis is worth emitting mid-utterance."""
         if self.partial_mode == "off":
             return False
-        if self._buffered_seconds() < self.partial_min_seconds:
+        buffered = self._buffered_seconds()
+        if buffered < self.partial_min_seconds:
+            return False
+        # SS-077: an interim pass blocks this loop until it returns, and capture
+        # keeps filling the buffer while it does. Started with less headroom
+        # than the pass costs, it hands back a buffer already past the ceiling,
+        # so the next cut is a blind mid-word ceiling cut instead of the pause
+        # cut the segmentation design above depends on. Measured on a 7-minute
+        # sermon: 43 of 46 chunks cut at "ceiling", median 9.08 s against a
+        # 6.0 s ceiling. Yield the pass to the final rather than inflate the
+        # chunk. A slow partial engine therefore emits fewer interims on a
+        # saturated box; switch partial_mode to "tiny.en" to get them back.
+        if buffered + self._partial_cost >= self.max_chunk_seconds:
             return False
         now = now if now is not None else time.time()
         return (now - self._last_partial_ts) >= self.partial_interval
@@ -284,7 +317,11 @@ class StreamingTranscriber:
     async def _run(self) -> None:
         try:
             while self._running:
-                await asyncio.sleep(self.poll_interval)
+                # SS-077: re-check before sleeping, not after. Inference blocks
+                # this loop for seconds and capture keeps feeding throughout,
+                # so by the time a pass returns the buffer is often already at
+                # or past the ceiling. Sleeping first spent another poll
+                # interval on a cut that was already due.
                 if self._ready_to_infer():
                     reason = self._cut_reason()
                     chunk = bytes(self._buf)
@@ -301,15 +338,16 @@ class StreamingTranscriber:
                     self._first_chunk_ts = None
                     self._last_partial_ts = time.time()
                     await self._infer_and_emit(chunk, received_ts, self._chunk_seq)
-                else:
-                    self._expire_stale_buffer()
-                    if not self._ready_for_partial():
-                        continue
+                    continue
+                self._expire_stale_buffer()
+                if self._ready_for_partial():
                     # Transcribe what is buffered WITHOUT consuming it; the
                     # final pass over the complete phrase supersedes this.
                     self._last_partial_ts = time.time()
                     tail = int(self.partial_max_seconds * self.sample_rate * 2)
                     await self._emit_partial(bytes(self._buf[-tail:]))
+                    continue
+                await asyncio.sleep(self.poll_interval)
         except asyncio.CancelledError:  # pragma: no cover
             pass
 
@@ -332,6 +370,13 @@ class StreamingTranscriber:
             segments = [s for s in segments if hallucination_reason(s, alone) is None]
         text = " ".join(seg["text"] for seg in segments if seg["text"]).strip()
         stale = epoch != self._epoch
+        # SS-077: feed the measured cost back into _ready_for_partial's headroom
+        # check. Smoothed so one slow pass (a cold partial model load) does not
+        # silence interims for the rest of the service.
+        elapsed = time.time() - infer_start
+        self._partial_cost = elapsed if self._partial_cost == 0.0 else (
+            0.7 * self._partial_cost + 0.3 * elapsed
+        )
         tap.emit(
             "partial", text=text, infer_ms=round((time.time() - infer_start) * 1000, 1),
             duration=round(len(pcm) / (self.sample_rate * 2), 3),

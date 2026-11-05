@@ -149,20 +149,30 @@ export function TestFeedSeekBar({
     jump(leadIn(t, duration));
   };
 
-  let tooltip: { title: string; text: string | null } | null = null;
+  let tooltip: { title: string; text: string | null; note?: string } | null = null;
   if (hover) {
     const hit = dragTime === null ? hover.marker : null;
     const caption = hit?.kind === "caption" ? markers[hit.index] : null;
     const found = hit?.kind === "detected" ? detected[hit.index] : null;
     if (caption) {
+      // SS-077: the two marker rows come from different places and only one of
+      // them can reach the suggestion deck. Caption ticks are parsed from the
+      // video's own captions during /prepare, with the whole caption text to
+      // read; the deck is fed solely by the live matcher, which in spoken_only
+      // mode (SS-075, the shipped default) reports explicitly spoken
+      // references only. A caption tick with no card next to it is therefore
+      // expected, not a dropped match — say so rather than leave the operator
+      // hunting for the card.
       tooltip = {
         title: `${caption.reference} · ${formatFeedPosition(caption.time)}`,
         text: caption.caption_text,
+        note: "from captions · no suggestion card",
       };
     } else if (found) {
       tooltip = {
         title: detectedMarkerLabel(found),
         text: `detected at ${formatFeedPosition(found.time)}`,
+        note: "live matcher · in the suggestion deck",
       };
     } else {
       const t = dragTime ?? timeAtOffset(hover.x, hover.width, duration);
@@ -245,7 +255,7 @@ export function TestFeedSeekBar({
           <div
             key={`caption-${marker.time}-${marker.reference}`}
             role="img"
-            aria-label={`${marker.reference} at ${formatFeedPosition(marker.time)}`}
+            aria-label={`Caption reference ${marker.reference} at ${formatFeedPosition(marker.time)}`}
             style={{
               position: "absolute",
               left: pct(marker.time),
@@ -264,7 +274,7 @@ export function TestFeedSeekBar({
           <div
             key={`detected-${index}-${marker.time}-${marker.reference}`}
             role="img"
-            aria-label={`Detected ${detectedMarkerLabel(marker)} at ${formatFeedPosition(marker.time)}`}
+            aria-label={`Live match ${detectedMarkerLabel(marker)} at ${formatFeedPosition(marker.time)}`}
             style={{
               position: "absolute",
               left: pct(marker.time),
@@ -323,6 +333,11 @@ export function TestFeedSeekBar({
           >
             <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700 }}>{tooltip.title}</div>
             {tooltip.text ? <div style={{ color: "var(--fg-muted)" }}>{tooltip.text}</div> : null}
+            {tooltip.note ? (
+              <div style={{ color: "var(--fg-subtle)", fontSize: "9px", marginTop: "2px" }}>
+                {tooltip.note}
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>

@@ -60,7 +60,7 @@ describe("TestFeedBar (SS-072)", () => {
     );
     expect(html).toContain('data-testid="test-feed-seek"');
     expect(html).toContain('aria-label="Seek test feed"');
-    expect(html).toContain('aria-label="John 3:16 at 41:03"');
+    expect(html).toContain('aria-label="Caption reference John 3:16 at 41:03"');
     expect(html).toContain("−10 s");
     expect(html).toContain("+10 s");
     expect(html).toContain("+30 s");
@@ -84,7 +84,7 @@ describe("TestFeedBar (SS-072)", () => {
         detectedMarkers={[{ time: 2470.4, reference: "John 3:16", confidence: 0.991 }]}
       />,
     );
-    expect(html).toContain('aria-label="Detected John 3:16 — 99.1% at 41:10"');
+    expect(html).toContain('aria-label="Live match John 3:16 — 99.1% at 41:10"');
   });
 
   it("uses the feed's own duration when the source was not loaded with Enter", () => {
@@ -98,7 +98,7 @@ describe("TestFeedBar (SS-072)", () => {
     );
     expect(html).toContain('data-testid="test-feed-seek"');
     expect(html).toContain("12:34 / 1:00:00");
-    expect(html).toContain("Detected Romans 8:28 — 95.0% at 00:30");
+    expect(html).toContain("Live match Romans 8:28 — 95.0% at 00:30");
   });
 
   it("keeps detected markers off a different source's bar", () => {
