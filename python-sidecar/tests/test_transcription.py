@@ -132,6 +132,51 @@ def test_partials_emit_mid_utterance_then_stop_when_drained():
     assert st._ready_for_partial(now=now + 5) is False    # nothing buffered
 
 
+def test_partial_yields_when_it_would_overrun_the_chunk_ceiling():
+    """SS-077: a partial pass blocks the poll loop while capture keeps feeding.
+
+    Started with less headroom under max_chunk_seconds than the pass costs, it
+    hands back a buffer already past the ceiling, so the next cut is a blind
+    mid-word ceiling cut rather than a pause cut. Measured on a 7-minute
+    sermon before this gate: 43 of 46 chunks cut at "ceiling", median 9.08 s
+    against a 6.0 s ceiling. The pass must yield to the final instead.
+    """
+    st = streaming.StreamingTranscriber(
+        max_chunk_seconds=6.0, partial_min_seconds=0.8, partial_interval=0.6
+    )
+    st._running = True
+    st.feed(b"\x00\x00" * 16000 * 2)  # 2.0 s buffered
+    now = st._last_feed_ts
+
+    st._partial_cost = 0.0        # not yet measured: run and find out
+    assert st._ready_for_partial(now=now) is True
+
+    st._partial_cost = 4.5        # a "main"-model pass: 2.0 + 4.5 overruns 6.0
+    assert st._ready_for_partial(now=now) is False
+
+    st._partial_cost = 0.3        # a "tiny.en" pass fits in the headroom
+    assert st._ready_for_partial(now=now) is True
+
+
+def test_emitting_a_partial_measures_its_own_cost():
+    """SS-077: the headroom check is driven by a measured cost, so emitting a
+    partial has to record how long it took. Smoothed, so one slow pass (a cold
+    partial-model load) cannot silence interims for the rest of the service."""
+    whisper_engine.set_engine(MockWhisperEngine())
+    st = streaming.StreamingTranscriber()
+    st._running = True
+    assert st._partial_cost == 0.0
+
+    asyncio.run(st._emit_partial(b"\x00\x00" * 16000))
+    assert st._partial_cost > 0.0  # measured on the first pass
+
+    st._partial_cost = 6.0  # pretend the previous pass was slow
+    asyncio.run(st._emit_partial(b"\x00\x00" * 16000))
+    # Smoothed: pulled towards the fast reading without being replaced by it,
+    # so it cannot stick at 6.0 and cannot forget the slow pass either.
+    assert 4.2 <= st._partial_cost < 6.0
+
+
 def test_tiny_buffer_never_flushes():
     st = streaming.StreamingTranscriber(min_flush_seconds=0.4, silence_flush_seconds=0.45)
     st._running = True

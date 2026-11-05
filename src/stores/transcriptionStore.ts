@@ -42,8 +42,17 @@ const initialState: TranscriptionState = {
   themeConfidence: 0,
 };
 
-function formatTimestamp(epochMs: number) {
-  return new Date(epochMs).toLocaleTimeString("en-GB", { hour12: false });
+/**
+ * SS-077: the sidecar stamps every event with Python's `time.time()` — epoch
+ * *seconds* — while `Date.now()` and the manual-entry path give milliseconds.
+ * Feeding seconds to `new Date()` put the whole transcript in January 1970 and
+ * collapsed every entry onto the same displayed clock time, which is what made
+ * the timeline look like it was skipping words. Epoch seconds are ~1.7e9 and
+ * epoch ms ~1.7e12, so the units are unambiguous at any plausible date.
+ */
+function formatTimestamp(epochSecondsOrMs: number) {
+  const ms = epochSecondsOrMs < 1e12 ? epochSecondsOrMs * 1000 : epochSecondsOrMs;
+  return new Date(ms).toLocaleTimeString("en-GB", { hour12: false });
 }
 
 function mapTranscriptionEvent(event: SidecarTranscriptionEvent): TranscriptionEvent {
