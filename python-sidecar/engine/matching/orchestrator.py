@@ -239,6 +239,42 @@ class PipelineOrchestrator:
             for r in results
         ]
 
+    async def match_fragment_and_emit(
+        self, fragment: str, timestamp: float | None = None
+    ) -> dict | None:
+        """SS-078: Stage 0 on a final fragment, without waiting for a sentence.
+
+        Sentence assembly waits for `. ? ! ;` or a silence gap, so "turn with
+        me to John 3 16" with no punctuation could sit in the buffer until the
+        speaker's next phrase — seconds of delay on the one stage that carries
+        the whole pipeline's recall in spoken_only mode.
+
+        Only an actual reference from the live window emits here. The window
+        joins references split across fragments and yields each one once, so
+        the sentence that arrives later feeds the same window, gets nothing
+        back, and emits nothing — no duplicate card. Unlike the sentence path
+        this does not consult `mentions_reference`: that heuristic is for
+        deciding whether to spend the guessing stages, and on half a phrase it
+        would fire on text that names no verse yet.
+        """
+        try:
+            spoken = self._spoken_m().feed(
+                fragment, timestamp if timestamp is not None else time.time()
+            )
+        except Exception:
+            logger.exception("stage 0 (spoken references) failed on fragment")
+            return None
+        if not spoken:
+            return None
+        payload = {
+            "type": "suggestions",
+            "sentence": fragment,
+            "results": self._payload_results(self._finalize(spoken, [0])),
+        }
+        if payload["results"]:
+            await self._emit(payload)
+        return payload
+
     async def match_and_emit(
         self, sentence: str, context: list[str] | None = None, timestamp: float | None = None
     ) -> dict | None:

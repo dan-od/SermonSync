@@ -133,3 +133,45 @@ def test_asr_damaged_reference_live(emitted):
     orch, _ = _orch()
     asyncio.run(orch.match_and_emit("Let us go to Romans 828, and we know", None, 0.0))
     assert [r["reference"] for p in emitted for r in p["results"]] == ["Romans 8:28"]
+
+
+def test_fragment_matching_splits_and_repeats_yield_one_card(emitted):
+    """SS-078: Stage 0 runs per final fragment, not per assembled sentence.
+
+    The live window has to carry a reference across the fragment boundary and
+    then refuse to suggest it twice — once for the fragment, and again for the
+    sentence those fragments assemble into.
+    """
+    orch, _ = _orch()
+
+    async def scenario():
+        # Split across two fragments: the book and chapter, then the verse.
+        await orch.match_fragment_and_emit("turn with me to John chapter three", 1000.0)
+        await orch.match_fragment_and_emit("verse sixteen", 1001.0)
+        # The assembled sentence arrives a moment later over the same window.
+        # Same clock as the fragments: the tracker dedupes inside a 15 s
+        # window, so a mixed fake/real timestamp here would look like a
+        # different service and emit again.
+        await orch.match_and_emit(
+            "turn with me to John chapter three verse sixteen", timestamp=1001.5
+        )
+        # And the preacher says it again.
+        await orch.match_fragment_and_emit("John chapter three verse sixteen", 1002.0)
+
+    asyncio.run(scenario())
+
+    cards = [r["reference"] for p in emitted for r in p["results"]]
+    assert cards == ["John 3:16"], f"expected exactly one card, got {cards}"
+
+
+def test_fragment_matching_stays_quiet_without_a_reference(emitted):
+    """A half-phrase that names no verse must not emit on a guess."""
+    orch, stages = _orch()
+
+    async def scenario():
+        await orch.match_fragment_and_emit("and so the Lord said to them", 1000.0)
+
+    asyncio.run(scenario())
+    assert emitted == []
+    assert not any(s.called for s in stages.values())
+

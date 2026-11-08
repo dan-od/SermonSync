@@ -20,6 +20,22 @@ from .buffer import transcript_buffer
 
 logger = logging.getLogger("sermonsync.transcription.streaming")
 STALE_BUFFER_SECONDS = 3.0
+
+
+def _hangover_seconds() -> float:
+    """How long the VAD keeps calling it speech after the last loud frame.
+
+    SS-078: those frames are still forwarded, so `_last_feed_ts` keeps moving
+    for the whole hangover and the silence timer only starts once it expires.
+    The real end of speech is that much earlier than the last fed frame, and
+    the latency budget has to say so. Read, never changed, from the detector.
+    """
+    try:
+        from ..audio import vad
+
+        return max(0.0, float(vad.get_detector().hangover_ms) / 1000.0)
+    except Exception:  # a detector without a hangover, or none built yet
+        return 0.0
 # Interim-pass modes: re-run the main model (default), skip interim passes, or
 # run them on a small model so they stop competing with finals for compute.
 PARTIAL_MODES = ("main", "off", "tiny.en", "base.en")
@@ -93,7 +109,7 @@ class StreamingTranscriber:
         language: str | None = "en",
         matching_enabled: bool = True,
         min_flush_seconds: float = 0.4,
-        silence_flush_seconds: float = 0.8,
+        silence_flush_seconds: float = 0.5,  # was 0.8 (SS-078)
         partial_interval: float = 0.6,  # was 1.0; faster visual feedback
         partial_min_seconds: float = 0.8,
         partial_max_seconds: float = 3.0,
@@ -111,6 +127,12 @@ class StreamingTranscriber:
         # lands this soon after you stop speaking. 0.8 s (was 0.45) stops
         # cutting at breaths mid-sentence: WER −0.01 to −0.04 for +0.05 to
         # +0.2 s word delay in the SS-072 sweep (eval/results/utterance-segmentation).
+        # SS-078: 0.8 -> 0.5. This timer does not start when the speaker stops;
+        # it starts when the VAD stops calling it speech, which is one hangover
+        # (300 ms) later, because those frames are still forwarded and keep
+        # _last_feed_ts moving. The pause the speaker actually has to leave is
+        # the sum, so 0.5 here is an effective 0.8 s — still longer than a
+        # breath between words, and the 0.8 s that the SS-072 sweep found safe.
         self.min_flush_seconds = min_flush_seconds
         self.silence_flush_seconds = silence_flush_seconds
         # Interim hypotheses while the speaker is still going, so the UI shows
@@ -166,6 +188,15 @@ class StreamingTranscriber:
         # partial_mode ("main" on large-v3-turbo measured ~4.5 s; "tiny.en" is
         # a fraction of that). Starts at 0 so the first pass runs and measures.
         self._partial_cost = 0.0
+        # SS-078: interims run as a background task the poll loop never awaits,
+        # so a pause can cut a final the instant it is due. One at a time, and
+        # the final always wins: _final_pending makes the next interim stand
+        # down, and _engine_lock serialises the two only when they share one
+        # model instance (partial_mode "main"). A small partial model is a
+        # separate instance, so it never takes the lock at all.
+        self._partial_task: asyncio.Task | None = None
+        self._engine_lock: asyncio.Lock | None = None
+        self._final_pending = False
         # Optional callback(segment: dict) for downstream (buffer/matching).
         self.on_segment = None
 
@@ -209,6 +240,12 @@ class StreamingTranscriber:
         if self._task is not None:
             self._task.cancel()
             self._task = None
+        # SS-078: an interim runs detached, so stop it explicitly or it
+        # outlives the transcriber and broadcasts into the next stream.
+        if self._partial_task is not None:
+            self._partial_task.cancel()
+            self._partial_task = None
+        self._final_pending = False
         self._buf.clear()
         self._buf_offset = self._fed_bytes
         self._first_chunk_ts = None
@@ -272,6 +309,39 @@ class StreamingTranscriber:
             return {}
         return {"hotwords": text} if self.prompt_as_hotwords else {"prompt": text}
 
+    def _cut_timing(
+        self, reason: str, nbytes: int, cut_ts: float, last_feed_ts: float | None
+    ) -> dict:
+        """SS-078: where the time before inference went, for one cut.
+
+        `speech_end_ago_ms` is how long before the cut the speaker actually
+        stopped — the silence the cut waited out, plus the VAD hangover in
+        front of it, which is spent while frames are still being forwarded.
+
+        `waited_ms` is the part of that which was *not* the designed wait: the
+        cut was due and the loop was busy elsewhere (an interim pass, a final
+        still running). It is derived rather than clocked, because the loop
+        cannot timestamp a moment it was blocked through:
+          - a pause cut was due at `last_feed_ts + silence_flush_seconds`;
+          - a ceiling cut was due when the buffer first reached the ceiling,
+            and the excess over it arrived in real time, so the overshoot in
+            seconds is the delay in seconds. True for a live or 1.0x feed.
+        """
+        buffered = nbytes / (self.sample_rate * 2)
+        if reason == "ceiling":
+            ready_ts = cut_ts - max(0.0, buffered - self.max_chunk_seconds)
+        elif last_feed_ts is not None:
+            ready_ts = last_feed_ts + self.silence_flush_seconds
+        else:
+            ready_ts = cut_ts
+        silence_ms = ((cut_ts - last_feed_ts) * 1000) if last_feed_ts is not None else 0.0
+        return {
+            "cut_ts": round(cut_ts, 6),
+            "buffered": round(buffered, 3),
+            "waited_ms": round(max(0.0, (cut_ts - ready_ts) * 1000), 1),
+            "speech_end_ago_ms": round(max(0.0, silence_ms) + _hangover_seconds() * 1000, 1),
+        }
+
     def _cut_reason(self) -> str:
         """Why the buffer is being cut: the ceiling, or a speaker pause."""
         return "ceiling" if self._buffered_seconds() >= self.max_chunk_seconds else "pause"
@@ -288,6 +358,22 @@ class StreamingTranscriber:
         self._partial_cost = 0.0
         logger.info("interim transcription: %s", mode)
 
+    def _engine_guard(self) -> asyncio.Lock:
+        """Lazily built on the loop's thread, like _lock."""
+        if self._engine_lock is None:
+            self._engine_lock = asyncio.Lock()
+        return self._engine_lock
+
+    def _partial_shares_main_engine(self) -> bool:
+        """True when interims re-run the main model rather than a small one.
+
+        SS-078: this, not the poll loop, is the reason an interim can still
+        hold up a final — one model instance cannot decode two buffers at
+        once. With "tiny.en"/"base.en" the interim has its own instance and
+        the two never block each other.
+        """
+        return self.partial_mode == "main"
+
     def _partial_engine(self):
         if self.partial_mode in ("main", "off"):
             return whisper_engine.get_engine()
@@ -297,21 +383,28 @@ class StreamingTranscriber:
         """True when an interim hypothesis is worth emitting mid-utterance."""
         if self.partial_mode == "off":
             return False
+        # One interim in flight at a time.
+        if self._partial_task is not None and not self._partial_task.done():
+            return False
         buffered = self._buffered_seconds()
         if buffered < self.partial_min_seconds:
             return False
-        # SS-077: an interim pass blocks this loop until it returns, and capture
-        # keeps filling the buffer while it does. Started with less headroom
-        # than the pass costs, it hands back a buffer already past the ceiling,
-        # so the next cut is a blind mid-word ceiling cut instead of the pause
-        # cut the segmentation design above depends on. Measured on a 7-minute
-        # sermon: 43 of 46 chunks cut at "ceiling", median 9.08 s against a
-        # 6.0 s ceiling. Yield the pass to the final rather than inflate the
-        # chunk. A slow partial engine therefore emits fewer interims on a
-        # saturated box; switch partial_mode to "tiny.en" to get them back.
-        if buffered + self._partial_cost >= self.max_chunk_seconds:
-            return False
         now = now if now is not None else time.time()
+        # SS-078: a final is due, or already being cut. Never spend the engine
+        # on throwaway text when the real thing is about to run.
+        if self._final_pending or self._ready_to_infer(now):
+            return False
+        # SS-077's headroom gate, now scoped to the case that still needs it.
+        # An interim no longer blocks the loop, so it cannot inflate a chunk by
+        # being awaited — but when it re-runs the *main* model it holds the one
+        # instance the final needs, and a pass started with less headroom than
+        # it costs still delays that final. With a small partial model there
+        # are two instances and no such contention, so no gate.
+        if (
+            self._partial_shares_main_engine()
+            and buffered + self._partial_cost >= self.max_chunk_seconds
+        ):
+            return False
         return (now - self._last_partial_ts) >= self.partial_interval
 
     async def _run(self) -> None:
@@ -323,45 +416,84 @@ class StreamingTranscriber:
                 # or past the ceiling. Sleeping first spent another poll
                 # interval on a cut that was already due.
                 if self._ready_to_infer():
+                    # Claim the engine before anything else can: a pending
+                    # final makes the next interim stand down.
+                    self._final_pending = True
                     reason = self._cut_reason()
+                    # Captured before the buffer is cleared: the timing fields
+                    # below are derived from how full it was at the cut.
+                    cut_ts = time.time()
+                    last_feed_ts = self._last_feed_ts
                     chunk = bytes(self._buf)
                     start = self._buf_offset
                     self._buf.clear()
                     self._buf_offset = self._fed_bytes
                     self._chunk_seq += 1
-                    tap.emit(
-                        "chunk", seq=self._chunk_seq, reason=reason,
-                        byte_start=start, byte_end=start + len(chunk),
-                        duration=round(len(chunk) / (self.sample_rate * 2), 3),
-                    )
+                    if tap.active():
+                        tap.emit(
+                            "chunk", seq=self._chunk_seq, reason=reason,
+                            byte_start=start, byte_end=start + len(chunk),
+                            duration=round(len(chunk) / (self.sample_rate * 2), 3),
+                            **self._cut_timing(reason, len(chunk), cut_ts, last_feed_ts),
+                        )
                     received_ts = self._first_chunk_ts or time.time()
                     self._first_chunk_ts = None
                     self._last_partial_ts = time.time()
-                    await self._infer_and_emit(chunk, received_ts, self._chunk_seq)
+                    try:
+                        await self._infer_and_emit(
+                            chunk, received_ts, self._chunk_seq, cut_ts
+                        )
+                    finally:
+                        self._final_pending = False
                     continue
                 self._expire_stale_buffer()
+                # SS-078: close off a sentence the speaker simply stopped
+                # mid-way, instead of holding it until they start again.
+                for sentence in transcript_buffer.flush_if_idle():
+                    await self._emit_sentence(sentence, self._epoch)
                 if self._ready_for_partial():
                     # Transcribe what is buffered WITHOUT consuming it; the
                     # final pass over the complete phrase supersedes this.
+                    # SS-078: launched, never awaited — the loop goes straight
+                    # back to watching for the pause that ends the utterance.
                     self._last_partial_ts = time.time()
                     tail = int(self.partial_max_seconds * self.sample_rate * 2)
-                    await self._emit_partial(bytes(self._buf[-tail:]))
-                    continue
+                    self._partial_task = asyncio.create_task(
+                        self._emit_partial(bytes(self._buf[-tail:]), self._chunk_seq)
+                    )
                 await asyncio.sleep(self.poll_interval)
         except asyncio.CancelledError:  # pragma: no cover
             pass
 
-    async def _emit_partial(self, pcm: bytes) -> None:
+    async def _emit_partial(self, pcm: bytes, seq: int | None = None) -> None:
         """Broadcast an interim hypothesis (is_final=False). Never assembled
-        into sentences and never matched — it will be revised."""
+        into sentences and never matched — it will be revised.
+
+        SS-078: runs as a background task. `seq` is the chunk counter when it
+        was launched; if a cut has happened since, a final now covers this
+        audio and the interim is thrown away rather than drawn over it.
+        """
         epoch = self._epoch
+        speech_start = self._first_chunk_ts
         infer_start = time.time()
         try:
             # Loading a small partial model can take seconds: never on the loop.
             engine = await asyncio.to_thread(self._partial_engine)
-            segments = await asyncio.to_thread(
-                engine.transcribe, pcm16_to_float(pcm), self.language, **self._decode_hints()
-            )
+            if self._final_pending:
+                return  # a final claimed the engine while the model loaded
+            if self._partial_shares_main_engine():
+                async with self._engine_guard():
+                    if self._final_pending:
+                        return
+                    segments = await asyncio.to_thread(
+                        engine.transcribe, pcm16_to_float(pcm), self.language,
+                        **self._decode_hints(),
+                    )
+            else:
+                segments = await asyncio.to_thread(
+                    engine.transcribe, pcm16_to_float(pcm), self.language,
+                    **self._decode_hints(),
+                )
         except Exception as exc:  # pragma: no cover
             logger.debug("partial transcription failed: %s", exc)
             return
@@ -369,7 +501,8 @@ class StreamingTranscriber:
             alone = len([s for s in segments if s["text"]]) == 1
             segments = [s for s in segments if hallucination_reason(s, alone) is None]
         text = " ".join(seg["text"] for seg in segments if seg["text"]).strip()
-        stale = epoch != self._epoch
+        superseded = seq is not None and seq != self._chunk_seq
+        stale = epoch != self._epoch or superseded
         # SS-077: feed the measured cost back into _ready_for_partial's headroom
         # check. Smoothed so one slow pass (a cold partial model load) does not
         # silence interims for the rest of the service.
@@ -380,7 +513,14 @@ class StreamingTranscriber:
         tap.emit(
             "partial", text=text, infer_ms=round((time.time() - infer_start) * 1000, 1),
             duration=round(len(pcm) / (self.sample_rate * 2), 3),
-            **({"discarded": "reset"} if stale else {}),
+            # SS-078: how long after this utterance's first audio the interim
+            # became visible — the "first words on screen" number.
+            since_speech_start_ms=(
+                round((time.time() - speech_start) * 1000, 1) if speech_start else None
+            ),
+            **(
+                {"discarded": "superseded" if superseded else "reset"} if stale else {}
+            ),
         )
         if not text or stale:
             return
@@ -397,15 +537,62 @@ class StreamingTranscriber:
             }
         )
 
-    async def _infer_and_emit(self, pcm: bytes, received_ts: float, seq: int = 0) -> None:
+    async def _emit_sentence(self, sentence: dict, epoch: int) -> bool:
+        """Broadcast an assembled sentence and run everything that hangs off
+        it. Returns False when a reset landed and the caller should stop."""
+        await manager.broadcast_json(sentence)
+        if epoch != self._epoch:
+            return False
+        # SS-044: tie the transcript to the active session for archival.
+        from ..session.manager import get_manager
+
+        get_manager().record_event("sentence", sentence)
+        # SS-021: run the 4-stage matcher on each assembled sentence and
+        # broadcast suggestions (off-loop, fire-and-forget), unless disabled
+        # (e.g. by tests that don't stub the matcher chain). Stage 0 has
+        # usually already fired on the fragments (SS-078); its live window
+        # returns nothing for a reference it has already suggested, so this
+        # emits no duplicate and still feeds the guessing stages when they
+        # are enabled.
+        if self.matching_enabled:
+            from ..matching.orchestrator import get_orchestrator
+
+            asyncio.create_task(
+                get_orchestrator().match_and_emit(
+                    sentence["text"], sentence.get("context")
+                )
+            )
+        # SS-022: refresh sermon themes periodically / on topic shift.
+        from ..context_detector import get_detector
+
+        theme_update = get_detector().feed(sentence["text"])
+        if theme_update is not None:
+            await manager.broadcast_json(theme_update)
+        if self.on_segment is not None:
+            try:
+                self.on_segment(sentence)
+            except Exception as exc:  # pragma: no cover
+                logger.error("on_segment callback error: %s", exc)
+        return True
+
+    async def _infer_and_emit(
+        self, pcm: bytes, received_ts: float, seq: int = 0, cut_ts: float | None = None
+    ) -> None:
         epoch = self._epoch
         audio = pcm16_to_float(pcm)
         infer_start = time.time()
         try:
             engine = whisper_engine.get_engine()
-            segments = await asyncio.to_thread(
-                engine.transcribe, audio, self.language, **self._decode_hints()
-            )
+            # SS-078: uncontended unless interims share this instance.
+            async with self._engine_guard():
+                # Inference proper starts here. Anything before this was spent
+                # waiting for the engine, and belongs in cut_to_infer_ms, not
+                # in infer_ms — otherwise a queue behind an interim reads as a
+                # slow model.
+                infer_start = time.time()
+                segments = await asyncio.to_thread(
+                    engine.transcribe, audio, self.language, **self._decode_hints()
+                )
         except Exception as exc:  # pragma: no cover
             logger.error("transcription failed: %s", exc)
             monitor.flag_error("transcription")
@@ -414,6 +601,11 @@ class StreamingTranscriber:
         latency_ms = int((emit_ts - received_ts) * 1000)
         # SS-015: record transcription-stage latency and end-to-end latency.
         monitor.record_stage("transcription", (emit_ts - infer_start) * 1000)
+        # SS-078: feed the realtime factor so the sidecar can warn when the
+        # chosen model cannot keep up with the speaker on this machine.
+        whisper_engine.note_inference(
+            (emit_ts - infer_start) * 1000, len(audio) / self.sample_rate
+        )
         monitor.record_end_to_end(latency_ms)
         monitor.clear_error("transcription")
         if self.hallucination_filter:
@@ -425,9 +617,17 @@ class StreamingTranscriber:
                     logger.info("dropped likely hallucination (%s): %r", reason, seg["text"])
         stale = epoch != self._epoch
         if tap.active():
+            temps = [s.get("temperature") for s in segments if s.get("temperature") is not None]
             tap.emit(
                 "inference", seq=seq, infer_ms=round((emit_ts - infer_start) * 1000, 1),
                 latency_ms=latency_ms, duration=round(len(audio) / self.sample_rate, 3),
+                # SS-078: the gap between the cut and inference actually
+                # starting, and how far up the temperature ladder the decode
+                # had to climb — each retry is another full pass on the clock.
+                cut_to_infer_ms=(
+                    round((infer_start - cut_ts) * 1000, 1) if cut_ts is not None else None
+                ),
+                temps_used=(max(temps) if temps else None),
                 **({"discarded": "reset"} if stale else {}),
                 segments=[
                     {k: seg.get(k) for k in (
@@ -457,40 +657,24 @@ class StreamingTranscriber:
             if epoch != self._epoch:
                 return
 
+            # SS-078: Stage 0 on the fragment itself, before sentence
+            # assembly. The spoken-reference window dedupes, so the sentence
+            # that follows adds no second card — it just no longer has to wait
+            # for punctuation or for the speaker's next phrase.
+            if self.matching_enabled:
+                from ..matching.orchestrator import get_orchestrator
+
+                asyncio.create_task(
+                    get_orchestrator().match_fragment_and_emit(seg["text"], emit_ts)
+                )
+
             # SS-016: assemble fragments into complete sentences and broadcast
             # them (with rolling context) for the scripture-matching pipeline.
             for sentence in transcript_buffer.add_fragment(
                 seg["text"], is_final=True, timestamp=emit_ts
             ):
-                await manager.broadcast_json(sentence)
-                if epoch != self._epoch:
+                if not await self._emit_sentence(sentence, epoch):
                     return
-                # SS-044: tie the transcript to the active session for archival.
-                from ..session.manager import get_manager
-
-                get_manager().record_event("sentence", sentence)
-                # SS-021: run the 4-stage matcher on each assembled sentence and
-                # broadcast suggestions (off-loop, fire-and-forget), unless
-                # disabled (e.g. by tests that don't stub the matcher chain).
-                if self.matching_enabled:
-                    from ..matching.orchestrator import get_orchestrator
-
-                    asyncio.create_task(
-                        get_orchestrator().match_and_emit(
-                            sentence["text"], sentence.get("context")
-                        )
-                    )
-                # SS-022: refresh sermon themes periodically / on topic shift.
-                from ..context_detector import get_detector
-
-                theme_update = get_detector().feed(sentence["text"])
-                if theme_update is not None:
-                    await manager.broadcast_json(theme_update)
-                if self.on_segment is not None:
-                    try:
-                        self.on_segment(sentence)
-                    except Exception as exc:  # pragma: no cover
-                        logger.error("on_segment callback error: %s", exc)
 
 
 streaming_transcriber = StreamingTranscriber()
