@@ -756,6 +756,7 @@ export function SongsTab({ isActive, previewReference, liveReference, onPreviewS
       />
 
       <SongSearchModal
+        key={songSearchSession}
         open={isSongSearchOpen}
         query={songSearchQuery}
         artist={songSearchArtist}

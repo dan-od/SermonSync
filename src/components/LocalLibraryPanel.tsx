@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { LibraryTab, LocalLibraryPanelProps } from "./Library/types";
 import { ScripturesTab } from "./Library/Scriptures/ScripturesTab";
 import { SongsTab } from "./Library/Songs/SongsTab";
@@ -41,9 +41,9 @@ export function LocalLibraryPanel({
   const [mediaClickAction, setMediaClickAction] = useState<"preview" | "live">("live");
   const [mountedTabs, setMountedTabs] = useState<Set<LibraryTab>>(() => new Set([activeTab]));
 
-  useEffect(() => {
-    setMountedTabs((current) => current.has(activeTab) ? current : new Set(current).add(activeTab));
-  }, [activeTab]);
+  if (!mountedTabs.has(activeTab)) {
+    setMountedTabs(new Set(mountedTabs).add(activeTab));
+  }
 
   useLayoutEffect(() => {
     const previousIndex = TABS.findIndex((tab) => tab.id === previousTabRef.current);

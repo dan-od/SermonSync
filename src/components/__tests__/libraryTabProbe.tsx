@@ -13,7 +13,7 @@ export function makeLibraryTabProbe(tab: LibraryTab) {
         window.dispatchEvent(new CustomEvent("library-tab-navigation-test", { detail: { tab, direction } }));
       });
       return () => onNavigationHandlerChange?.(null);
-    }, [isActive, onNavigationHandlerChange, tab]);
+    }, [isActive, onNavigationHandlerChange]);
 
     return (
       <section aria-label={`${tab} probe`}>

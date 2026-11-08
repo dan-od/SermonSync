@@ -23,9 +23,11 @@ const headingAliases: Record<string, string> = {
 
 export function normalizeSongHeadings(text: string): string {
   return text.split(/\r?\n/).map((line) => {
-    const match = line.trim().match(/^\[([^\]]+)\]$/) ?? line.trim().match(/^([^\[\].:]{1,40}):$/);
-    if (!match) return line;
-    const raw = match[1].trim();
+    const trimmed = line.trim();
+    const bracketedHeading = trimmed.match(/^\[([^\]]+)\]$/u);
+    const colonHeading = trimmed.endsWith(":") && trimmed.length >= 2 && trimmed.length <= 41 && !trimmed.startsWith("[") && !trimmed.slice(0, -1).includes("]") && !trimmed.includes(".");
+    const raw = bracketedHeading?.[1].trim() ?? (colonHeading ? trimmed.slice(0, -1).trim() : "");
+    if (!raw) return line;
     const normalizedKey = raw.toLowerCase().replace(/\s+\d+$/u, "").replace(/\s+/gu, " ");
     const canonical = headingAliases[normalizedKey.replace(/\s/gu, "")] ?? headingAliases[normalizedKey] ?? raw;
     const numbered = raw.match(/\d+$/u)?.[0];

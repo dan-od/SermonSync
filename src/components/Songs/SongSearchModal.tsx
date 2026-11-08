@@ -20,22 +20,20 @@ const searchId = () => `song-search-${Date.now()}-${Math.random().toString(36).s
 const recentResults = new Map<string, { at: number; results: SongSearchResult[] }>();
 
 export function SongSearchModal({ open, query, artist, session, onSelect, onClose }: SongSearchModalProps) {
+  const cacheKey = `${query.trim().toLowerCase()}|${artist.trim().toLowerCase()}`;
+  const cached = recentResults.get(cacheKey);
+  const initialResults = cached?.results ?? [];
   const [filter, setFilter] = useState<Filter>("all");
-  const [results, setResults] = useState<SongSearchResult[]>([]);
-  const [status, setStatus] = useState<Record<string, ProviderStatus>>({});
+  const [results, setResults] = useState<SongSearchResult[]>(initialResults);
+  const [status, setStatus] = useState<Record<string, ProviderStatus>>(() => ({ hymnary: { done: false }, musixmatch: { done: false }, brave: { done: false } }));
   const [pasteResult, setPasteResult] = useState<SongSearchResult | null>(null);
   const [pasteText, setPasteText] = useState("");
-  const [activeSearchId, setActiveSearchId] = useState("");
-  const resultsRef = useRef(results);
-  resultsRef.current = results;
+  const activeSearchIdRef = useRef("");
+  const resultsRef = useRef(initialResults);
   useEffect(() => {
     if (!query.trim()) return;
     const id = searchId();
-    setActiveSearchId(id);
-    const cacheKey = `${query.trim().toLowerCase()}|${artist.trim().toLowerCase()}`;
-    const cached = recentResults.get(cacheKey);
-    setResults(cached && Date.now() - cached.at < 120_000 ? cached.results : []);
-    setStatus({ hymnary: { done: false }, musixmatch: { done: false }, brave: { done: false } });
+    activeSearchIdRef.current = id;
     let cancelled = false;
     const unlisteners: Array<() => void> = [];
     void Promise.all([
@@ -46,7 +44,11 @@ export function SongSearchModal({ open, query, artist, session, onSelect, onClos
         if (current.some((item) => songSearchDeduplicationKey(item) === key)) return;
         const next = [...current, payload.result];
         resultsRef.current = next;
-        recentResults.set(cacheKey, { at: Date.now(), results: next });
+        const now = Date.now();
+        recentResults.forEach((entry, key) => {
+          if (now - entry.at >= 120_000) recentResults.delete(key);
+        });
+        recentResults.set(cacheKey, { at: now, results: next });
         setResults(next);
       }).then((unlisten) => unlisteners.push(unlisten)),
       listen<{ searchId: string; provider: string; error?: string; skipped?: boolean }>("song-search-provider-done", ({ payload }) => {
@@ -61,7 +63,7 @@ export function SongSearchModal({ open, query, artist, session, onSelect, onClos
       unlisteners.forEach((unlisten) => unlisten());
       void invoke("cancel_song_search", { searchId: id }).catch(() => undefined);
     };
-  }, [query, artist, session]);
+  }, [cacheKey, query, artist, session]);
 
   const filteredResults = useMemo(() => results.filter((result) => filter === "all" || (filter === "hymns" ? result.provider === "hymnary" : result.provider !== "hymnary")), [filter, results]);
   const searching = providers.some((provider) => !status[provider]?.done);
@@ -78,7 +80,7 @@ export function SongSearchModal({ open, query, artist, session, onSelect, onClos
       <section role="dialog" aria-modal="true" aria-label="Search songs" style={{ width: "min(920px, 96vw)", maxHeight: "90vh", display: "flex", flexDirection: "column", background: "var(--bg-surface)", color: "var(--fg-base)", borderRadius: 12, boxShadow: "var(--shadow-lg)", overflow: "hidden" }}>
         <header style={{ padding: "20px 24px", borderBottom: "1px solid var(--border-base)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div><h2 style={{ margin: 0, fontSize: 20 }}>Search songs</h2><div style={{ color: "var(--fg-muted)", marginTop: 4 }}>“{query}”{artist ? ` by ${artist}` : ""}</div></div>
-          <button type="button" onClick={() => { if (activeSearchId) void invoke("cancel_song_search", { searchId: activeSearchId }).catch(() => undefined); onClose(); }} aria-label="Cancel search" style={plainButton}>Cancel</button>
+          <button type="button" onClick={() => { if (activeSearchIdRef.current) void invoke("cancel_song_search", { searchId: activeSearchIdRef.current }).catch(() => undefined); onClose(); }} aria-label="Cancel search" style={plainButton}>Cancel</button>
         </header>
         <nav aria-label="Result filters" style={{ display: "flex", gap: 8, padding: "14px 24px 8px" }}>{(["all", "hymns", "songs"] as const).map((item) => <button key={item} onClick={() => setFilter(item)} type="button" aria-pressed={filter === item} style={{ ...plainButton, background: filter === item ? "var(--color-primary)" : "var(--bg-elevated)", color: filter === item ? "var(--fg-on-accent)" : "var(--fg-base)" }}>{item[0]!.toUpperCase() + item.slice(1)}</button>)}</nav>
         <div style={{ overflow: "auto", minHeight: 240, margin: "0 24px", border: "1px solid var(--border-base)", borderRadius: 8 }}>

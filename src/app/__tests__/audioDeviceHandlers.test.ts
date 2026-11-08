@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { getAudioDevices } = vi.hoisted(() => ({ getAudioDevices: vi.fn() }));
 vi.mock("../../lib/sidecarClient", () => ({ getAudioDevices }));
 
-import { useAudioDeviceHandlers } from "../useAudioDeviceHandlers";
+import { createAudioDeviceHandlers } from "../useAudioDeviceHandlers";
 import { useAudioStore } from "../../stores/audioStore";
 
 const microphone = { index: 1, name: "USB Mic", channels: 1, defaultSampleRate: 48000 };
@@ -11,7 +11,7 @@ const newMixer = { index: 2, name: "New Mixer", channels: 2, defaultSampleRate: 
 
 function scanHandler() {
   const state = useAudioStore.getState();
-  return useAudioDeviceHandlers({
+  return createAudioDeviceHandlers({
     inputDevice: state.inputDevice,
     setAudioDevice: state.setDevice,
     setAudioChannel: state.setChannel,

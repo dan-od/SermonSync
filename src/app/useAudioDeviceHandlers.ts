@@ -1,7 +1,7 @@
 import { getAudioDevices, type SelectDeviceRequest, type SelectDeviceResponse } from "../lib/sidecarClient";
 import { useAudioStore } from "../stores";
 
-export function useAudioDeviceHandlers({ inputDevice, setAudioDevice, setAudioChannel, selectCaptureDevice }: { inputDevice: ReturnType<typeof useAudioStore.getState>["inputDevice"]; setAudioDevice: ReturnType<typeof useAudioStore.getState>["setDevice"]; setAudioChannel: ReturnType<typeof useAudioStore.getState>["setChannel"]; selectCaptureDevice: (request: SelectDeviceRequest) => Promise<SelectDeviceResponse> }) {
+export function createAudioDeviceHandlers({ inputDevice, setAudioDevice, setAudioChannel, selectCaptureDevice }: { inputDevice: ReturnType<typeof useAudioStore.getState>["inputDevice"]; setAudioDevice: ReturnType<typeof useAudioStore.getState>["setDevice"]; setAudioChannel: ReturnType<typeof useAudioStore.getState>["setChannel"]; selectCaptureDevice: (request: SelectDeviceRequest) => Promise<SelectDeviceResponse> }) {
   const handleAudioDeviceScan = async (): Promise<void> => {
     if (useAudioStore.getState().isCapturing) {
       throw new Error("Pause or end the session before scanning for input devices.");
