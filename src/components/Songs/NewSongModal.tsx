@@ -5,11 +5,13 @@ import { useSongStore, type Song } from "../../stores/songStore";
 interface NewSongModalProps {
   open: boolean;
   onClose: () => void;
-  onSongCreated: (song: Song, mode: "quick" | "search") => void;
+  onSongCreated: (song: Song) => void;
+  onSearch: (query: string, artist: string) => void;
 }
 
-export function NewSongModal({ open, onClose, onSongCreated }: NewSongModalProps) {
+export function NewSongModal({ open, onClose, onSongCreated, onSearch }: NewSongModalProps) {
   const [songName, setSongName] = useState("");
+  const [artist, setArtist] = useState("");
   const [hasTitleError, setHasTitleError] = useState(false);
   const createSong = useSongStore((s) => s.createSong);
 
@@ -21,24 +23,26 @@ export function NewSongModal({ open, onClose, onSongCreated }: NewSongModalProps
       setHasTitleError(true);
       return;
     }
-    let initialSlides = [
-      { label: "Verse 1", text: "Enter verse 1 lyrics here..." },
-      { label: "Chorus", text: "Enter chorus lyrics here..." },
-    ];
-    if (mode === "quick") {
-      initialSlides = [
-        { label: "Verse 1", text: "Line 1 of song\nLine 2 of song" },
-        { label: "Chorus", text: "Chorus line 1\nChorus line 2" },
-      ];
+    if (mode === "search") {
+      onSearch(title, artist.trim());
+      setSongName("");
+      setArtist("");
+      setHasTitleError(false);
+      return;
     }
+    const initialSlides = [
+      { label: "Verse 1", text: "Line 1 of song\nLine 2 of song" },
+      { label: "Chorus", text: "Chorus line 1\nChorus line 2" },
+    ];
     const newSong = createSong({
       title,
-      artist: "Unknown Artist",
+      artist: artist.trim() || "Unknown Artist",
       slides: initialSlides,
     });
     setSongName("");
+    setArtist("");
     setHasTitleError(false);
-    onSongCreated(newSong, mode);
+    onSongCreated(newSong);
   };
 
   return createPortal(
@@ -148,6 +152,10 @@ export function NewSongModal({ open, onClose, onSongCreated }: NewSongModalProps
                 animation: hasTitleError ? "new-song-title-ping 450ms ease-in-out" : undefined,
               }}
             />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+            <label htmlFor="new-song-artist-input" style={{ fontSize: "12px", fontWeight: 600, color: "var(--color-primary)", fontFamily: "var(--font-sans)" }}>Artist / author (optional)</label>
+            <input id="new-song-artist-input" type="text" value={artist} placeholder="Enter artist or author..." onChange={(e) => setArtist(e.target.value)} style={{ width: "100%", background: "var(--bg-base)", border: "none", borderBottom: "2px solid var(--color-primary)", borderRadius: "4px 4px 0 0", padding: "10px 12px", color: "var(--fg-base)", fontSize: "14px", fontFamily: "var(--font-sans)", outline: "none" }} />
           </div>
         </div>
 

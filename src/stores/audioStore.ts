@@ -93,9 +93,13 @@ export const useAudioStore = create<AudioStore>()(
   setAvailableDevices: (availableDevices) =>
     set((s) => {
       const stillSelected = s.inputDevice
-        ? availableDevices.find((d) => d.name === s.inputDevice?.name || d.index === s.inputDevice?.index) ?? null
+        ? availableDevices.find((d) => d.index === s.inputDevice?.index && d.name === s.inputDevice?.name) ?? null
         : null;
-      return { availableDevices, inputDevice: stillSelected };
+      return {
+        availableDevices,
+        inputDevice: stillSelected,
+        ...(s.inputDevice && !stillSelected ? { isCapturing: false, status: "disconnected" as const } : {}),
+      };
     }),
 
   // TODO(Dee): POST /api/audio/select-device when the device changes.

@@ -4,7 +4,6 @@ import { confidenceTone, referenceLabel } from "./suggestionDeckUtils";
 export function SuggestionCardView({
   card,
   previewReference,
-  isDismissing,
   onPreview,
   onSendLive,
   onEdit,
@@ -13,7 +12,6 @@ export function SuggestionCardView({
 }: {
   card: SuggestionCard;
   previewReference: string | null;
-  isDismissing: boolean;
   onPreview: (card: SuggestionCard) => void;
   onSendLive: (card: SuggestionCard) => void;
   onEdit: (card: SuggestionCard) => void;
@@ -37,19 +35,21 @@ export function SuggestionCardView({
         borderRadius: 0,
         padding: "8px 10px",
         flexShrink: 0,
+        minWidth: 0,
+        boxSizing: "border-box",
         boxShadow: previewRing,
         cursor: "pointer",
       }}
-      className={isDismissing ? "ss-suggestion-exit" : "ss-suggestion-enter"}
+      className="ss-suggestion-enter"
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginBottom: "6px" }}>
-        <div style={{ minWidth: 0, color: "var(--fg-base)", fontWeight: 800, fontSize: "14px", lineHeight: 1.1, fontFamily: "Georgia, serif", overflowWrap: "anywhere" }}>{label}</div>
-        <div style={{ display: "flex", flexShrink: 0, alignItems: "center", gap: "6px" }}>
-          <span style={{ color: "var(--fg-muted)", fontFamily: "var(--font-mono)", fontSize: "9px", whiteSpace: "nowrap" }}>
-            Confidence: <span style={{ color: confidenceColor, fontWeight: 700 }}>{confidencePercent}%</span>
-          </span>
+      <div style={{ marginBottom: "6px", minWidth: 0, color: "var(--fg-base)", fontWeight: 800, fontSize: "14px", lineHeight: 1.1, fontFamily: "Georgia, serif", overflowWrap: "break-word" }}>
+        {label}
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: "6px", marginBottom: "6px", minWidth: 0 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px", minWidth: 0 }}>
           <button
             type="button"
+            className="ss-suggestion-action"
             onClick={(event) => {
               event.stopPropagation();
               onEdit(card);
@@ -58,14 +58,14 @@ export function SuggestionCardView({
             title="Edit reference"
             aria-label={`Edit reference for ${label}`}
             style={{
-              flex: "0 0 24px",
-              width: "24px",
-              height: "24px",
-              border: "none",
-              background: "transparent",
-              color: "var(--fg-base)",
+              flex: "0 0 26px",
+              width: "26px",
+              height: "26px",
               padding: 0,
               cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -75,6 +75,7 @@ export function SuggestionCardView({
           </button>
           <button
             type="button"
+            className={`ss-suggestion-action${card.pinned ? " is-pinned" : ""}`}
             onClick={(event) => {
               event.stopPropagation();
               onTogglePin(card);
@@ -83,12 +84,9 @@ export function SuggestionCardView({
             title={card.pinned ? "Unpin suggestion" : "Pin suggestion"}
             aria-label={card.pinned ? `Unpin ${label}` : `Pin ${label}`}
             style={{
-              flex: "0 0 24px",
-              width: "24px",
-              height: "24px",
-              border: "none",
-              background: "transparent",
-              color: card.pinned ? "var(--color-primary)" : "var(--fg-base)",
+              flex: "0 0 26px",
+              width: "26px",
+              height: "26px",
               padding: 0,
               cursor: "pointer",
               display: "flex",
@@ -102,6 +100,7 @@ export function SuggestionCardView({
           </button>
           <button
             type="button"
+            className="ss-suggestion-action"
             onClick={(event) => {
               event.stopPropagation();
               onDismiss(card);
@@ -110,12 +109,9 @@ export function SuggestionCardView({
             title="Dismiss suggestion"
             aria-label={`Dismiss ${label}`}
             style={{
-              flex: "0 0 24px",
-              width: "24px",
-              height: "24px",
-              border: "none",
-              background: "transparent",
-              color: "var(--fg-muted)",
+              flex: "0 0 26px",
+              width: "26px",
+              height: "26px",
               padding: 0,
               cursor: "pointer",
               display: "flex",
@@ -129,32 +125,35 @@ export function SuggestionCardView({
           </button>
           <button
             type="button"
+            className={`ss-suggestion-action${card.status === "sent" ? " is-sent" : ""}`}
             onClick={(event) => {
               event.stopPropagation();
               onSendLive(card);
             }}
             onDoubleClick={(event) => event.stopPropagation()}
-            title="Send live"
-            aria-label={`Send ${label} live`}
+            title={card.status === "sent" ? "Sent live" : "Send live"}
+            aria-label={card.status === "sent" ? `${label} sent live` : `Send ${label} live`}
+            aria-pressed={card.status === "sent"}
             style={{
-              flex: "0 0 24px",
-              width: "24px",
-              height: "24px",
-              border: "none",
-              background: "transparent",
-              color: "var(--fg-base)",
-              padding: 0,
+              minHeight: "26px",
+              padding: "0 8px",
               cursor: "pointer",
-              display: "flex",
+              display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
+              gap: "4px",
+              fontFamily: "var(--font-mono)",
+              fontSize: "9px",
+              fontWeight: 700,
+              whiteSpace: "nowrap",
             }}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <polygon points="6,4 20,12 6,20" />
-            </svg>
+            {card.status === "sent" ? "SENT" : "SEND LIVE"}
           </button>
         </div>
+        <span style={{ marginLeft: "auto", color: "var(--fg-muted)", fontFamily: "var(--font-mono)", fontSize: "9px", whiteSpace: "nowrap" }}>
+          Confidence: <span style={{ color: confidenceColor, fontWeight: 700 }}>{confidencePercent}%</span>
+        </span>
       </div>
 
       <div
@@ -191,6 +190,7 @@ export function ExitingSuggestionCard({
       style={{
         position: "relative",
         overflow: "hidden",
+        pointerEvents: "none",
         border: isPreview ? "1px solid var(--color-primary)" : "none",
         background: "var(--bg-elevated)",
         borderRadius: 0,

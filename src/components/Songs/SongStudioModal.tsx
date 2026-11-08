@@ -11,22 +11,28 @@ interface SongStudioModalProps {
   song: Song | null;
   onClose: () => void;
   onCreateCue?: (cue: { title: string; slides: SongSlide[] }) => void;
+  onBackToResults?: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 
-export function SongStudioModal({ open, song, onClose, onCreateCue }: SongStudioModalProps) {
-  if (!open || !song) return null;
+export function SongStudioModal({ open, song, onClose, onCreateCue, onBackToResults, onDirtyChange }: SongStudioModalProps) {
+  if (!song) return null;
 
   return (
     <SongStudioContent
+      key={song.id}
+      open={open}
       song={song}
       onClose={onClose}
       onCreateCue={onCreateCue}
+      onBackToResults={onBackToResults}
+      onDirtyChange={onDirtyChange}
     />
   );
 }
 
-function SongStudioContent({ song, onClose, onCreateCue }: Omit<SongStudioModalProps, "open" | "song"> & { song: Song }) {
+function SongStudioContent({ open, song, onClose, onCreateCue, onBackToResults, onDirtyChange }: Omit<SongStudioModalProps, "song"> & { song: Song }) {
   const {
     title,
     setTitle,
@@ -56,7 +62,7 @@ function SongStudioContent({ song, onClose, onCreateCue }: Omit<SongStudioModalP
     handleReorder,
     handleSlideLabelChange,
     activeProjectorSlide,
-  } = useSongStudioEditor({ song, onClose, onCreateCue });
+  } = useSongStudioEditor({ song, onClose, onCreateCue, onDirtyChange });
 
   return createPortal(
     <div
@@ -71,7 +77,7 @@ function SongStudioContent({ song, onClose, onCreateCue }: Omit<SongStudioModalP
         inset: 0,
         zIndex: 1200,
         background: "var(--overlay-backdrop)",
-        display: "flex",
+        display: open ? "flex" : "none",
         alignItems: "center",
         justifyContent: "center",
         padding: "16px",
@@ -92,6 +98,9 @@ function SongStudioContent({ song, onClose, onCreateCue }: Omit<SongStudioModalP
         }}
       >
         {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, borderBottom: onBackToResults ? "1px solid var(--border-base)" : undefined }}>
+        {onBackToResults && <button type="button" onClick={onBackToResults} style={{ marginLeft: 14, border: "none", borderRadius: 6, background: "var(--bg-elevated)", color: "var(--fg-base)", padding: "7px 10px", cursor: "pointer", fontWeight: 600 }}>← Back to results</button>}
+        <div style={{ flex: 1, minWidth: 0 }}>
         <SongStudioHeader
           title={title}
           setTitle={setTitle}
@@ -102,6 +111,9 @@ function SongStudioContent({ song, onClose, onCreateCue }: Omit<SongStudioModalP
           handleSave={handleSave}
           handleClose={handleClose}
         />
+        {song.sourceName && <div style={{ padding: "0 16px 8px", fontSize: 11, color: "var(--fg-muted)" }}>Imported from {song.sourceName}{song.sourceUrl ? <> · <a href={song.sourceUrl} target="_blank" rel="noreferrer" style={{ color: "var(--color-primary)" }}>View source</a></> : null}</div>}
+        </div>
+        </div>
 
         {/* Main Body: Slides + Canvas + full-song editor */}
         <div style={{ minHeight: 0, minWidth: 0, display: "grid", gridTemplateColumns: "260px minmax(0, 1fr) 340px" }}>

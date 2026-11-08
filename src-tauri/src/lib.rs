@@ -6,6 +6,7 @@ mod audio_import;
 mod commands;
 mod media_import;
 mod sidecar;
+mod song_search;
 
 use sidecar::{spawn_sidecar, stop_sidecar, SidecarState};
 
@@ -13,6 +14,7 @@ use sidecar::{spawn_sidecar, stop_sidecar, SidecarState};
 pub fn run() {
     tauri::Builder::default()
         .manage(SidecarState(Mutex::new(None)))
+        .manage(song_search::SongSearchRegistry::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -65,6 +67,8 @@ pub fn run() {
             media_import::cancel_video_import,
             commands::keyring::load_provider_key,
             commands::keyring::save_provider_key,
+            song_search::start_song_search,
+            song_search::cancel_song_search,
             commands::bible::import_bible_file,
             commands::settings::load_template_themes,
             commands::settings::save_template_themes,

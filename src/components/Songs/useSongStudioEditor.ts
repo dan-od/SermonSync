@@ -6,10 +6,11 @@ import { type ProjectorSlide } from "../../types/state";
 import { parseSongText, songTextFromSlides, songSlidesEqual } from "./songText";
 import { buildProjectionCueSlides } from "./songEditorUtils";
 
-export function useSongStudioEditor({ song, onClose, onCreateCue }: {
+export function useSongStudioEditor({ song, onClose, onCreateCue, onDirtyChange }: {
   song: Song;
   onClose: () => void;
   onCreateCue?: (cue: { title: string; slides: SongSlide[] }) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [title, setTitle] = useState(song.title);
   const [artist, setArtist] = useState(song.artist);
@@ -44,6 +45,10 @@ export function useSongStudioEditor({ song, onClose, onCreateCue }: {
 
   const currentSlide = slides[activeSlideIndex] ?? slides[0] ?? { label: "Verse 1", text: "" };
   const hasTaggedSections = /^\s*\[[^\]\n]+\]\s*$/m.test(songText);
+
+  useEffect(() => {
+    onDirtyChange?.(title !== song.title || artist !== song.artist || songText !== songTextFromSlides(song.slides) || !songSlidesEqual(slides, song.slides));
+  }, [artist, onDirtyChange, slides, song.artist, song.slides, song.title, songText, title]);
 
   const handleSave = () => {
     const nextTitle = title.trim() || "Untitled Song";

@@ -45,7 +45,7 @@ export function AppModals({
   const sessionStatus = useSessionStore((s) => s.status);
   const sessionId = useSessionStore((s) => s.id);
   const closeNotesModal = useCallback(() => setIsNotesOpen(false), [setIsNotesOpen]);
-  const { inputDevice, inputChannel, audioStatus, audioError, availableDevices, vadSensitivity, setAudioSensitivity, handleAudioDeviceChange, handleAudioChannelChange } = audio;
+  const { inputDevice, inputChannel, audioStatus, audioError, availableDevices, vadSensitivity, setAudioSensitivity, handleAudioDeviceScan, handleAudioDeviceChange, handleAudioChannelChange } = audio;
 
   return (
     <>
@@ -63,6 +63,7 @@ export function AppModals({
             audioError={audioError}
             vadSensitivity={vadSensitivity}
             onAudioDeviceChange={handleAudioDeviceChange}
+            onAudioDevicesRefresh={handleAudioDeviceScan}
             onAudioChannelChange={handleAudioChannelChange}
             onVadSensitivityChange={(value) => {
               setAudioSensitivity(value);

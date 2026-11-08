@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { LibraryTab, LocalLibraryPanelProps } from "./Library/types";
 import { ScripturesTab } from "./Library/Scriptures/ScripturesTab";
 import { SongsTab } from "./Library/Songs/SongsTab";
@@ -19,6 +19,7 @@ const TABS: { id: LibraryTab; label: string }[] = [
 export function LocalLibraryPanel({
   activeTab,
   searchQuery,
+  searchQueries,
   searchMode,
   onActiveTabChange,
   previewReference,
@@ -35,13 +36,14 @@ export function LocalLibraryPanel({
   onCreateCue,
   onNavigationHandlerChange,
 }: LocalLibraryPanelProps) {
-  const searchableProps = { previewReference, liveReference, onPreviewSlide, onSendLive, onSelectedScriptureChange, onSelectedSongChange, onAddToSchedule, onCreateCue, searchQuery, onNavigationHandlerChange };
   const previousTabRef = useRef(activeTab);
   const [tabDirection, setTabDirection] = useState<"forward" | "backward">("forward");
   const [mediaClickAction, setMediaClickAction] = useState<"preview" | "live">("live");
-  const [templatesMounted, setTemplatesMounted] = useState(activeTab === "templates");
-  const [mediaMounted, setMediaMounted] = useState(activeTab === "media");
-  if (activeTab === "media" && !mediaMounted) setMediaMounted(true);
+  const [mountedTabs, setMountedTabs] = useState<Set<LibraryTab>>(() => new Set([activeTab]));
+
+  useEffect(() => {
+    setMountedTabs((current) => current.has(activeTab) ? current : new Set(current).add(activeTab));
+  }, [activeTab]);
 
   useLayoutEffect(() => {
     const previousIndex = TABS.findIndex((tab) => tab.id === previousTabRef.current);
@@ -77,12 +79,7 @@ export function LocalLibraryPanel({
             <button
               key={tab.id}
               type="button"
-              onClick={() => {
-                if (tab.id === "templates") {
-                  setTemplatesMounted(true);
-                }
-                onActiveTabChange(tab.id);
-              }}
+              onClick={() => onActiveTabChange(tab.id)}
               style={{
                 padding: "7px 14px",
                 background: "transparent",
@@ -138,29 +135,36 @@ export function LocalLibraryPanel({
 
       {/* Tab content */}
       <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
-        {templatesMounted || activeTab === "templates" ? (
-          <div style={{ display: activeTab === "templates" ? "block" : "none", height: "100%" }}>
-            <TemplatesTab />
+        {mountedTabs.has("scriptures") ? (
+          <div data-library-tab="scriptures" className={activeTab === "scriptures" ? `library-tab-slide library-tab-slide--${tabDirection}` : undefined} style={{ display: activeTab === "scriptures" ? "block" : "none", height: "100%" }} aria-hidden={activeTab !== "scriptures"}>
+            <ScripturesTab {...searchableProps("scriptures")} searchMode={searchMode} />
           </div>
         ) : null}
-        {activeTab !== "templates" && activeTab !== "media" ? (
-          <div key={activeTab} className={`library-tab-slide library-tab-slide--${tabDirection}`}>
-            {activeTab === "scriptures" && <ScripturesTab {...searchableProps} searchMode={searchMode} />}
-            {activeTab === "songs" && <SongsTab {...searchableProps} />}
-            {activeTab === "overlays" && <OverlaysTab />}
+        {mountedTabs.has("songs") ? (
+          <div data-library-tab="songs" className={activeTab === "songs" ? `library-tab-slide library-tab-slide--${tabDirection}` : undefined} style={{ display: activeTab === "songs" ? "block" : "none", height: "100%" }} aria-hidden={activeTab !== "songs"}>
+            <SongsTab {...searchableProps("songs")} />
           </div>
         ) : null}
-        {mediaMounted ? (
-          <div
-            data-library-tab="media"
-            className={activeTab === "media" ? `library-tab-slide library-tab-slide--${tabDirection}` : undefined}
-            style={{ display: activeTab === "media" ? "block" : "none", height: "100%" }}
-            aria-hidden={activeTab !== "media"}
-          >
+        {mountedTabs.has("media") ? (
+          <div data-library-tab="media" className={activeTab === "media" ? `library-tab-slide library-tab-slide--${tabDirection}` : undefined} style={{ display: activeTab === "media" ? "block" : "none", height: "100%" }} aria-hidden={activeTab !== "media"}>
             <MediaTab onPreviewMedia={onPreviewMedia} onSendMedia={onSendMedia} clickAction={mediaClickAction} onClickActionChange={setMediaClickAction} previewMedia={previewMedia} liveMedia={liveMedia} />
+          </div>
+        ) : null}
+        {mountedTabs.has("overlays") ? (
+          <div data-library-tab="overlays" className={activeTab === "overlays" ? `library-tab-slide library-tab-slide--${tabDirection}` : undefined} style={{ display: activeTab === "overlays" ? "block" : "none", height: "100%" }} aria-hidden={activeTab !== "overlays"}>
+            <OverlaysTab />
+          </div>
+        ) : null}
+        {mountedTabs.has("templates") ? (
+          <div data-library-tab="templates" className={activeTab === "templates" ? `library-tab-slide library-tab-slide--${tabDirection}` : undefined} style={{ display: activeTab === "templates" ? "block" : "none", height: "100%" }} aria-hidden={activeTab !== "templates"}>
+            <TemplatesTab />
           </div>
         ) : null}
       </div>
     </div>
   );
+
+  function searchableProps(tab: LibraryTab) {
+    return { previewReference, liveReference, onPreviewSlide, onSendLive, onSelectedScriptureChange, onSelectedSongChange, onAddToSchedule, onCreateCue, searchQuery: searchQueries?.[tab] ?? searchQuery, onNavigationHandlerChange, isActive: activeTab === tab };
+  }
 }

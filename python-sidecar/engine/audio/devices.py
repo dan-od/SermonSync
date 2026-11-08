@@ -43,7 +43,7 @@ def refresh_devices() -> None:
         sd._terminate()
         sd._initialize()
     except Exception as exc:  # pragma: no cover - backend specific
-        logger.warning("device refresh failed: %s", exc)
+        raise AudioBackendError(f"could not refresh audio input devices: {exc}") from exc
 
 
 def _default_input_index() -> int | None:

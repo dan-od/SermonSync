@@ -40,7 +40,6 @@ export function SuggestionDeckPanel({
   );
   const [exitingCards, setExitingCards] = useState<SuggestionCard[]>([]);
   const [editingCard, setEditingCard] = useState<SuggestionCard | null>(null);
-  const [dismissingCardIds, setDismissingCardIds] = useState<Set<string>>(() => new Set());
   const previousCardsRef = useRef<SuggestionCard[]>(visibleCards);
 
   const stageCardsForExit = (cardsToExit: SuggestionCard[]) => {
@@ -62,17 +61,7 @@ export function SuggestionDeckPanel({
   };
 
   const handleDismiss = (card: SuggestionCard) => {
-    if (dismissingCardIds.has(card.id)) return;
-    setDismissingCardIds((current) => new Set(current).add(card.id));
-    window.setTimeout(() => {
-      previousCardsRef.current = previousCardsRef.current.filter((previousCard) => previousCard.id !== card.id);
-      setDismissingCardIds((current) => {
-        const next = new Set(current);
-        next.delete(card.id);
-        return next;
-      });
-      onDismiss(card.id);
-    }, 320);
+    onDismiss(card.id);
   };
 
   useEffect(() => {
@@ -83,11 +72,6 @@ export function SuggestionDeckPanel({
       stageCardsForExit(removed);
     }
 
-    previousCardsRef.current = visibleCards;
-    return undefined;
-  }, [visibleCards]);
-
-  useEffect(() => {
     previousCardsRef.current = visibleCards;
   }, [visibleCards]);
 
@@ -167,7 +151,6 @@ export function SuggestionDeckPanel({
             key={card.id}
             card={card}
             previewReference={previewReference}
-            isDismissing={dismissingCardIds.has(card.id)}
             onPreview={onPreview}
             onSendLive={onSendLive}
             onEdit={setEditingCard}

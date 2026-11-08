@@ -17,7 +17,7 @@ export function useAudioShell(authenticatedBranch: BranchAccount | null, session
 
   const selectCaptureDevice = useAudioPipeline(authenticatedBranch, inputDevice, sessionStatus);
 
-  const { handleAudioDeviceChange, handleAudioChannelChange } = useAudioDeviceHandlers({ inputDevice, setAudioDevice, setAudioChannel, selectCaptureDevice });
+  const { handleAudioDeviceScan, handleAudioDeviceChange, handleAudioChannelChange } = useAudioDeviceHandlers({ inputDevice, setAudioDevice, setAudioChannel, selectCaptureDevice });
 
   return {
     inputDevice,
@@ -27,6 +27,7 @@ export function useAudioShell(authenticatedBranch: BranchAccount | null, session
     availableDevices,
     vadSensitivity,
     setAudioSensitivity,
+    handleAudioDeviceScan,
     handleAudioDeviceChange,
     handleAudioChannelChange,
   };

@@ -25,13 +25,25 @@ const { invokeMock, postMessageMock, subscribeChannelMock, channelListenerRef, a
 
     label: string;
     options: Record<string, unknown>;
+    closeRequested: (() => void) | null = null;
     once = vi.fn((event: string, callback: (payload?: unknown) => void) => {
       if (event === "tauri://created") queueMicrotask(() => callback());
       return Promise.resolve(() => undefined);
     });
+    onCloseRequested = vi.fn(async (callback: () => void) => {
+      this.closeRequested = callback;
+      return () => {
+        if (this.closeRequested === callback) this.closeRequested = null;
+      };
+    });
     show = vi.fn(async () => undefined);
     hide = vi.fn(async () => undefined);
-    close = vi.fn(async () => undefined);
+    close = vi.fn(async () => this.requestClose());
+
+    requestClose() {
+      this.closeRequested?.();
+      MockWebviewWindow.instances = MockWebviewWindow.instances.filter((instance) => instance !== this);
+    }
 
     constructor(label: string, options: Record<string, unknown>) {
       this.label = label;
@@ -296,6 +308,21 @@ describe("projectorOutput display manager", () => {
     await closeProjectorOutput();
     expect(window.close).toHaveBeenCalledTimes(1);
     expect(useProjectorStore.getState().outputStatus).toBe("closed");
+  });
+
+  it("resets the output status when the output window is closed outside the app", async () => {
+    const display = { id: "display-hdmi", name: "DISPLAY2", friendlyName: "HDMI Projector", width: 1920, height: 1080, refreshHz: 60, x: 1920, y: 0, scaleFactor: 1, isPrimary: false, connected: true };
+    await openProjectorOutput(display);
+    const [window] = MockWebviewWindow.instances;
+
+    window.requestClose();
+
+    expect(useProjectorStore.getState().outputStatus).toBe("closed");
+    await openProjectorOutput(display);
+    expect(useProjectorStore.getState().outputStatus).toBe("connected");
+    expect(MockWebviewWindow.instances).toHaveLength(1);
+    expect(MockWebviewWindow.instances[0]).not.toBe(window);
+    expect(invokeMock.mock.calls.filter(([command]) => command === "place_projector_window")).toHaveLength(2);
   });
 
   it("isProjectorOutputWindow reads the window query param", () => {

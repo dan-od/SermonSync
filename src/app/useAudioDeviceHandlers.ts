@@ -1,7 +1,19 @@
-import type { SelectDeviceRequest, SelectDeviceResponse } from "../lib/sidecarClient";
+import { getAudioDevices, type SelectDeviceRequest, type SelectDeviceResponse } from "../lib/sidecarClient";
 import { useAudioStore } from "../stores";
 
 export function useAudioDeviceHandlers({ inputDevice, setAudioDevice, setAudioChannel, selectCaptureDevice }: { inputDevice: ReturnType<typeof useAudioStore.getState>["inputDevice"]; setAudioDevice: ReturnType<typeof useAudioStore.getState>["setDevice"]; setAudioChannel: ReturnType<typeof useAudioStore.getState>["setChannel"]; selectCaptureDevice: (request: SelectDeviceRequest) => Promise<SelectDeviceResponse> }) {
+  const handleAudioDeviceScan = async (): Promise<void> => {
+    if (useAudioStore.getState().isCapturing) {
+      throw new Error("Pause or end the session before scanning for input devices.");
+    }
+
+    const { devices } = await getAudioDevices(true);
+    useAudioStore.getState().setAvailableDevices(devices);
+    const state = useAudioStore.getState();
+    state.clearAudioError();
+    if (state.status === "error") state.setStatus(state.inputDevice ? "connected" : "disconnected");
+  };
+
   const handleAudioDeviceChange = (name: string) => {
     const selected = useAudioStore.getState().availableDevices.find((device) => device.name === name);
     if (!selected) return;
@@ -31,5 +43,5 @@ export function useAudioDeviceHandlers({ inputDevice, setAudioDevice, setAudioCh
       });
   };
 
-  return { handleAudioDeviceChange, handleAudioChannelChange };
+  return { handleAudioDeviceScan, handleAudioDeviceChange, handleAudioChannelChange };
 }

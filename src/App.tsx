@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { AuthGate } from "./components/Auth/AuthGate";
 import { type BranchAccount } from "./components/Auth/types";
 import { LaunchScreen } from "./components/Launch/LaunchScreen";
@@ -30,6 +30,7 @@ import { useSuggestionHandlers } from "./app/useSuggestionHandlers";
 import { useThemeAttribute } from "./app/useThemeAttribute";
 import { useSessionTicker } from "./app/useSessionTicker";
 import { useShortcutHandlers } from "./app/useShortcutHandlers";
+import { updateLibrarySearchQuery } from "./app/librarySearchState";
 import { ProjectorDeskPanel } from "./app/lazyPanels";
 
 function App() {
@@ -39,7 +40,17 @@ function App() {
   const [isNotesOpen, setIsNotesOpen] = useState(false);
   const [hasOpenedNotes, setHasOpenedNotes] = useState(false);
   const [libraryTab, setLibraryTab] = useState<LibraryTab>("scriptures");
-  const [librarySearchQuery, setLibrarySearchQuery] = useState("");
+  const [librarySearchQueries, setLibrarySearchQueries] = useState<Record<LibraryTab, string>>({
+    scriptures: "",
+    songs: "",
+    media: "",
+    overlays: "",
+    templates: "",
+  });
+  const librarySearchQuery = librarySearchQueries[libraryTab];
+  const setLibrarySearchQuery = useCallback((nextValue: string | ((previousValue: string) => string)) => {
+    setLibrarySearchQueries((current) => updateLibrarySearchQuery(current, libraryTab, nextValue));
+  }, [libraryTab]);
   const [librarySearchMode, setLibrarySearchMode] = useState<ScriptureSearchMode>("words");
   const [selectedScripture, setSelectedScripture] = useState<ProjectorSlide | null>(null);
   const [selectedLibrarySong, setSelectedLibrarySong] = useState<Song | null>(null);
@@ -113,6 +124,7 @@ function App() {
     libraryTab,
     setLibraryTab,
     librarySearchQuery,
+    librarySearchQueries,
     setLibrarySearchQuery,
     librarySearchMode,
     setLibrarySearchMode,

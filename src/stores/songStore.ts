@@ -13,6 +13,9 @@ export interface Song {
   slides: SongSlide[];
   createdAt?: number;
   updatedAt?: number;
+  sourceName?: string;
+  sourceUrl?: string;
+  sourceProvider?: string;
 }
 
 const STORAGE_KEY = "sermonsync_songs";
@@ -45,8 +48,8 @@ interface SongStore {
   songs: Song[];
   initialized: boolean;
   initialize: () => void;
-  createSong: (songData: { title: string; artist?: string; slides?: SongSlide[] }) => Song;
-  addSong: (songData: { title: string; artist?: string; slides?: SongSlide[] }) => Song;
+  createSong: (songData: { title: string; artist?: string; slides?: SongSlide[]; sourceName?: string; sourceUrl?: string; sourceProvider?: string }) => Song;
+  addSong: (songData: { title: string; artist?: string; slides?: SongSlide[]; sourceName?: string; sourceUrl?: string; sourceProvider?: string }) => Song;
   saveSong: (song: Song) => void;
   updateSong: (id: string, patch: Partial<Omit<Song, "id">>) => void;
   deleteSong: (id: string) => void;
@@ -77,6 +80,9 @@ export const useSongStore = create<SongStore>((set, get) => ({
           ],
       createdAt: now,
       updatedAt: now,
+      sourceName: songData.sourceName,
+      sourceUrl: songData.sourceUrl,
+      sourceProvider: songData.sourceProvider,
     };
   },
 
