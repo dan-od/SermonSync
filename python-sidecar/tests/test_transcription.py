@@ -6,8 +6,11 @@ import asyncio
 import time
 
 import numpy as np
+from engine.audio import vad
 from engine.audio.capture import float_to_pcm16
+from engine.transcription import buffer as buffer_mod
 from engine.transcription import streaming, whisper_engine
+from engine.transcription.buffer import transcript_buffer
 from engine.transcription.whisper_engine import MockWhisperEngine
 
 
@@ -127,6 +130,10 @@ def test_partials_emit_mid_utterance_then_stop_when_drained():
     assert st._ready_for_partial(now=now) is True
     st._last_partial_ts = now
     assert st._ready_for_partial(now=now + 0.5) is False  # rate-limited
+    # SS-078: at now + 1.1 the silence has run past silence_flush_seconds, so a
+    # final is due and the interim stands down. Rate-limiting alone is no
+    # longer enough to say yes — check just inside the silence window.
+    st.silence_flush_seconds = 2.0
     assert st._ready_for_partial(now=now + 1.1) is True
     st._buf.clear()
     assert st._ready_for_partial(now=now + 5) is False    # nothing buffered
@@ -144,6 +151,9 @@ def test_partial_yields_when_it_would_overrun_the_chunk_ceiling():
     st = streaming.StreamingTranscriber(
         max_chunk_seconds=6.0, partial_min_seconds=0.8, partial_interval=0.6
     )
+    # SS-078 narrowed the gate to the case that still needs it: interims that
+    # re-run the *main* model hold the one instance the final needs.
+    st.set_partial_mode("main")
     st._running = True
     st.feed(b"\x00\x00" * 16000 * 2)  # 2.0 s buffered
     now = st._last_feed_ts
@@ -166,6 +176,7 @@ def test_switching_partial_mode_re_measures_the_cost():
     under a 6.0 s ceiling — so the cheaper engine never ran once.
     """
     st = streaming.StreamingTranscriber(max_chunk_seconds=6.0, partial_min_seconds=0.8)
+    st.set_partial_mode("main")
     st._running = True
     st.feed(b"\x00\x00" * 16000 * 2)  # 2.0 s buffered
     st._partial_cost = 5.8  # as measured on the "main" engine
@@ -174,6 +185,88 @@ def test_switching_partial_mode_re_measures_the_cost():
     st.set_partial_mode("tiny.en")
     assert st._partial_cost == 0.0
     assert st._ready_for_partial(now=st._last_feed_ts) is True
+
+
+class _SlowPartialEngine:
+    """Main-model stand-in whose decode takes a controllable age."""
+
+    is_mock = True
+    backend = "slow-stub"
+    device = "cpu"
+    compute_type = "n/a"
+    model_size = "stub"
+
+    def __init__(self, seconds: float) -> None:
+        self.seconds = seconds
+        self.calls = 0
+
+    def transcribe(self, audio, language=None, **hints):
+        self.calls += 1
+        time.sleep(self.seconds)
+        return [{
+            "text": "interim words", "start": 0.0, "end": 1.0, "confidence": 0.5,
+            "no_speech_prob": 0.0, "avg_logprob": -0.5, "compression_ratio": 1.0,
+            "language": "en",
+        }]
+
+
+def test_final_is_not_delayed_by_an_in_flight_partial():
+    """SS-078: the whole point of Step 1.
+
+    An interim used to be awaited by the poll loop, so a pause that fell while
+    one was running could not cut until it finished — two inferences on the
+    critical path. The interim now runs detached: the cut happens within a
+    poll interval of the pause, whatever the interim is doing.
+    """
+    slow = _SlowPartialEngine(0.6)
+    st = streaming.StreamingTranscriber(
+        poll_interval=0.01, partial_min_seconds=0.2, partial_interval=0.0,
+        silence_flush_seconds=0.15, min_flush_seconds=0.2, max_chunk_seconds=30.0,
+    )
+    st.matching_enabled = False
+    whisper_engine.set_engine(MockWhisperEngine())
+    st._partial_engine = lambda: slow  # interim on its own (slow) instance
+    st.set_partial_mode("tiny.en")     # a separate instance: no shared lock
+
+    async def scenario():
+        await st.start()
+        st.feed(b"\x00\x00" * 16000)   # 1.0 s of speech, then silence
+        await asyncio.sleep(0.05)
+        assert st._partial_task is not None, "interim should have been launched"
+        assert not st._partial_task.done(), "interim should still be running"
+        cut_deadline = time.time() + st.silence_flush_seconds + 0.25
+        while st._chunk_seq == 0 and time.time() < cut_deadline:
+            await asyncio.sleep(0.01)
+        cut_at = time.time()
+        assert st._chunk_seq == 1, "the final never cut while the interim ran"
+        # The interim (0.6 s) must still be in flight: the cut did not wait.
+        assert not st._partial_task.done()
+        await st.stop()
+        return cut_at
+
+    asyncio.run(scenario())
+
+
+def test_partial_result_landing_after_a_newer_final_is_discarded():
+    """SS-078: a detached interim can outlive the audio it describes.
+
+    If a cut happened while it was running, a final now covers that speech,
+    and drawing the interim over it would rewind the transcript.
+    """
+    st = streaming.StreamingTranscriber()
+    whisper_engine.set_engine(MockWhisperEngine())
+    st._running = True
+    before = len(transcript_buffer.partial)
+
+    async def scenario():
+        # Launched at seq 3; a cut bumps the counter before it lands.
+        st._chunk_seq = 3
+        task = asyncio.ensure_future(st._emit_partial(b"\x00\x00" * 16000, 3))
+        st._chunk_seq = 4
+        await task
+
+    asyncio.run(scenario())
+    assert len(transcript_buffer.partial) == before, "superseded interim was shown"
 
 
 def test_emitting_a_partial_measures_its_own_cost():
@@ -274,9 +367,60 @@ def test_fallback_marks_engine_degraded(monkeypatch):
     assert eng.degraded is True
 
 
+def test_cpu_defaults_to_small_and_an_explicit_choice_wins(monkeypatch):
+    """SS-078: turbo only where there is a GPU to run it on."""
+    monkeypatch.delenv("WHISPER_MODEL", raising=False)
+    monkeypatch.setattr(whisper_engine, "_accelerated", lambda: False)
+    assert whisper_engine._code_default_model() == "small"
+    monkeypatch.setattr(whisper_engine, "_accelerated", lambda: True)
+    assert whisper_engine._code_default_model() == "large-v3-turbo"
+
+    # An explicit choice is never second-guessed.
+    monkeypatch.setattr(whisper_engine, "_accelerated", lambda: False)
+    monkeypatch.setenv("WHISPER_MODEL", "large-v3-turbo")
+    assert whisper_engine._configured_model() == "large-v3-turbo"
+
+
+def test_latency_warning_needs_evidence_then_names_the_model(monkeypatch):
+    """SS-078: warn from a measurement, after warm-up, and never auto-switch."""
+    monkeypatch.setattr(whisper_engine, "_rtf_samples", [])
+    monkeypatch.setattr(whisper_engine, "_rtf_warned", False)
+    # One slow chunk is the model loading, not a slow machine.
+    whisper_engine.note_inference(5000.0, 1.0)
+    assert whisper_engine.latency_warning() is None
+    whisper_engine.note_inference(5000.0, 1.0)
+    whisper_engine.note_inference(5000.0, 1.0)
+    warning = whisper_engine.latency_warning()
+    assert warning is not None and "rtf" in warning
+
+    # Keeping up: nothing to say.
+    monkeypatch.setattr(whisper_engine, "_rtf_samples", [0.2, 0.2, 0.2])
+    assert whisper_engine.latency_warning() is None
+
+
+def test_sentence_flush_fires_on_a_timer_without_a_new_fragment():
+    """SS-078: a trailing phrase must not wait for the speaker to resume."""
+    buf = buffer_mod.TranscriptBuffer(silence_gap=2.0)
+    t0 = 1000.0
+    assert buf.add_fragment("turn with me to John 3 16", is_final=True, timestamp=t0) == []
+    # Still inside the gap: nothing yet.
+    assert buf.flush_if_idle(t0 + 1.0) == []
+    out = buf.flush_if_idle(t0 + 2.5)
+    assert [s["text"] for s in out] == ["turn with me to John 3 16"]
+    # Nothing left to flush twice.
+    assert buf.flush_if_idle(t0 + 9.0) == []
+
+
 def test_segmentation_defaults():
-    """Picked from the SS-072 sweep: wait 0.8 s of silence, cut at 6 s."""
+    """Cut at 6 s, and wait an effective 0.8 s of silence (SS-072 sweep).
+
+    SS-078: the timer is 0.5 s because it does not start when the speaker
+    stops — it starts one VAD hangover later, since hangover frames are still
+    forwarded and keep _last_feed_ts moving. 0.5 + 0.3 is the 0.8 s the sweep
+    found safe, which is what the speaker actually has to leave.
+    """
     st = streaming.StreamingTranscriber()
-    assert st.silence_flush_seconds == 0.8
+    assert st.silence_flush_seconds == 0.5
     assert st.max_chunk_seconds == 6.0
     assert st.min_flush_seconds == 0.4
+    assert st.silence_flush_seconds + vad.EnergyVAD().hangover_ms / 1000 == 0.8

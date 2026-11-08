@@ -81,6 +81,23 @@ class TranscriptBuffer:
         emitted.extend(self._extract_sentences(now))
         return emitted
 
+    def flush_if_idle(self, timestamp: float | None = None) -> list[dict]:
+        """SS-078: the silence-gap flush, on a timer instead of on arrival.
+
+        `add_fragment` only checks the gap when the *next* fragment turns up,
+        so a closing phrase with no terminating punctuation sat in the buffer
+        until the speaker started again — which could be the whole pause. The
+        streaming loop calls this while nothing is arriving.
+        """
+        now = timestamp if timestamp is not None else time.time()
+        if self._last_ts is None or not self._buffer.strip():
+            return []
+        if now - self._last_ts <= self.silence_gap:
+            return []
+        self._last_ts = now
+        flushed = self._flush_sentence(now)
+        return [flushed] if flushed else []
+
     def flush(self, timestamp: float | None = None) -> list[dict]:
         """Force-finalize any buffered remainder (e.g. on session end)."""
         now = timestamp if timestamp is not None else time.time()

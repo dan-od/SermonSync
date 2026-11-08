@@ -17,9 +17,11 @@ must never receive fake transcripts, so MockWhisperEngine is for tests only
 
 from __future__ import annotations
 
+import importlib.util
 import logging
 import math
 import os
+import statistics
 import sys
 
 logger = logging.getLogger("sermonsync.transcription.whisper")
@@ -30,6 +32,17 @@ except ImportError:  # pragma: no cover
     np = None
 
 CODE_DEFAULT_MODEL = "large-v3-turbo"
+# SS-078: turbo is the right default only where there is a GPU to run it on.
+# On CPU int8 it decodes slower than real time (measured realtime factor ~1.0
+# on an 8-core Mac), so every chunk arrives later than the last and the live
+# transcript falls further behind for the whole service. "small" is the
+# largest model that holds a usable margin there. Only the *default* changes:
+# an explicit WHISPER_MODEL or stored whisper.model setting still wins.
+CPU_DEFAULT_MODEL = "small"
+# Above this, inference cannot keep up with the speaker and latency grows
+# without bound. Reported, never acted on: switching models mid-service would
+# drop the stream.
+RTF_WARNING_THRESHOLD = 0.6
 
 # HuggingFace repo IDs for mlx-whisper (mlx-community quantised checkpoints).
 _MLX_MODEL_MAP: dict[str, str] = {
@@ -48,6 +61,21 @@ def _is_apple_silicon() -> bool:
     return sys.platform == "darwin" and platform.machine() == "arm64"
 
 
+def _accelerated() -> bool:
+    """True when a GPU backend will actually carry the inference."""
+    if _is_apple_silicon() and importlib.util.find_spec("mlx_whisper") is not None:
+        return True
+    try:
+        return _pick_device_faster_whisper()[0] != "cpu"
+    except Exception:
+        return False
+
+
+def _code_default_model() -> str:
+    """The default model for this machine (SS-078)."""
+    return CODE_DEFAULT_MODEL if _accelerated() else CPU_DEFAULT_MODEL
+
+
 def _configured_model() -> str:
     """Read model name from env, then settings store, then code default."""
     env = os.environ.get("WHISPER_MODEL")
@@ -60,7 +88,7 @@ def _configured_model() -> str:
             return stored
     except Exception:
         pass
-    return CODE_DEFAULT_MODEL
+    return _code_default_model()
 
 
 def _model_source() -> str:
@@ -77,7 +105,10 @@ def _model_source() -> str:
 
 def _build_fallback_chain(primary: str) -> list[str]:
     chain = [primary]
-    for fallback in ("base", "tiny"):
+    # SS-078: "small" sits between turbo and base, so a CPU default of "small"
+    # can still fall back, and a turbo box degrades through it rather than
+    # straight to base.
+    for fallback in ("small", "base", "tiny"):
         if fallback not in chain:
             chain.append(fallback)
     return chain
@@ -115,10 +146,19 @@ def _pick_device_faster_whisper() -> tuple[str, str]:
 # this keeps Mac results comparable with the Windows (faster-whisper) target.
 # condition_on_previous_text only links 30 s windows inside one call; our
 # chunks are a few seconds, so it never applied, but say so explicitly.
+# The full ladder, for offline/eval use where accuracy outranks latency.
+OFFLINE_TEMPERATURES = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+
 DEFAULT_DECODE_OPTIONS = {
     "beam_size": 1,
     "condition_on_previous_text": False,
-    "temperature": [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+    # SS-078: live decoding gets one retry, not five. Whisper re-decodes the
+    # whole chunk at the next temperature whenever the compression-ratio or
+    # logprob check fails, and on noisy church audio that fires often — each
+    # retry is another full pass sitting on the latency path. The full ladder
+    # stays available for offline scoring via OFFLINE_TEMPERATURES, where wall
+    # clock does not matter.
+    "temperature": [0.0, 0.4],
     "compression_ratio_threshold": 2.4,
     "log_prob_threshold": -1.0,
     "no_speech_threshold": 0.6,
@@ -479,6 +519,48 @@ def model_source() -> str:
     return _model_source()
 
 
+# SS-078: a short rolling window of realtime factors from live finals, so the
+# sidecar can say "this model is too slow for this machine" with a measurement
+# instead of a guess. Never acts on it: switching models mid-service would drop
+# the stream, and the operator may have chosen this model deliberately.
+_rtf_samples: list[float] = []
+_rtf_warned = False
+
+
+def note_inference(infer_ms: float, audio_seconds: float) -> None:
+    """Record one final's cost against the audio it covered."""
+    if audio_seconds <= 0 or not infer_ms:
+        return
+    global _rtf_warned
+    _rtf_samples.append(infer_ms / (audio_seconds * 1000.0))
+    del _rtf_samples[:-20]
+    warning = latency_warning()
+    if warning and not _rtf_warned:
+        _rtf_warned = True
+        logger.warning("%s", warning)
+
+
+def latency_warning() -> str | None:
+    """A sentence for the operator, or None when the model is keeping up.
+
+    Needs a few chunks: the first inference carries model-load and warm-up
+    cost and would accuse every machine of being slow.
+    """
+    if len(_rtf_samples) < 3:
+        return None
+    median = statistics.median(_rtf_samples)
+    if median <= RTF_WARNING_THRESHOLD:
+        return None
+    engine = _engine
+    model = getattr(engine, "model_size", None) or _configured_model()
+    device = getattr(engine, "device", None) or "cpu"
+    suggestion = CPU_DEFAULT_MODEL if model != CPU_DEFAULT_MODEL else "base"
+    return (
+        f"whisper {model} on {device} is slow (rtf {median:.2f}) — "
+        f"consider '{suggestion}'"
+    )
+
+
 def engine_status() -> dict:
     """Report configured vs actually-loaded engine.
 
@@ -507,6 +589,7 @@ def engine_status() -> dict:
         "is_mock": None,
         "degraded": None,
         "load_error": _engine_error,
+        "latency_warning": latency_warning(),
     }
     if _engine is not None:
         status["loaded_model"] = getattr(_engine, "model_size", "unknown")

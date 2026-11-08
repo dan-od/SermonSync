@@ -157,7 +157,8 @@ def test_mlx_engine_maps_decode_options_and_keeps_filter_fields(monkeypatch):
     kwargs = calls[0]
     assert kwargs["initial_prompt"] == "John 3:16"
     assert kwargs["logprob_threshold"] == -1.0
-    assert kwargs["temperature"] == (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
+    # SS-078: one retry for live decoding, not five.
+    assert kwargs["temperature"] == (0.0, 0.4)
     for unsupported in ("beam_size", "log_prob_threshold", "hotwords"):
         assert unsupported not in kwargs
     assert segs[0]["text"] == "John 3:16"

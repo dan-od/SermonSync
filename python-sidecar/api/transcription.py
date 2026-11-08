@@ -60,6 +60,11 @@ def set_partials(req: PartialsRequest) -> dict:
 
 
 def apply_persisted_partials() -> None:
-    mode = get_store().get_setting(PARTIALS_SETTING, "main")
+    # SS-078: fall back to the transcriber's own default, never to a literal.
+    # A hardcoded "main" here was applied unconditionally at every startup, so
+    # it overwrote the code default on any install that had never set the
+    # mode by hand — which is how SS-077's measured "tiny.en" default shipped
+    # without ever taking effect. Only a stored choice may override the code.
+    mode = get_store().get_setting(PARTIALS_SETTING, None)
     if mode in PARTIAL_MODES:
         streaming_transcriber.set_partial_mode(mode)
