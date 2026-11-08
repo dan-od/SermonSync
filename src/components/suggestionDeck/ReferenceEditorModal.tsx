@@ -46,19 +46,25 @@ export function ReferenceEditorModal({
 
       setIsLoading(true);
       setError(null);
-      const result = await lookupScriptureVerse(normalizedBook, chapterNumber, verseNumber, version);
-      if (!active) return;
-      if (!result) {
+      try {
+        const result = await lookupScriptureVerse(normalizedBook, chapterNumber, verseNumber, version);
+        if (!active) return;
+        if (!result) {
+          setPreview(null);
+          setError("This reference is not available in the selected version.");
+          setIsLoading(false);
+          return;
+        }
+        setPreview({
+          reference: { book: result.book, chapter: result.chapter, verse: result.verse },
+          text: result.text,
+          version: result.version,
+        });
+      } catch (lookupError) {
+        if (!active) return;
         setPreview(null);
-        setError("This reference is not available in the selected version.");
-        setIsLoading(false);
-        return;
+        setError(lookupError instanceof Error ? lookupError.message : "Could not load this verse.");
       }
-      setPreview({
-        reference: { book: result.book, chapter: result.chapter, verse: result.verse },
-        text: result.text,
-        version: result.version,
-      });
       setIsLoading(false);
     });
 
@@ -71,7 +77,8 @@ export function ReferenceEditorModal({
     boxSizing: "border-box",
     width: "100%",
     minWidth: 0,
-    border: "1px solid var(--border-base)",
+    border: "none",
+    outline: "none",
     borderRadius: "var(--radius-sm)",
     background: "var(--bg-base)",
     color: "var(--fg-base)",
@@ -95,6 +102,7 @@ export function ReferenceEditorModal({
       }}
     >
       <section
+        className="ss-reference-editor-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="edit-reference-title"
@@ -104,12 +112,25 @@ export function ReferenceEditorModal({
           maxHeight: "min(640px, calc(100vh - 32px))",
           overflow: "auto",
           background: "var(--bg-surface)",
-          border: "1px solid var(--border-base)",
+          border: "none",
           borderRadius: "var(--radius-md)",
           boxShadow: "var(--shadow-lg)",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: "1px solid var(--border-base)" }}>
+        <style>{`
+          .ss-reference-editor-modal :focus-visible { outline: none !important; box-shadow: none !important; }
+          .ss-reference-editor-cancel {
+            background: transparent;
+            color: var(--fg-base);
+            transition: background 120ms ease, color 120ms ease;
+          }
+          .ss-reference-editor-cancel:hover,
+          .ss-reference-editor-cancel:focus-visible {
+            background: var(--color-primary);
+            color: var(--fg-on-accent);
+          }
+        `}</style>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px" }}>
           <div>
             <div id="edit-reference-title" style={{ color: "var(--fg-base)", fontWeight: 700, fontSize: "var(--text-sm)" }}>Edit Reference</div>
             <div style={{ color: "var(--fg-muted)", fontSize: "var(--text-xs)", marginTop: 2 }}>Correct the match before sending it live.</div>
@@ -132,13 +153,13 @@ export function ReferenceEditorModal({
               triggerStyle={inputStyle}
             />
           </label>
-          <div style={{ border: "1px solid var(--border-base)", borderRadius: "var(--radius-sm)", background: "var(--bg-base)", padding: "12px", minHeight: 104 }}>
+          <div style={{ border: "none", borderRadius: "var(--radius-sm)", background: "var(--bg-base)", padding: "12px", minHeight: 104 }}>
             <div style={{ color: "var(--color-primary)", fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 700, letterSpacing: "0.06em", marginBottom: 7 }}>VERSE PREVIEW</div>
             {isLoading ? <div style={{ color: "var(--fg-muted)", fontSize: "var(--text-xs)" }}>Loading verse...</div> : error ? <div style={{ color: "var(--color-error)", fontSize: "var(--text-xs)" }}>{error}</div> : preview && <><div style={{ color: "var(--fg-base)", fontFamily: "Georgia, serif", fontSize: "var(--text-sm)", lineHeight: 1.5 }}>{preview.text}</div><div style={{ color: "var(--fg-muted)", fontSize: "var(--text-xs)", marginTop: 8 }}>{referenceLabel({ ...card, ...preview })} - {preview.version}</div></>}
           </div>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-2)" }}>
-            <button type="button" onClick={onClose} style={{ border: "1px solid var(--border-base)", borderRadius: "var(--radius-sm)", background: "transparent", color: "var(--fg-base)", padding: "8px 12px", cursor: "pointer", fontSize: "var(--text-xs)" }}>Cancel</button>
-            <button type="button" disabled={!preview || isLoading} onClick={() => preview && onSendLive(preview)} style={{ border: "1px solid var(--color-primary)", borderRadius: "var(--radius-sm)", background: preview && !isLoading ? "var(--color-primary)" : "var(--bg-elevated)", color: preview && !isLoading ? "#fff" : "var(--fg-subtle)", padding: "8px 12px", cursor: preview && !isLoading ? "pointer" : "not-allowed", fontSize: "var(--text-xs)", fontWeight: 700 }}>Send Corrected Verse Live</button>
+            <button type="button" className="ss-reference-editor-cancel" onClick={onClose} style={{ border: "none", borderRadius: "var(--radius-sm)", padding: "8px 12px", cursor: "pointer", fontSize: "var(--text-xs)" }}>Cancel</button>
+            <button type="button" disabled={!preview || isLoading} onClick={() => preview && onSendLive(preview)} style={{ border: "none", borderRadius: "var(--radius-sm)", background: preview && !isLoading ? "var(--color-primary)" : "var(--bg-elevated)", color: preview && !isLoading ? "#fff" : "var(--fg-subtle)", padding: "8px 12px", cursor: preview && !isLoading ? "pointer" : "not-allowed", fontSize: "var(--text-xs)", fontWeight: 700 }}>Send Corrected Verse Live</button>
           </div>
         </div>
       </section>

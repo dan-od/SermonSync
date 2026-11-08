@@ -14,6 +14,7 @@ import { AccordionGroup, BibleItem } from "./AccordionGroup";
 import { AddScriptureModal } from "./AddScriptureModal";
 
 export function ScripturesTab({
+  isActive,
   previewReference,
   liveReference,
   onPreviewSlide,
@@ -506,9 +507,10 @@ export function ScripturesTab({
   );
 
   useEffect(() => {
+    if (isActive === false) return;
     onNavigationHandlerChange?.(navigateVerses);
     return () => onNavigationHandlerChange?.(null);
-  }, [navigateVerses, onNavigationHandlerChange]);
+  }, [isActive, navigateVerses, onNavigationHandlerChange]);
 
   return (
     <div

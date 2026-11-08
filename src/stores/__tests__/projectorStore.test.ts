@@ -25,6 +25,16 @@ describe("projectorStore", () => {
     expect(state.isLive).toBe(true);
   });
 
+  it("reveals an explicitly sent suggestion above an active feed override", () => {
+    const store = useProjectorStore.getState();
+    const slide = { reference: { book: "John", chapter: 3, verse: 16 }, text: "Verse", version: "KJV" };
+    store.setFeedOverride("black");
+
+    store.sendLive(slide, true);
+
+    expect(useProjectorStore.getState()).toMatchObject({ liveSlide: slide, feedOverride: "live", isLive: true });
+  });
+
   it("starts live audio immediately without looping by default", () => {
     useProjectorStore.getState().sendLiveMedia({
       path: "/media/choir.mp3",

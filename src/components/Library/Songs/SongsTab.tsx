@@ -4,6 +4,8 @@ import { type Song, type SongSlide, useSongStore } from "../../../stores/songSto
 import type { ProjectorSlide } from "../../../types/state";
 import { NewSongModal } from "../../Songs/NewSongModal";
 import { SongStudioModal } from "../../Songs/SongStudioModal";
+import { SongSearchModal } from "../../Songs/SongSearchModal";
+import { parseImportedSongText, type SongSearchResult } from "../../Songs/songSearch";
 import type { SearchableLibraryTabProps } from "../types";
 import { addSongButtonStyle, deleteSongButton, renameSecondaryButton, slideActionButtonStyle, songContextMenuItemStyle } from "../styles";
 import { PaneEmpty } from "../shared";
@@ -17,7 +19,7 @@ export interface SongContextMenuState {
   y: number;
 }
 
-export function SongsTab({ previewReference, liveReference, onPreviewSlide, onSendLive, onCreateCue, searchQuery, onNavigationHandlerChange, onSelectedSongChange }: SearchableLibraryTabProps) {
+export function SongsTab({ isActive, previewReference, liveReference, onPreviewSlide, onSendLive, onCreateCue, searchQuery, onNavigationHandlerChange, onSelectedSongChange }: SearchableLibraryTabProps) {
   const songs = useSongStore((s) => s.songs);
   const initializeSongs = useSongStore((s) => s.initialize);
   const deleteSong = useSongStore((s) => s.deleteSong);
@@ -32,6 +34,13 @@ export function SongsTab({ previewReference, liveReference, onPreviewSlide, onSe
   const [isNewSongModalOpen, setIsNewSongModalOpen] = useState(false);
   const [studioSong, setStudioSong] = useState<Song | null>(null);
   const [isStudioOpen, setIsStudioOpen] = useState(false);
+  const [isSongSearchOpen, setIsSongSearchOpen] = useState(false);
+  const [songSearchQuery, setSongSearchQuery] = useState("");
+  const [songSearchArtist, setSongSearchArtist] = useState("");
+  const [songSearchSession, setSongSearchSession] = useState(0);
+  const [isSearchDraft, setIsSearchDraft] = useState(false);
+  const [isStudioDirty, setIsStudioDirty] = useState(false);
+  const createSong = useSongStore((s) => s.createSong);
   const [contextMenu, setContextMenu] = useState<SongContextMenuState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Song | null>(null);
   const [renameTarget, setRenameTarget] = useState<Song | null>(null);
@@ -153,9 +162,10 @@ export function SongsTab({ previewReference, liveReference, onPreviewSlide, onSe
   );
 
   useEffect(() => {
+    if (isActive === false) return;
     onNavigationHandlerChange?.(navigateSongSlides);
     return () => onNavigationHandlerChange?.(null);
-  }, [navigateSongSlides, onNavigationHandlerChange]);
+  }, [isActive, navigateSongSlides, onNavigationHandlerChange]);
 
   const handleSongKeyDownCapture = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
@@ -732,6 +742,41 @@ export function SongsTab({ previewReference, liveReference, onPreviewSlide, onSe
         onSongCreated={(newSong) => {
           setIsNewSongModalOpen(false);
           setStudioSong(newSong);
+          setIsSearchDraft(false);
+          setIsStudioDirty(false);
+          setIsStudioOpen(true);
+        }}
+        onSearch={(query, artist) => {
+          setSongSearchQuery(query);
+          setSongSearchArtist(artist);
+          setSongSearchSession((session) => session + 1);
+          setIsNewSongModalOpen(false);
+          setIsSongSearchOpen(true);
+        }}
+      />
+
+      <SongSearchModal
+        key={songSearchSession}
+        open={isSongSearchOpen}
+        query={songSearchQuery}
+        artist={songSearchArtist}
+        session={songSearchSession}
+        onClose={() => setIsSongSearchOpen(false)}
+        onSelect={(result: SongSearchResult) => {
+          if (isStudioDirty && !window.confirm("Replace this draft? Your unsaved edits will be lost.")) return;
+          const slides = parseImportedSongText(result.text ?? "", result.contentType);
+          const draft = createSong({
+            title: result.title || songSearchQuery,
+            artist: result.artist || songSearchArtist || "Unknown Artist",
+            slides,
+            sourceName: result.sourceName,
+            sourceUrl: result.sourceUrl,
+            sourceProvider: result.provider,
+          });
+          setStudioSong(draft);
+          setIsSearchDraft(true);
+          setIsStudioDirty(false);
+          setIsSongSearchOpen(false);
           setIsStudioOpen(true);
         }}
       />
@@ -741,9 +786,16 @@ export function SongsTab({ previewReference, liveReference, onPreviewSlide, onSe
         open={isStudioOpen}
         song={studioSong}
         onCreateCue={onCreateCue}
+        onDirtyChange={setIsStudioDirty}
+        onBackToResults={isSearchDraft ? () => {
+          setIsStudioOpen(false);
+          setIsSongSearchOpen(true);
+        } : undefined}
         onClose={() => {
           setIsStudioOpen(false);
           setStudioSong(null);
+          setIsSearchDraft(false);
+          setIsStudioDirty(false);
         }}
       />
     </div>

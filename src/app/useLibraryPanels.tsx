@@ -1,4 +1,4 @@
-import { Suspense, type Dispatch, type RefObject, type SetStateAction } from "react";
+import { Suspense, useCallback, type Dispatch, type RefObject, type SetStateAction } from "react";
 import type { LibraryNavigationHandler, LibraryTab, ScriptureSearchMode } from "../components/Library/types";
 import { useProjectorStore } from "../stores";
 import { type Song } from "../stores/songStore";
@@ -9,10 +9,13 @@ import { LocalLibrarySearch } from "./LocalLibrarySearch";
 import { LocalLibraryPanel } from "./lazyPanels";
 import { useLibrarySchedule } from "./useLibrarySchedule";
 
+type LibrarySearchQueries = Record<LibraryTab, string>;
+
 export function useLibraryPanels({
   libraryTab,
   setLibraryTab,
   librarySearchQuery,
+  librarySearchQueries,
   setLibrarySearchQuery,
   librarySearchMode,
   setLibrarySearchMode,
@@ -28,6 +31,7 @@ export function useLibraryPanels({
   libraryTab: LibraryTab;
   setLibraryTab: (tab: LibraryTab) => void;
   librarySearchQuery: string;
+  librarySearchQueries: LibrarySearchQueries;
   setLibrarySearchQuery: Dispatch<SetStateAction<string>>;
   librarySearchMode: ScriptureSearchMode;
   setLibrarySearchMode: (mode: ScriptureSearchMode) => void;
@@ -46,6 +50,9 @@ export function useLibraryPanels({
   const setPreviewMedia = useProjectorStore((s) => s.setPreviewMedia);
   const sendLiveSlide = useProjectorStore((s) => s.sendLive);
   const sendLiveMedia = useProjectorStore((s) => s.sendLiveMedia);
+  const handleNavigationHandlerChange = useCallback((handler: LibraryNavigationHandler | null) => {
+    libraryNavigationRef.current = handler;
+  }, [libraryNavigationRef]);
 
   const {
     librarySchedule,
@@ -77,6 +84,7 @@ export function useLibraryPanels({
         liveMedia={liveMedia}
         activeTab={libraryTab}
         searchQuery={librarySearchQuery}
+        searchQueries={librarySearchQueries}
         searchMode={librarySearchMode}
         onActiveTabChange={setLibraryTab}
         onPreviewSlide={setPreviewSlide}
@@ -86,9 +94,7 @@ export function useLibraryPanels({
         onSelectedScriptureChange={setSelectedScripture}
         onSelectedSongChange={setSelectedLibrarySong}
         onCreateCue={addCueToSchedule}
-        onNavigationHandlerChange={(handler) => {
-          libraryNavigationRef.current = handler;
-        }}
+        onNavigationHandlerChange={handleNavigationHandlerChange}
       />
     </Suspense>
   );
@@ -98,7 +104,10 @@ export function useLibraryPanels({
       activeTab={libraryTab}
       searchQuery={librarySearchQuery}
       selectedSong={selectedLibrarySong}
-      onSearchQueryChange={(value) => { setSelectedScripture(null); setLibrarySearchQuery(value); }}
+      onSearchQueryChange={(value) => {
+        if (libraryTab === "scriptures") setSelectedScripture(null);
+        setLibrarySearchQuery(value);
+      }}
       searchMode={librarySearchMode}
       onSearchModeChange={setLibrarySearchMode}
       scheduledItems={librarySchedule}

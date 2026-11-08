@@ -82,6 +82,7 @@ export interface SettingsPanelProps {
   audioError: string | null;
   vadSensitivity: number;
   onAudioDeviceChange: (name: string) => void;
+  onAudioDevicesRefresh: () => Promise<void>;
   onAudioChannelChange: (channel: number) => void;
   onVadSensitivityChange: (value: number) => void;
 }
@@ -102,6 +103,7 @@ export function SettingsPanel({
   audioError,
   vadSensitivity,
   onAudioDeviceChange,
+  onAudioDevicesRefresh,
   onAudioChannelChange,
   onVadSensitivityChange,
 }: SettingsPanelProps) {
@@ -364,6 +366,7 @@ export function SettingsPanel({
                 audioError={audioError}
                 vadSensitivity={vadSensitivity}
                 onAudioDeviceChange={onAudioDeviceChange}
+                onAudioDevicesRefresh={onAudioDevicesRefresh}
                 onAudioChannelChange={onAudioChannelChange}
                 onVadSensitivityChange={onVadSensitivityChange}
               /></div> : null}

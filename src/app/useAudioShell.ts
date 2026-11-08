@@ -1,7 +1,7 @@
 import { type BranchAccount } from "../components/Auth/types";
 import { useAudioStore } from "../stores";
 import { type SessionStatus } from "../types/state";
-import { useAudioDeviceHandlers } from "./useAudioDeviceHandlers";
+import { createAudioDeviceHandlers } from "./useAudioDeviceHandlers";
 import { useAudioPipeline } from "./useAudioPipeline";
 
 export function useAudioShell(authenticatedBranch: BranchAccount | null, sessionStatus: SessionStatus) {
@@ -17,7 +17,7 @@ export function useAudioShell(authenticatedBranch: BranchAccount | null, session
 
   const selectCaptureDevice = useAudioPipeline(authenticatedBranch, inputDevice, sessionStatus);
 
-  const { handleAudioDeviceChange, handleAudioChannelChange } = useAudioDeviceHandlers({ inputDevice, setAudioDevice, setAudioChannel, selectCaptureDevice });
+  const { handleAudioDeviceScan, handleAudioDeviceChange, handleAudioChannelChange } = createAudioDeviceHandlers({ inputDevice, setAudioDevice, setAudioChannel, selectCaptureDevice });
 
   return {
     inputDevice,
@@ -27,6 +27,7 @@ export function useAudioShell(authenticatedBranch: BranchAccount | null, session
     availableDevices,
     vadSensitivity,
     setAudioSensitivity,
+    handleAudioDeviceScan,
     handleAudioDeviceChange,
     handleAudioChannelChange,
   };

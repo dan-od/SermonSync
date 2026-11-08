@@ -44,12 +44,12 @@ export function useSuggestionHandlers(setWorkspaceTab: (tab: "suggestions") => v
 
   const sendLiveCard = (card: SuggestionCard) => {
     const slide = toSlide(card);
-    sendLiveSlide(slide);
+    sendLiveSlide(slide, true);
     updateCardStatus(card.id, "sent");
   };
 
   const sendEditedCardLive = (card: SuggestionCard, slide: ProjectorSlide) => {
-    sendLiveSlide(slide);
+    sendLiveSlide(slide, true);
     updateCardStatus(card.id, "edited");
   };
 

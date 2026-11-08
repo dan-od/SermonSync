@@ -11,6 +11,7 @@ export type ScriptureSearchMode = "words" | "reference";
 export type TemplateFilter = "scriptures" | "songs";
 
 export interface SearchableLibraryTabProps {
+  isActive?: boolean;
   previewReference: string | null;
   liveReference: string | null;
   onPreviewSlide: (slide: ProjectorSlide) => void;
@@ -72,6 +73,7 @@ export interface LocalLibraryPanelProps {
   liveMedia?: ProjectorMedia | null;
   activeTab: LibraryTab;
   searchQuery: string;
+  searchQueries?: Partial<Record<LibraryTab, string>>;
   searchMode: ScriptureSearchMode;
   onActiveTabChange: (tab: LibraryTab) => void;
   onPreviewSlide: (slide: ProjectorSlide) => void;

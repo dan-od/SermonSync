@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 
 import { useConfigStore } from "../../../stores/configStore";
 import type { ModelProviderId } from "../../../types/state";
@@ -31,17 +32,19 @@ export function IntelligenceTab({ panelState, onPanelChange }: IntelligenceTabPr
   const [testStatus, setTestStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [groqDraft, setGroqDraft] = useState("");
   const [providerDrafts, setProviderDrafts] = useState({ openai: "", anthropic: "", gemini: "" });
+  const [songSearchDrafts, setSongSearchDrafts] = useState({ brave: "", musixmatch: "" });
   const [isLoadingKeys, setIsLoadingKeys] = useState(true);
   const [isSavingKeys, setIsSavingKeys] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([loadProviderKey("groq"), loadProviderKey("openai"), loadProviderKey("anthropic"), loadProviderKey("gemini")]).then(
-      ([groq, openai, anthropic, gemini]) => {
+    Promise.all([loadProviderKey("groq"), loadProviderKey("openai"), loadProviderKey("anthropic"), loadProviderKey("gemini"), invoke<string | null>("load_provider_key", { provider: "brave" }).catch(() => null), invoke<string | null>("load_provider_key", { provider: "musixmatch" }).catch(() => null)]).then(
+      ([groq, openai, anthropic, gemini, brave, musixmatch]) => {
         if (cancelled) return;
         setGroqDraft(groq ?? "");
         setProviderDrafts({ openai: openai ?? "", anthropic: anthropic ?? "", gemini: gemini ?? "" });
+        setSongSearchDrafts({ brave: brave ?? "", musixmatch: musixmatch ?? "" });
         setIsLoadingKeys(false);
       },
     );
@@ -63,6 +66,8 @@ export function IntelligenceTab({ panelState, onPanelChange }: IntelligenceTabPr
       await setModelProviderKey("openai", providerDrafts.openai || null);
       await setModelProviderKey("anthropic", providerDrafts.anthropic || null);
       await setModelProviderKey("gemini", providerDrafts.gemini || null);
+      await invoke("save_provider_key", { provider: "brave", apiKey: songSearchDrafts.brave || "" });
+      await invoke("save_provider_key", { provider: "musixmatch", apiKey: songSearchDrafts.musixmatch || "" });
       setSaveMessage("API keys saved securely on this device.");
     } catch (saveError) {
       setSaveMessage(saveError instanceof Error ? saveError.message : "Could not save API keys securely.");
@@ -183,6 +188,11 @@ export function IntelligenceTab({ panelState, onPanelChange }: IntelligenceTabPr
           onChange={(value) => setProviderDrafts((current) => ({ ...current, gemini: value }))}
           placeholder="AIzaSyxxxxxxxxxxxxxxxxxxxxxxxx"
         />
+      </SettingsCard>
+
+      <SettingsCard icon={<IconSparkles />} title="Song Search Sources" subtitle="Optional keys enable Brave web results and licensed Musixmatch lyric results. Keys are stored in the operating system keychain.">
+        <TextRow label="Brave Search API Key" secret value={songSearchDrafts.brave} onChange={(brave) => setSongSearchDrafts((current) => ({ ...current, brave }))} placeholder="Brave Search subscription token" hint="Brave results include titles, links, and snippets; lyric text is not imported from web pages." />
+        <TextRow label="Musixmatch API Key" secret value={songSearchDrafts.musixmatch} onChange={(musixmatch) => setSongSearchDrafts((current) => ({ ...current, musixmatch }))} placeholder="Musixmatch API key" hint="Lyrics are imported only when returned by your licensed API plan. Hymnary discovery and Quick lyrics remain available without keys." />
       </SettingsCard>
 
       <SettingsCard icon={<IconSparkles />} title="Default Model Provider" subtitle="Shown live in the status bar once a key is set">

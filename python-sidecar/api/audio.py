@@ -29,6 +29,11 @@ def get_devices(refresh: bool = False) -> dict:
     """List available input devices with metadata."""
     if not devices.backend_available():
         raise HTTPException(status_code=503, detail="audio backend unavailable")
+    if refresh and capture_manager.is_capturing:
+        raise HTTPException(
+            status_code=409,
+            detail="pause audio capture before scanning for input devices",
+        )
     try:
         found = devices.list_input_devices(refresh=refresh)
     except devices.AudioBackendError as exc:

@@ -170,7 +170,7 @@ export function renderTemplateLayer(layer: TemplateLayer, text: string, isThumbn
   };
   const content = <span style={contentStyle} dangerouslySetInnerHTML={{ __html: text }} />;
   if (layer.autoFit === "grow" || layer.autoFit === "shrink") {
-    return <AutoFitTemplateText layer={layer} text={text} />;
+    return <AutoFitTemplateText layer={layer} text={text} isThumbnail={isThumbnail} />;
   }
   return <div style={textLayerStyle(layer)}>{content}</div>;
 }

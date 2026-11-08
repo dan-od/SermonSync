@@ -28,7 +28,7 @@ export const DEFAULT_LOGO: LogoConfig = {
 
 interface ProjectorStore extends ProjectorState {
   setPreview: (slide: ProjectorSlide | null) => void;
-  sendLive: (slide: ProjectorSlide) => void;
+  sendLive: (slide: ProjectorSlide, reveal?: boolean) => void;
   setPreviewMedia: (media: ProjectorMedia | null) => void;
   sendLiveMedia: (media: ProjectorMedia) => void;
   setLiveAudioWaveform: (path: string, peaks: number[], duration: number, error: string | null, minPeaks?: number[], maxPeaks?: number[]) => void;
@@ -102,9 +102,10 @@ export const useProjectorStore = create<ProjectorStore>((set) => ({
   setPreview: (previewSlide) => set({ previewSlide, previewMedia: null }),
 
   // TODO(Dee): render `slide` to the projector window and mark it live.
-  sendLive: (currentSlide) =>
+  sendLive: (currentSlide, reveal = false) =>
     set((state) => ({
       currentSlide, liveSlide: currentSlide, currentMedia: null, liveMedia: null, isLive: true,
+      feedOverride: reveal ? "live" : state.feedOverride,
       livePlayback: { ...state.livePlayback, playing: true, seekTime: null },
     })),
 

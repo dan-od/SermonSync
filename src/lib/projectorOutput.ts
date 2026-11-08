@@ -45,6 +45,8 @@ let outputOperation: Promise<void> = Promise.resolve();
 let outputReadySignal = 0;
 let outputReadyWaiters: Array<{ signal: number; resolve: () => void; reject: (error: Error) => void; timeout: number }> = [];
 let outputBridgeActive = false;
+let unlistenOutputClose: (() => void) | null = null;
+let outputCloseListenerId = 0;
 
 function makeSnapshot(): ProjectorOutputSnapshot {
   const state = useProjectorStore.getState();
@@ -258,6 +260,22 @@ async function getOutputWindow() {
   return WebviewWindow.getByLabel(PROJECTOR_OUTPUT_LABEL);
 }
 
+async function watchOutputWindowClose(outputWindow: WebviewWindow) {
+  unlistenOutputClose?.();
+  unlistenOutputClose = null;
+  const listenerId = ++outputCloseListenerId;
+  const unlisten = await outputWindow.onCloseRequested(() => {
+    if (listenerId !== outputCloseListenerId) return;
+    outputCloseListenerId += 1;
+    unlistenOutputClose?.();
+    unlistenOutputClose = null;
+    lastAppliedDisplayFingerprint = null;
+    useProjectorStore.getState().setOutputStatus("closed");
+  });
+  if (listenerId === outputCloseListenerId) unlistenOutputClose = unlisten;
+  else unlisten();
+}
+
 function displayFingerprint(display: DisplayInfo) {
   return `${display.id}:${display.x}:${display.y}:${display.width}:${display.height}:${display.scaleFactor}`;
 }
@@ -324,10 +342,13 @@ async function performOpenProjectorOutput(display: DisplayInfo | null): Promise<
       });
     }
 
+    await watchOutputWindowClose(outputWindow);
+    const closeListenerId = outputCloseListenerId;
+
     if (lastAppliedDisplayFingerprint === fingerprint && wasConnected) {
       await publishProjectorSnapshot();
       await outputWindow.show();
-      store.setOutputStatus("connected");
+      if (closeListenerId === outputCloseListenerId) store.setOutputStatus("connected");
       return;
     }
 
@@ -335,11 +356,12 @@ async function performOpenProjectorOutput(display: DisplayInfo | null): Promise<
     if (created && outputBridgeActive) await waitForProjectorOutputReady(readySignal);
     await publishProjectorSnapshot();
     await outputWindow.show();
+    if (closeListenerId !== outputCloseListenerId) return;
     lastAppliedDisplayFingerprint = fingerprint;
     store.setOutputStatus("connected");
   } catch (error) {
     lastAppliedDisplayFingerprint = null;
-    store.setOutputStatus("error");
+    if (useProjectorStore.getState().outputStatus !== "closed") store.setOutputStatus("error");
     throw error;
   }
 }
@@ -366,6 +388,9 @@ export function closeProjectorOutput(): Promise<void> {
   return enqueueOutputOperation(async () => {
     const outputWindow = await getOutputWindow();
     if (outputWindow) await outputWindow.close().catch(() => undefined);
+    unlistenOutputClose?.();
+    unlistenOutputClose = null;
+    outputCloseListenerId += 1;
     lastAppliedDisplayFingerprint = null;
     useProjectorStore.getState().setOutputStatus("closed");
   });

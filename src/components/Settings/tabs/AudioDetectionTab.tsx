@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { IconMic } from "../icons";
 import { InfoBanner, RadioCardGroup, SectionIntro, SelectRow, SettingsCard, SliderRow } from "../primitives";
 import { computeAudioAmplitude } from "../../../lib/audioLevel";
@@ -18,6 +18,7 @@ interface AudioDetectionTabProps {
   audioError: string | null;
   vadSensitivity: number;
   onAudioDeviceChange: (name: string) => void;
+  onAudioDevicesRefresh: () => Promise<void>;
   onAudioChannelChange: (channel: number) => void;
   onVadSensitivityChange: (value: number) => void;
 }
@@ -63,6 +64,7 @@ export function AudioDetectionTab({
   audioError,
   vadSensitivity,
   onAudioDeviceChange,
+  onAudioDevicesRefresh,
   onAudioChannelChange,
   onVadSensitivityChange,
 }: AudioDetectionTabProps) {
@@ -70,6 +72,21 @@ export function AudioDetectionTab({
   const levelPeak = useAudioStore((state) => state.levelPeak);
   const levelPercent = Math.round(computeAudioAmplitude(levelRms, levelPeak) * 100);
   const isMicMuted = useMicMuteDetection(audioStatus === "capturing", levelRms, levelPeak);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+
+  const scanAudioDevices = async () => {
+    if (isScanning) return;
+    setIsScanning(true);
+    setScanError(null);
+    try {
+      await onAudioDevicesRefresh();
+    } catch (error) {
+      setScanError(error instanceof Error ? error.message : "Could not scan audio input devices.");
+    } finally {
+      setIsScanning(false);
+    }
+  };
 
   const handleWhisperModelChange = useCallback(
     (value: WhisperModel) => {
@@ -106,11 +123,27 @@ export function AudioDetectionTab({
           value={selectedDevice?.name ?? panelState.audioInputDeviceId}
           options={audioDevices.map((device) => ({ value: device.name, label: `${device.name} (${device.defaultSampleRate} Hz)` }))}
           onChange={(value) => {
+            if (!value || isScanning) return;
             onPanelChange("audioInputDeviceId", value);
             onAudioDeviceChange(value);
           }}
           hint="Minimum viable setup: laptop's built-in mic pointed at the speaker. Best: direct feed from mixing board."
         />
+        <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+          <button
+            type="button"
+            onClick={() => void scanAudioDevices()}
+            disabled={isScanning || audioStatus === "capturing"}
+            style={{ border: "none", borderRadius: "var(--radius-md)", padding: "8px 10px", background: "var(--bg-elevated)", color: "var(--fg-base)", cursor: isScanning || audioStatus === "capturing" ? "not-allowed" : "pointer", fontSize: "11px", opacity: isScanning || audioStatus === "capturing" ? 0.6 : 1 }}
+          >
+            {isScanning ? "Scanning…" : "Scan for audio input devices"}
+          </button>
+          <span role="status" style={{ color: "var(--fg-subtle)", fontSize: "11px" }}>
+            {audioDevices.length} input device{audioDevices.length === 1 ? "" : "s"} found
+          </span>
+        </div>
+        {scanError ? <InfoBanner tone="warning">{scanError}</InfoBanner> : null}
+        {audioStatus === "capturing" ? <InfoBanner tone="warning">Pause the session before scanning so the live input is not interrupted.</InfoBanner> : null}
         <SelectRow
           label="Input Channel"
           value={String(inputChannel)}

@@ -4,7 +4,7 @@ import { textLayerStyle } from "./slideUtils";
 
 const autoFitSizeCache = new WeakMap<Extract<TemplateLayer, { type: "text" }>, Map<string, number>>();
 
-export function AutoFitTemplateText({ layer, text }: { layer: Extract<TemplateLayer, { type: "text" }>; text: string }) {
+export function AutoFitTemplateText({ layer, text, isThumbnail = false }: { layer: Extract<TemplateLayer, { type: "text" }>; text: string; isThumbnail?: boolean }) {
   const textRef = useRef<HTMLDivElement>(null);
   const [fontSize, setFontSize] = useState(layer.fontSize);
   const [boxSize, setBoxSize] = useState({ width: 0, height: 0 });
@@ -143,7 +143,7 @@ export function AutoFitTemplateText({ layer, text }: { layer: Extract<TemplateLa
     backgroundColor: layer.lineBackgroundColor || "transparent",
     boxDecorationBreak: "clone",
     WebkitBoxDecorationBreak: "clone",
-    animation: layer.scrollDuration && layer.scrollDuration > 0 ? `templateTextScroll ${layer.scrollDuration}s linear infinite` : "none",
+    animation: !isThumbnail && layer.scrollDuration && layer.scrollDuration > 0 ? `templateTextScroll ${layer.scrollDuration}s linear infinite` : "none",
     ...({ "--template-scroll-gap": `${layer.scrollGap ?? 100}px` } as CSSProperties),
   };
 

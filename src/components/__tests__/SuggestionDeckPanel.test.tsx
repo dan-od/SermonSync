@@ -52,4 +52,44 @@ describe("SuggestionDeckPanel", () => {
 
     expect(container.querySelectorAll(".ss-suggestion-scroll-pane > article")).toHaveLength(20);
   });
+
+  it("routes card, pin, send, and dismiss clicks to their actions", async () => {
+    const card: SuggestionCard = {
+      id: "john-3-16",
+      reference: { book: "John", chapter: 3, verse: 16 },
+      text: "For God so loved the world",
+      confidence: 0.82,
+      pipelineStage: 2,
+      status: "pending",
+      version: "KJV",
+      themes: [],
+    };
+    const onPreview = vi.fn();
+    const onSendLive = vi.fn();
+    const onTogglePin = vi.fn();
+    const onDismiss = vi.fn();
+
+    await act(async () => root.render(
+      <SuggestionDeckPanel
+        cards={[card]}
+        previewReference={null}
+        onPreview={onPreview}
+        onSendLive={onSendLive}
+        onSendEditedLive={vi.fn()}
+        onTogglePin={onTogglePin}
+        onDismiss={onDismiss}
+        onClearAll={vi.fn()}
+      />,
+    ));
+
+    act(() => container.querySelector<HTMLElement>(".ss-suggestion-scroll-pane > article")?.click());
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Pin John 3:16"]')?.click());
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Send John 3:16 live"]')?.click());
+    act(() => container.querySelector<HTMLButtonElement>('[aria-label="Dismiss John 3:16"]')?.click());
+
+    expect(onPreview).toHaveBeenCalledTimes(1);
+    expect(onTogglePin).toHaveBeenCalledWith(card);
+    expect(onSendLive).toHaveBeenCalledWith(card);
+    expect(onDismiss).toHaveBeenCalledWith(card.id);
+  });
 });
