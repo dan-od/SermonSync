@@ -20,6 +20,22 @@ from .buffer import transcript_buffer
 
 logger = logging.getLogger("sermonsync.transcription.streaming")
 STALE_BUFFER_SECONDS = 3.0
+
+
+def _hangover_seconds() -> float:
+    """How long the VAD keeps calling it speech after the last loud frame.
+
+    SS-078: those frames are still forwarded, so `_last_feed_ts` keeps moving
+    for the whole hangover and the silence timer only starts once it expires.
+    The real end of speech is that much earlier than the last fed frame, and
+    the latency budget has to say so. Read, never changed, from the detector.
+    """
+    try:
+        from ..audio import vad
+
+        return max(0.0, float(vad.get_detector().hangover_ms) / 1000.0)
+    except Exception:  # a detector without a hangover, or none built yet
+        return 0.0
 # Interim-pass modes: re-run the main model (default), skip interim passes, or
 # run them on a small model so they stop competing with finals for compute.
 PARTIAL_MODES = ("main", "off", "tiny.en", "base.en")
@@ -272,6 +288,39 @@ class StreamingTranscriber:
             return {}
         return {"hotwords": text} if self.prompt_as_hotwords else {"prompt": text}
 
+    def _cut_timing(
+        self, reason: str, nbytes: int, cut_ts: float, last_feed_ts: float | None
+    ) -> dict:
+        """SS-078: where the time before inference went, for one cut.
+
+        `speech_end_ago_ms` is how long before the cut the speaker actually
+        stopped — the silence the cut waited out, plus the VAD hangover in
+        front of it, which is spent while frames are still being forwarded.
+
+        `waited_ms` is the part of that which was *not* the designed wait: the
+        cut was due and the loop was busy elsewhere (an interim pass, a final
+        still running). It is derived rather than clocked, because the loop
+        cannot timestamp a moment it was blocked through:
+          - a pause cut was due at `last_feed_ts + silence_flush_seconds`;
+          - a ceiling cut was due when the buffer first reached the ceiling,
+            and the excess over it arrived in real time, so the overshoot in
+            seconds is the delay in seconds. True for a live or 1.0x feed.
+        """
+        buffered = nbytes / (self.sample_rate * 2)
+        if reason == "ceiling":
+            ready_ts = cut_ts - max(0.0, buffered - self.max_chunk_seconds)
+        elif last_feed_ts is not None:
+            ready_ts = last_feed_ts + self.silence_flush_seconds
+        else:
+            ready_ts = cut_ts
+        silence_ms = ((cut_ts - last_feed_ts) * 1000) if last_feed_ts is not None else 0.0
+        return {
+            "cut_ts": round(cut_ts, 6),
+            "buffered": round(buffered, 3),
+            "waited_ms": round(max(0.0, (cut_ts - ready_ts) * 1000), 1),
+            "speech_end_ago_ms": round(max(0.0, silence_ms) + _hangover_seconds() * 1000, 1),
+        }
+
     def _cut_reason(self) -> str:
         """Why the buffer is being cut: the ceiling, or a speaker pause."""
         return "ceiling" if self._buffered_seconds() >= self.max_chunk_seconds else "pause"
@@ -324,20 +373,26 @@ class StreamingTranscriber:
                 # interval on a cut that was already due.
                 if self._ready_to_infer():
                     reason = self._cut_reason()
+                    # Captured before the buffer is cleared: the timing fields
+                    # below are derived from how full it was at the cut.
+                    cut_ts = time.time()
+                    last_feed_ts = self._last_feed_ts
                     chunk = bytes(self._buf)
                     start = self._buf_offset
                     self._buf.clear()
                     self._buf_offset = self._fed_bytes
                     self._chunk_seq += 1
-                    tap.emit(
-                        "chunk", seq=self._chunk_seq, reason=reason,
-                        byte_start=start, byte_end=start + len(chunk),
-                        duration=round(len(chunk) / (self.sample_rate * 2), 3),
-                    )
+                    if tap.active():
+                        tap.emit(
+                            "chunk", seq=self._chunk_seq, reason=reason,
+                            byte_start=start, byte_end=start + len(chunk),
+                            duration=round(len(chunk) / (self.sample_rate * 2), 3),
+                            **self._cut_timing(reason, len(chunk), cut_ts, last_feed_ts),
+                        )
                     received_ts = self._first_chunk_ts or time.time()
                     self._first_chunk_ts = None
                     self._last_partial_ts = time.time()
-                    await self._infer_and_emit(chunk, received_ts, self._chunk_seq)
+                    await self._infer_and_emit(chunk, received_ts, self._chunk_seq, cut_ts)
                     continue
                 self._expire_stale_buffer()
                 if self._ready_for_partial():
@@ -355,6 +410,7 @@ class StreamingTranscriber:
         """Broadcast an interim hypothesis (is_final=False). Never assembled
         into sentences and never matched — it will be revised."""
         epoch = self._epoch
+        speech_start = self._first_chunk_ts
         infer_start = time.time()
         try:
             # Loading a small partial model can take seconds: never on the loop.
@@ -380,6 +436,11 @@ class StreamingTranscriber:
         tap.emit(
             "partial", text=text, infer_ms=round((time.time() - infer_start) * 1000, 1),
             duration=round(len(pcm) / (self.sample_rate * 2), 3),
+            # SS-078: how long after this utterance's first audio the interim
+            # became visible — the "first words on screen" number.
+            since_speech_start_ms=(
+                round((time.time() - speech_start) * 1000, 1) if speech_start else None
+            ),
             **({"discarded": "reset"} if stale else {}),
         )
         if not text or stale:
@@ -397,7 +458,9 @@ class StreamingTranscriber:
             }
         )
 
-    async def _infer_and_emit(self, pcm: bytes, received_ts: float, seq: int = 0) -> None:
+    async def _infer_and_emit(
+        self, pcm: bytes, received_ts: float, seq: int = 0, cut_ts: float | None = None
+    ) -> None:
         epoch = self._epoch
         audio = pcm16_to_float(pcm)
         infer_start = time.time()
@@ -425,9 +488,17 @@ class StreamingTranscriber:
                     logger.info("dropped likely hallucination (%s): %r", reason, seg["text"])
         stale = epoch != self._epoch
         if tap.active():
+            temps = [s.get("temperature") for s in segments if s.get("temperature") is not None]
             tap.emit(
                 "inference", seq=seq, infer_ms=round((emit_ts - infer_start) * 1000, 1),
                 latency_ms=latency_ms, duration=round(len(audio) / self.sample_rate, 3),
+                # SS-078: the gap between the cut and inference actually
+                # starting, and how far up the temperature ladder the decode
+                # had to climb — each retry is another full pass on the clock.
+                cut_to_infer_ms=(
+                    round((infer_start - cut_ts) * 1000, 1) if cut_ts is not None else None
+                ),
+                temps_used=(max(temps) if temps else None),
                 **({"discarded": "reset"} if stale else {}),
                 segments=[
                     {k: seg.get(k) for k in (

@@ -32,7 +32,7 @@ from .detection_scoring import (
     expected_played,
     predictions,
 )
-from .intervals import _median, _p90, _pct, clip, intersect, merge, pad, subtract, total
+from .intervals import _median, _p90, _pct, _q, clip, intersect, merge, pad, subtract, total
 from .run_data import Final, Run, event_intervals, load_run, state_intervals
 from .vad_scoring import score_vad
 from .wer import (
@@ -173,6 +173,8 @@ def score_run(run: Run) -> tuple[dict, dict]:
         "speech_end_to_final_s_median": _median(tail),
         "speech_end_to_final_s_p90": _p90(tail),
     }
+    # SS-078: the wall-clock budget from speech to screen, stage by stage.
+    metrics["ss078_latency"] = latency_breakdown(run)
     metrics["compute"] = {
         "final_inference_s": round(final_s, 1),
         "partial_inference_s": round(partial_s, 1),
@@ -253,6 +255,83 @@ def headline(m: dict) -> dict:
 # ---------------------------------------------------------------------------
 # Report
 # ---------------------------------------------------------------------------
+
+
+
+def latency_breakdown(run) -> dict:
+    """SS-078: where the wall-clock time goes between speech and screen.
+
+    Everything here is measured in `rt` (wall seconds since the run started),
+    not source position, because the question is what the operator waits
+    through. Each stage is reported as p50/p95 so a long tail cannot hide
+    behind a good median.
+    """
+    events = run.events
+    chunks = {e["seq"]: e for e in events if e["type"] == "chunk" and "seq" in e}
+    infers = [e for e in events if e["type"] == "inference" and not e.get("discarded")]
+
+    speech_to_final, cut_to_infer, waited, infer_ms, rtf, temps = [], [], [], [], [], []
+    for e in infers:
+        chunk = chunks.get(e.get("seq"))
+        if chunk is None:
+            continue
+        ago = chunk.get("speech_end_ago_ms")
+        if ago is not None:
+            # cut − (silence + hangover) is when the speaker actually stopped.
+            speech_to_final.append(e["rt"] - (chunk["rt"] - ago / 1000.0))
+        if chunk.get("waited_ms") is not None:
+            waited.append(chunk["waited_ms"])
+        if e.get("cut_to_infer_ms") is not None:
+            cut_to_infer.append(e["cut_to_infer_ms"])
+        if e.get("infer_ms"):
+            infer_ms.append(e["infer_ms"])
+            if e.get("duration"):
+                rtf.append(e["infer_ms"] / (e["duration"] * 1000.0))
+        if e.get("temps_used") is not None:
+            temps.append(e["temps_used"])
+
+    # First interim of each utterance: the one that puts words on screen.
+    first_partials, seen = [], False
+    for e in events:
+        if e["type"] == "chunk":
+            seen = False
+        elif (
+            e["type"] == "partial"
+            and not seen
+            and e.get("since_speech_start_ms") is not None
+        ):
+            first_partials.append(e["since_speech_start_ms"] / 1000.0)
+            seen = True
+
+    # Sentence assembled -> suggestion card broadcast.
+    sentence_to_card, pending = [], None
+    for e in events:
+        if e["type"] != "ws":
+            continue
+        kind = (e.get("event") or {}).get("type")
+        if kind == "sentence":
+            pending = e["rt"]
+        elif kind == "suggestions" and pending is not None:
+            sentence_to_card.append(e["rt"] - pending)
+            pending = None
+
+    def pair(values, scale=1.0):
+        return {
+            "p50": _q([v * scale for v in values], 0.5),
+            "p95": _q([v * scale for v in values], 0.95),
+            "n": len(values),
+        }
+
+    return {
+        "speech_end_to_final_s": pair(speech_to_final),
+        "first_partial_s": pair(first_partials),
+        "sentence_to_suggestion_s": pair(sentence_to_card),
+        "waited_on_loop_ms": pair(waited),
+        "cut_to_infer_ms": pair(cut_to_infer),
+        "final_infer_ms": pair(infer_ms),
+        "realtime_factor_per_chunk": pair(rtf),
+        "temperature_retries_pct": _pct(sum(1 for t in temps if t and t > 0), len(temps)),
+    }
 
 
 def _fmt(value, suffix: str = "") -> str:
@@ -405,6 +484,32 @@ def render_report(metrics: dict, details: dict) -> str:
         f"inference); "
         f"realtime factor {comp['inference_realtime_factor']}",
     ]
+    ss = metrics.get("ss078_latency") or {}
+    if ss:
+        def _row(label, stage, unit, target=""):
+            st = ss.get(stage) or {}
+            return (
+                f"| {label} | {_fmt(st.get('p50'))} {unit} | {_fmt(st.get('p95'))} {unit} "
+                f"| {st.get('n') or 0} | {target} |"
+            )
+
+        lines += [
+            "",
+            "## Latency budget, speech to screen (SS-078)",
+            "",
+            "| stage | p50 | p95 | n | target |",
+            "|---|---|---|---|---|",
+            _row("Speech end → final on screen", "speech_end_to_final_s", "s", "p50 ≤ 1.2 s"),
+            _row("Speech start → first interim", "first_partial_s", "s", "≤ 1.0 s"),
+            _row("Sentence → suggestion card", "sentence_to_suggestion_s", "s", ""),
+            _row("…of which waited on the loop", "waited_on_loop_ms", "ms", ""),
+            _row("Cut → inference started", "cut_to_infer_ms", "ms", ""),
+            _row("Final inference", "final_infer_ms", "ms", ""),
+            _row("Realtime factor per chunk", "realtime_factor_per_chunk", "", "< 0.6"),
+            "",
+            f"Decodes that needed a temperature retry: "
+            f"{_fmt(ss.get('temperature_retries_pct'), '%')}",
+        ]
     d = metrics["detection"]
     lines += [
         "",
@@ -445,6 +550,17 @@ def score_run_dir(run_dir: str | Path) -> Path:
     metrics, details = score_run(run)
     out = Path(run_dir)
     (out / "metrics.json").write_text(json.dumps(metrics, indent=2))
+    # SS-078: the latency budget on its own, for before/after comparison.
+    (out / "latency.json").write_text(
+        json.dumps(
+            {
+                "engine": metrics.get("headline", {}).get("engine"),
+                "window_s": metrics.get("window_s"),
+                "stages": metrics["ss078_latency"],
+            },
+            indent=2,
+        )
+    )
     (out / "details.json").write_text(json.dumps(details, indent=2))
     report = out / "report.md"
     report.write_text(render_report(metrics, details))

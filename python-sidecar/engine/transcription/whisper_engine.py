@@ -281,6 +281,9 @@ class FasterWhisperEngine:
                     "no_speech_prob": round(seg.no_speech_prob, 4),
                     "avg_logprob": round(seg.avg_logprob, 4),
                     "compression_ratio": round(seg.compression_ratio, 3),
+                    # SS-078: which temperature finally decoded this segment.
+                    # Anything above the first rung means the decode was retried.
+                    "temperature": getattr(seg, "temperature", None),
                     "language": info.language,
                 }
             )

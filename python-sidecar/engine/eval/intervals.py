@@ -71,6 +71,14 @@ def _median(values) -> float | None:
     return round(statistics.median(values), 3) if values else None
 
 
+def _q(values, q: float) -> float | None:
+    """The q-th quantile (0-1) by nearest rank, matching _p90's convention."""
+    values = sorted(values)
+    if not values:
+        return None
+    return round(values[min(len(values) - 1, int(q * len(values)))], 3)
+
+
 def _p90(values) -> float | None:
     values = sorted(values)
     if not values:
