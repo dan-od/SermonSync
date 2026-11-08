@@ -32,12 +32,22 @@ except ImportError:  # pragma: no cover
     np = None
 
 CODE_DEFAULT_MODEL = "large-v3-turbo"
-# SS-078: turbo is the right default only where there is a GPU to run it on.
-# On CPU int8 it decodes slower than real time (measured realtime factor ~1.0
-# on an 8-core Mac), so every chunk arrives later than the last and the live
-# transcript falls further behind for the whole service. "small" is the
-# largest model that holds a usable margin there. Only the *default* changes:
-# an explicit WHISPER_MODEL or stored whisper.model setting still wins.
+# SS-078: the model to suggest when the chosen one cannot keep up on CPU.
+# NOT a default. Measured over the same 420 s sermon (eval_runs/20261107-23*),
+# CPU int8, finals only:
+#
+#   model            speech->final p50   WER      spoken-ref recall
+#   large-v3-turbo              4.85 s   0.0548   100%
+#   medium                      3.97 s   0.1322    66.7% (precision 50%)
+#   small                       1.64 s   0.1430    33.3%
+#
+# Dropping to "small" does hit the latency targets, and costs 7.3 points of
+# WER and two thirds of Stage 0's recall — against a 2-point regression bar.
+# "medium" is the worst of both. This is the garbling SS-066 moved off `base`
+# to escape, and in spoken_only mode Stage 0's recall is the whole pipeline's
+# recall, so a faster transcript that loses the references is not a trade
+# worth making silently. Turbo stays the default everywhere; the operator is
+# told when it is too slow for their machine and can choose this instead.
 CPU_DEFAULT_MODEL = "small"
 # Above this, inference cannot keep up with the speaker and latency grows
 # without bound. Reported, never acted on: switching models mid-service would
@@ -72,8 +82,9 @@ def _accelerated() -> bool:
 
 
 def _code_default_model() -> str:
-    """The default model for this machine (SS-078)."""
-    return CODE_DEFAULT_MODEL if _accelerated() else CPU_DEFAULT_MODEL
+    """The default model. One model everywhere: see CPU_DEFAULT_MODEL for the
+    measurements behind not varying it by device."""
+    return CODE_DEFAULT_MODEL
 
 
 def _configured_model() -> str:
@@ -554,6 +565,12 @@ def latency_warning() -> str | None:
     engine = _engine
     model = getattr(engine, "model_size", None) or _configured_model()
     device = getattr(engine, "device", None) or "cpu"
+    # Only worth suggesting on a machine with no GPU to fall back on.
+    if _accelerated():
+        return (
+            f"whisper {model} on {device} is slow (rtf {median:.2f}) — "
+            f"the model is not keeping up with the speaker"
+        )
     suggestion = CPU_DEFAULT_MODEL if model != CPU_DEFAULT_MODEL else "base"
     return (
         f"whisper {model} on {device} is slow (rtf {median:.2f}) — "

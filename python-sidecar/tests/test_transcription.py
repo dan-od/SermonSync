@@ -367,18 +367,23 @@ def test_fallback_marks_engine_degraded(monkeypatch):
     assert eng.degraded is True
 
 
-def test_cpu_defaults_to_small_and_an_explicit_choice_wins(monkeypatch):
-    """SS-078: turbo only where there is a GPU to run it on."""
+def test_default_model_does_not_vary_by_device(monkeypatch):
+    """SS-078: measured, then rejected.
+
+    Dropping CPU to "small" hits the latency targets and costs 7.3 points of
+    WER and two thirds of Stage 0's recall (eval_runs/20261107-23*), against
+    a 2-point regression bar. In spoken_only mode Stage 0 carries the whole
+    pipeline's recall, so the faster transcript is not worth the references.
+    """
     monkeypatch.delenv("WHISPER_MODEL", raising=False)
     monkeypatch.setattr(whisper_engine, "_accelerated", lambda: False)
-    assert whisper_engine._code_default_model() == "small"
+    assert whisper_engine._code_default_model() == "large-v3-turbo"
     monkeypatch.setattr(whisper_engine, "_accelerated", lambda: True)
     assert whisper_engine._code_default_model() == "large-v3-turbo"
 
     # An explicit choice is never second-guessed.
-    monkeypatch.setattr(whisper_engine, "_accelerated", lambda: False)
-    monkeypatch.setenv("WHISPER_MODEL", "large-v3-turbo")
-    assert whisper_engine._configured_model() == "large-v3-turbo"
+    monkeypatch.setenv("WHISPER_MODEL", "small")
+    assert whisper_engine._configured_model() == "small"
 
 
 def test_latency_warning_needs_evidence_then_names_the_model(monkeypatch):
@@ -392,6 +397,9 @@ def test_latency_warning_needs_evidence_then_names_the_model(monkeypatch):
     whisper_engine.note_inference(5000.0, 1.0)
     warning = whisper_engine.latency_warning()
     assert warning is not None and "rtf" in warning
+    # On a CPU box the warning names the cheaper model the operator may pick.
+    monkeypatch.setattr(whisper_engine, "_accelerated", lambda: False)
+    assert "small" in whisper_engine.latency_warning()
 
     # Keeping up: nothing to say.
     monkeypatch.setattr(whisper_engine, "_rtf_samples", [0.2, 0.2, 0.2])
