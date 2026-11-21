@@ -67,7 +67,7 @@ function PreparedMediaLayer({ entry, visible, preparing, outgoing, playing, loop
     >
       {entry.media.category === "videos" ? (
         <ResilientVideo
-          media={{ type: "video", src: entry.source, fit: entry.media.fit, loop: true, x: 0, y: 0, width: 100, height: 100, opacity: entry.media.opacity, muted: true, speed: 1 }}
+          media={{ type: "video", src: entry.source, fit: entry.media.fit, loop: true, x: 0, y: 0, width: 100, height: 100, opacity: entry.media.opacity, muted: muted || !audioEnabled, speed: 1 }}
           sourcePath={entry.media.path}
           style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: entry.media.fit, opacity: entry.media.opacity }}
           autoPlay

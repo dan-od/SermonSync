@@ -3,12 +3,13 @@ import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { defaults, videoElementCallbacks, readyCallbacks, flags, audioPeaksMock, setLiveAudioWaveformMock, setLiveAudioPlaybackErrorMock } = vi.hoisted(() => ({
+const { defaults, videoElementCallbacks, videoMediaProps, readyCallbacks, flags, audioPeaksMock, setLiveAudioWaveformMock, setLiveAudioPlaybackErrorMock } = vi.hoisted(() => ({
   defaults: {
     scriptures: { widescreen: "scripture-video" as string | null, "lower-third": "scripture-lower-video" as string | null, "split-screen": "scripture-split-video" as string | null },
     songs: { widescreen: "song-video" as string | null, "lower-third": null as string | null, "split-screen": null as string | null },
   },
   videoElementCallbacks: vi.fn(),
+  videoMediaProps: [] as { src: string; muted?: boolean }[],
   readyCallbacks: new Map<string, () => void>(),
   flags: { sharedBackground: false, liveAudioActive: false },
   audioPeaksMock: vi.fn(() => ({ peaks: [0.2, 0.8, 0.4], minPeaks: [-0.2, -0.7, -0.3], maxPeaks: [0.2, 0.8, 0.4], duration: 10, loading: false, error: null })),
@@ -60,7 +61,8 @@ vi.mock("../../stores/projectorStore", () => {
 });
 vi.mock("../CameraFeed", () => ({ CameraFeed: ({ onError }: { onError?: (message: string) => void }) => <button type="button" data-testid="camera-feed" onClick={() => onError?.("Camera offline")}>Camera feed</button> }));
 vi.mock("../ResilientVideo", () => ({
-  ResilientVideo: ({ media, playing, loop, onVideoElementChange, onReady, presentationVisible = true }: { media: { src: string }; playing?: boolean; loop?: boolean; onVideoElementChange?: (video: HTMLVideoElement | null) => void; onReady?: () => void; presentationVisible?: boolean }) => {
+  ResilientVideo: ({ media, playing, loop, onVideoElementChange, onReady, presentationVisible = true }: { media: { src: string; muted?: boolean }; playing?: boolean; loop?: boolean; onVideoElementChange?: (video: HTMLVideoElement | null) => void; onReady?: () => void; presentationVisible?: boolean }) => {
+    videoMediaProps.push({ src: media.src, muted: media.muted });
     videoElementCallbacks(onVideoElementChange);
     useEffect(() => {
       if (onReady) readyCallbacks.set(media.src, onReady);
@@ -88,6 +90,7 @@ describe("live screen playback controls", () => {
     flags.sharedBackground = false;
     flags.liveAudioActive = false;
     readyCallbacks.clear();
+    videoMediaProps.length = 0;
     vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -129,6 +132,18 @@ describe("live screen playback controls", () => {
     expect(pause?.disabled).toBe(false);
     act(() => pause?.click());
     expect(container.querySelector('[data-testid="background-video"]')?.getAttribute("data-playing")).toBe("false");
+  });
+
+  it("plays LIVE video audio from the operator view while keeping the projector view muted", () => {
+    const media = { path: "/video.mp4", name: "Video", category: "videos" as const, fit: "cover" as const, opacity: 1 };
+    act(() => root.render(<>
+      <ProjectorView title="LIVE" slide={null} media={media} feedOverride="live" overlayMode="widescreen" theme="cross" isLive fontSizePx={48} />
+      <ProjectorView title="PROJECTOR OUTPUT" slide={null} media={media} feedOverride="live" overlayMode="widescreen" theme="cross" isLive fontSizePx={48} chrome={false} />
+    </>));
+
+    const videoMedia = videoMediaProps.filter(({ src }) => src === "asset://localhost/video.mp4");
+    expect(videoMedia).toContainEqual({ src: "asset://localhost/video.mp4", muted: false });
+    expect(videoMedia).toContainEqual({ src: "asset://localhost/video.mp4", muted: true });
   });
 
   it("keeps the current slide visible while a different media type prepares", () => {

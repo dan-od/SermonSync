@@ -203,8 +203,8 @@ pub(crate) fn spawn_sidecar(
         })
     };
 
-    // Linux ships the sidecar as an unpacked onedir resource (no
-    // per-launch extraction); other platforms use the externalBin.
+    // Linux and Windows ship the sidecar as an unpacked onedir resource (no
+    // per-launch extraction); macOS uses the externalBin.
     #[cfg(all(not(debug_assertions), target_os = "linux"))]
     let sidecar_result = {
         let data_dir = app.path().app_data_dir()?.join("sidecar-data");
@@ -215,13 +215,41 @@ pub(crate) fn spawn_sidecar(
             .env("SERMONSYNC_VIDEO_CACHE_DIR", &video_cache_dir)
             .env("SERMONSYNC_MANAGED_VIDEO_DIR", &managed_video_dir)
             .env("SERMONSYNC_MANAGED_AUDIO_DIR", &managed_audio_dir)
-            .env("SERMONSYNC_DATA_DIR", data_dir.to_string_lossy().into_owned())
-            .env("SERMONSYNC_WHISPER_DIR", resources.join("whisper").to_string_lossy().into_owned())
+            .env(
+                "SERMONSYNC_DATA_DIR",
+                data_dir.to_string_lossy().into_owned(),
+            )
+            .env(
+                "SERMONSYNC_WHISPER_DIR",
+                resources.join("whisper").to_string_lossy().into_owned(),
+            )
             .spawn()
             .map_err(|error| error.to_string())
     };
 
-    #[cfg(all(not(debug_assertions), not(target_os = "linux")))]
+    #[cfg(all(not(debug_assertions), target_os = "windows"))]
+    let sidecar_result = {
+        let data_dir = app.path().app_data_dir()?.join("sidecar-data");
+        let resources = app.path().resource_dir()?;
+        let exe = resources.join("sidecar").join("python-sidecar.exe");
+        app.shell()
+            .command(exe)
+            .env("SERMONSYNC_VIDEO_CACHE_DIR", &video_cache_dir)
+            .env("SERMONSYNC_MANAGED_VIDEO_DIR", &managed_video_dir)
+            .env("SERMONSYNC_MANAGED_AUDIO_DIR", &managed_audio_dir)
+            .env(
+                "SERMONSYNC_DATA_DIR",
+                data_dir.to_string_lossy().into_owned(),
+            )
+            .env(
+                "SERMONSYNC_WHISPER_DIR",
+                resources.join("whisper").to_string_lossy().into_owned(),
+            )
+            .spawn()
+            .map_err(|error| error.to_string())
+    };
+
+    #[cfg(all(not(debug_assertions), target_os = "macos"))]
     let sidecar_result = app
         .shell()
         .sidecar("python-sidecar")

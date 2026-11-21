@@ -84,7 +84,9 @@ export function AudioDeviceSelector({
               left: 0,
               bottom: "calc(100% + 6px)",
               zIndex: 20,
-              width: "220px",
+              width: "max-content",
+              minWidth: "220px",
+              maxWidth: "min(420px, calc(100vw - 32px))",
               border: "none",
               borderRadius: "5px",
               background: "var(--bg-elevated)",
@@ -120,7 +122,7 @@ export function AudioDeviceSelector({
                   onBlur={() => setHoveredInputDevice((current) => current === device ? null : current)}
                   style={{
                     width: "100%",
-                    height: "25px",
+                    height: "auto",
                     minHeight: "25px",
                     boxSizing: "border-box",
                     border: "none",
@@ -129,11 +131,14 @@ export function AudioDeviceSelector({
                     color: selected || hoveredInputDevice === device ? "var(--fg-base)" : "var(--fg-muted)",
                     fontFamily: "var(--font-sans)",
                     fontSize: "12px",
-                    padding: "0 8px",
+                    padding: "5px 8px",
+                    lineHeight: 1.35,
                     cursor: "pointer",
                     textAlign: "left",
+                    whiteSpace: "normal",
                     overflowWrap: "anywhere",
                   }}
+                  title={device}
                 >
                   {device}
                 </button>

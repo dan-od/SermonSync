@@ -640,7 +640,7 @@ export function SongsTab({ isActive, previewReference, liveReference, onPreviewS
             style={{
               width: "min(400px, 94vw)",
               padding: 20,
-              border: "1px solid var(--border-base)",
+              border: "none",
               borderRadius: 10,
               background: "var(--bg-surface)",
               boxShadow: "var(--shadow-lg)",
@@ -665,7 +665,7 @@ export function SongsTab({ isActive, previewReference, liveReference, onPreviewS
                   }}
                   style={{
                     padding: "8px 10px",
-                    border: "1px solid var(--border-base)",
+                    border: "none",
                     borderRadius: 6,
                     background: "var(--bg-base)",
                     color: "var(--fg-base)",
@@ -685,7 +685,7 @@ export function SongsTab({ isActive, previewReference, liveReference, onPreviewS
                   }}
                   style={{
                     padding: "8px 10px",
-                    border: "1px solid var(--border-base)",
+                    border: "none",
                     borderRadius: 6,
                     background: "var(--bg-base)",
                     color: "var(--fg-base)",

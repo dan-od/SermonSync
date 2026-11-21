@@ -13,7 +13,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "tauri": "tauri",
-    "build:sidecar": "bash scripts/build-sidecar.sh"
+    "build:sidecar": "bash scripts/build-sidecar.sh",
+    "build:sidecar:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-sidecar.ps1"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",

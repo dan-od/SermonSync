@@ -92,4 +92,12 @@ npm run build:sidecar
 npm run tauri build -- --config src-tauri/tauri.rpm.conf.json
 ```
 
+For a local Windows NSIS installer, run these commands on Windows x64:
+
+```powershell
+npm ci
+npm run build:sidecar:windows
+npm run tauri build -- --config src-tauri/tauri.windows.conf.json
+```
+
 See [PACKAGING.md](docs/PACKAGING.md) for the current platform-specific packaging state and limitations.

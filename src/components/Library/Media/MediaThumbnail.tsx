@@ -123,7 +123,7 @@ export const MediaThumbnail = memo(function MediaThumbnail({ item, isSelected, o
         onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); activate(); } }}
         onDoubleClick={() => { if (clickAction === "preview") activate("live"); }}
         onContextMenu={(event) => onContextMenu(event, item)}
-        style={{ display: "block", position: "relative", width: "100%", aspectRatio: "16 / 9", padding: 0, overflow: "hidden", border: isSelected ? "2px solid var(--color-primary)" : "1px solid var(--border-base)", borderRadius: "var(--radius-md)", background: "var(--bg-elevated)", cursor: "pointer", textAlign: "left", boxShadow: "var(--shadow-sm)" }}
+        style={{ display: "block", position: "relative", width: "100%", aspectRatio: "16 / 9", padding: 0, overflow: "hidden", border: isSelected ? "2px solid var(--color-primary)" : "none", borderRadius: "var(--radius-md)", background: "var(--bg-elevated)", cursor: "pointer", textAlign: "left", boxShadow: "none" }}
       >
         {inView && imageSrc && item.category === "images" ? (
           <ResilientImage src={imageSrc} sourcePath={item.path} alt="" loading="eager" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: settings?.opacity ?? 1, filter: filtersToCss(settings?.filters), transform: flipTransform(settings?.flipX, settings?.flipY) }} />
