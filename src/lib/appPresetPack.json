@@ -1,7 +1,2723 @@
 {
-  "version": 1,
+  "version": 2,
   "name": "SermonSync Operator Presets",
   "songs": [
+    {
+      "id": "song-1794734155897-zo6y",
+      "title": "you are holy",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "Standing before Your throne\nThere are no words to say\nBut Holy Holy Holy\nStanding before Your throne\nThere are no words to say\nBut Holy Holy Holy"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "You are Holy\nLord God Almighty\nThe earth is full of Your glory\nYou are Holy\nLord God Almighty\nThe earth is full of Your glory"
+        }
+      ],
+      "createdAt": 1794734155897,
+      "updatedAt": 1794734155897
+    },
+    {
+      "id": "song-1794729988737-oi2j",
+      "title": "what a marvelous God",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Verse 1",
+          "text": "what a marvelous God(3x)\nhe has done marvelouus \nthings for me"
+        },
+        {
+          "label": "Chorus",
+          "text": "the things that are impossible\nthe things that money cannot buy\nhe has done for me again"
+        },
+        {
+          "label": "Chorus",
+          "text": "what my father cannot buy\nwhat my mother cannot buy\nhe has done for me again"
+        }
+      ],
+      "createdAt": 1794729988737,
+      "updatedAt": 1794729988737
+    },
+    {
+      "id": "song-1794728110429-u6jl",
+      "title": "Rock of Ages",
+      "artist": "Augustus Toplady",
+      "slides": [
+        {
+          "label": "Verse 1",
+          "text": "Rock of Ages, cleft for me,\nlet me hide myself in thee;\nlet the water and the blood,\nfrom thy wounded side which flowed,\nbe of sin the double cure;\nsave from wrath and make me pure."
+        },
+        {
+          "label": "Verse 2",
+          "text": "Not the labors of my hands\ncan fulfill thy law's demands;\ncould my zeal no respite know,\ncould my tears forever flow,\nall for sin could not atone;\nthou must save, and thou alone."
+        },
+        {
+          "label": "Verse 3",
+          "text": "Nothing in my hand I bring,\nsimply to the cross I cling;\nnaked, come to thee for dress;\nhelpless, look to thee for grace;\nfoul, I to the fountain fly;\nwash me, Savior, or I die."
+        },
+        {
+          "label": "Verse 4",
+          "text": "While I draw this fleeting breath,\nwhen mine eyes shall close in death,\nwhen I soar to worlds unknown,\nsee thee on thy judgment throne,\nRock of Ages, cleft for me,\nlet me hide myself in thee."
+        }
+      ],
+      "createdAt": 1794728110429,
+      "updatedAt": 1794728110429
+    },
+    {
+      "id": "song-1794700931538-1stx",
+      "title": "Unending Joy",
+      "artist": "Moses Bliss & Greatmann Takit",
+      "slides": [
+        {
+          "label": "Intro",
+          "text": "Joy!\nJoy! \nJoy of the Holy Ghost"
+        },
+        {
+          "label": "Refrain",
+          "text": "Unending joy\nUnspeakable\nDey my heart o\nDey my life o (Repeat)"
+        },
+        {
+          "label": "Refrain",
+          "text": "I’ve got so much joy\nOverflowing joy\nCause Jehovah God\nDey my heart o\nDey my life o (Repeat)"
+        },
+        {
+          "label": "Verse",
+          "text": "This is the life of a man in Christ o\nThis is the life of a child of God o\nI am born of God, yes I overcome this world\nStanding on the solid rock\nAnd nothing can steal my joy!"
+        },
+        {
+          "label": "Verse",
+          "text": "Righteousness, peace and joy in the Holy Ghost\nSummarizes the life I live o\nI am born of God, yes I overcome this world\nStanding on the solid rock\nI’m full of…"
+        },
+        {
+          "label": "Bridge",
+          "text": "See this joy wey Jesus dey give\nNobody dey give this type (Hey!)"
+        },
+        {
+          "label": "Call-and-Response",
+          "text": "This type of joy\nJesus dey give\nNobody fit\nGive am to me"
+        },
+        {
+          "label": "Call-and-Response",
+          "text": "E dey sweet (E dey sweet)\nSay you like (I like)\nI like (I like)"
+        },
+        {
+          "label": "Call-and-Response",
+          "text": "This type of joy\nJesus dey give\nNobody fit\nGive am to me"
+        },
+        {
+          "label": "Call-and-Response",
+          "text": "I no go praise Jesus Keh? Ehe!\nIf na you, you fit die for me? Ehe!"
+        },
+        {
+          "label": "Call-and-Response",
+          "text": "I’ve got so much joy\nOverflowing joy\nCause Jehovah God\nDey my heart o\nDey my life o"
+        }
+      ],
+      "createdAt": 1794700931538,
+      "updatedAt": 1794701419789
+    },
+    {
+      "id": "song-1794130160667-ivmz",
+      "title": "conenant",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "Yahweh convenant keeping God"
+        }
+      ],
+      "createdAt": 1794130160667,
+      "updatedAt": 1794130160667
+    },
+    {
+      "id": "song-1794129879331-g6p8",
+      "title": "beyond me",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "You looked past my sin, my guilt, my shame and poured your love\nYou looked beyond me, oh\nYou looked beyond me, oh\nYou looked past my sin, my guilt, my shame and poured your love"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "You, You looked beyond me, oh\nYou looked beyond me, oh\nAnd I'm the one that You have shown mercy\nYou have shown me mercy\nYou have shown me mercy"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "I am the one, the one that you have shown mercy\nYou have shown me mercy, God\nYou have shown me mercy"
+        }
+      ],
+      "createdAt": 1794129879331,
+      "updatedAt": 1794129879331
+    },
+    {
+      "id": "song-1794129154581-a5mb",
+      "title": "good god",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Verse 1",
+          "text": "You are my Lover, and my Sustainer\nAlmighty God, You are my God\nYou are my Father, and my Sustainer\nAlmighty God, You are my God"
+        },
+        {
+          "label": "Chorus",
+          "text": "I have never, ever seen a God as good as You\nI have never, ever seen a God as good as You\nI will never, ever see other God as good as You\nI will never, ever see other God as good as You"
+        },
+        {
+          "label": "Verse 1",
+          "text": "You are my Lover, and my Sustainer\nAlmighty God, You are my Lord\nYou are my Father, and my Devotion\nAlmighty God, You are my God"
+        },
+        {
+          "label": "Refrain",
+          "text": "Good God, Good God o\nMy Lord, my God, my all\nYou’re so mindful, You’re so mindful of me (Repeat)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Repeat: I have never, ever seen a God as good as You\nOran mo nise fayati (The one who sends a child and backs them up)\nA fun ni ma siregun (The one that give without boasting)\nOwo Kembe rebi ija, Jesu! (The mighty Warrior, Jesus!)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Ore ti ki i dani (A dependable friend)\nOre ti ki i koni si le, Jesu! (A faithful friend, Jesus!)\nMessiah, Olugbala Araye (Messiah, Savior of the world)\nOre Elese (Friend of sinners)\nThe one who is, the one who was, and is to come"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Olodumare (Creater of the universe) x3\nEleyin oju aanu (The merciful one)\nJesu babami (Jesus, my father)\nJesu oko mi (Jesus, my husband)\nJesu oba oke (Jesus, the King on High)\nJesu! Jesu! Jesu! (Jesus! Jesus! Jesus!)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Adun n ba gbe (The one with a sweet fellowship)\nAdun ba bo (The one with whom following is sweet)\nAdun n ba gbe (The one with a sweet fellowship)\nAdun ba bo (The one with whom following is sweet)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Olorun, my devotion\nOlorun, my sustainer\nAlmighty God, You are my God\nI have never, ever seen a God as good as You"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "You are my Lover, and my Sustainer\nAlmighty God, You are my God\nYou are my Father, and my Devotion\nAlmighty God, You are my Lord"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "You are my Lord, You are my Lord x2\nYour are my God, You are my God x?"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Almighty God, You are my God x?"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "(Refrain)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "We will never, ever see a God as good as You x4"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "You are my Lover, and my Sustainer\nAlmighty God, You are my God\nYou are my Father, and my Devotion\nAlmighty God, You are my Lord"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "You are my Best friend, and my Daddy\nAlmighty God, You are my God\nYou are my Father, and my Devotion\nAlmighty God, You are my Lord"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "I will never, ever see a God as good as You"
+        }
+      ],
+      "createdAt": 1794129154581,
+      "updatedAt": 1794129308837
+    },
+    {
+      "id": "song-1794125712252-pjji",
+      "title": "i carry favor",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "Carry favour for head ooh!!"
+        }
+      ],
+      "createdAt": 1794125712252,
+      "updatedAt": 1794125712252
+    },
+    {
+      "id": "song-1794125031232-3clk",
+      "title": "lion of judah",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "Lion of Judah (Lion of Judah)\nWe worship You (we worship You)\nLion of Judah (Lion of Judah)\nYou are holy (You are holy)\nLion of Judah (Lion of Judah)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "We bless your name and we worship You, Lord (we worship You)\nLion of Judah (Lion of Judah)\nYou are holy (You are holy)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Mamuri ndawana zororo\nMamuri handina kutya\nMamapapiro enyu ndakachengetedzwa\nMamuri ndawana zororo\nMamuri handina kutya\nMamapapiro enyu, Mamapapiro enyu takachengetedzwa"
+        }
+      ],
+      "createdAt": 1794125031232,
+      "updatedAt": 1794125085826
+    },
+    {
+      "id": "song-1794124744029-g3v5",
+      "title": "guide me",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "Guide me, O Thou great Jehovah\nPilgrim through this barren land\nI am weak, but Thou art mighty\nHold me with Thy powerful hands\nBread of heaven, feed me now and evermore\nBread of heaven, feed me now and evermore"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Open now the crystal fountain\nWhence the healing waters flow\nLet the fiery, cloudy pillar\nLead me all my journey through\nStrong Deliverer, be Thou still my Strength and Shield\nStrong Deliverer, be Thou still my Strength and Shield"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "When I tread the verge of Jordan\nBid my anxious fears subside\nDeath of death, and hell's destruction\nLand me safe on Canaan's side\nSongs of praises, I will ever give to Thee\nSongs of praises, I will ever give to Thee"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Land me safe on Canaan's side\nBid my anxious fears, bid my anxious fears\nLand me safe on Canaan's side\nBid my anxious fears, bid my anxious fears\nLand me safe on Canaan's side"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Bid my anxious fears, bid my anxious fears, goodbye (land me safe on Canaan's side)\nBid my anxious fears, all our anxious fears\nLand me safe on Canaan's side\nBid my anxious fears, bid my anxious fears\nLand me safe on Canaan's side\nBid my anxious fears, bid my anxious fears, goodbye\nBid my anxious fears, all my anxious fears, goodbye"
+        }
+      ],
+      "createdAt": 1794124744029,
+      "updatedAt": 1794124839531
+    },
+    {
+      "id": "song-1794097818143-yxmz",
+      "title": "Earthen Vessel",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Intro",
+          "text": "(Chants)\nThere is a river\nWhose streams maketh glad the city of the Lord\n(Chants)"
+        },
+        {
+          "label": "Verse",
+          "text": "This is the house of the Lord\nI am His temple, I am His dwelling\nI am a house of the Lord\nThe city on a hill"
+        },
+        {
+          "label": "Verse",
+          "text": "This is the house of the Lord\nI am His dwelling, I am His temple\nI am a house of the Lord\nThe city of God"
+        },
+        {
+          "label": "Verse",
+          "text": "This is the house of the Lord\nI am His dwelling, I am His temple\nI am a house of the Lord\nThe city on a hill"
+        },
+        {
+          "label": "Verse",
+          "text": "This is the house of the Lord\nI am His dwelling, I am His temple\nI am a house of thе Lord\nThe city of God"
+        },
+        {
+          "label": "Chorus",
+          "text": "Yes, the Holy Ghost is lockеd up\nIn my earthen vessel\nYes, the Holy Ghost is locked up\nIn my earthen vessel"
+        },
+        {
+          "label": "Chorus",
+          "text": "Yes, the Holy Ghost is locked up\nIn this earthen vessel\nThere's this treasure that is locked up\nIn my earthen vessel"
+        },
+        {
+          "label": "Post-Chorus",
+          "text": "Spirit pray ay ay\nPray ay ay\nSpirit pray\nFrom Your earthen vessel"
+        },
+        {
+          "label": "Post-Chorus",
+          "text": "Spirit pray ay ay\nPray ay ay\nSpirit pray\nFrom Your earthen vessel"
+        },
+        {
+          "label": "Chorus",
+          "text": "Yes, the Holy Ghost is locked up\nIn my earthen vessel\nThere's this treasure that is locked up\nIn my earthen vessel\n(Chants)"
+        },
+        {
+          "label": "Chorus",
+          "text": "Yes, this Holy Ghost is locked up\nIn my earthen vessel\nThere's this treasure that is locked up\nIn my earthen vessel"
+        },
+        {
+          "label": "Post-Chorus",
+          "text": "Spirit pray ay ay\nPray ay ay\nSpirit pray\nFrom this earthen vessel"
+        },
+        {
+          "label": "Post-Chorus",
+          "text": "Spirit heal\nHeal\nSpirit heal\nFrom Your earthen vessel"
+        },
+        {
+          "label": "Post-Chorus",
+          "text": "Spirit live\nLive\nSpirit live\nThrough Your earthen vessel"
+        },
+        {
+          "label": "Post-Chorus",
+          "text": "(Yes, this Holy Ghost, yeahh)"
+        },
+        {
+          "label": "Chorus",
+          "text": "Yes, the Holy Ghost is locked up\nIn my earthen vessel (I'm no longer my own oo)\nYes, the Holy Ghost is locked up\nIn my earthen vessel (I live yet not I but Christ that lives in me)\nYes, the Holy Ghost is locked up\nIn my earthen vessel (There's a groaning from within eh)\nYes, the Holy Ghost is locked up\nIn my earthen vessel (There's this prayer from within eh)"
+        },
+        {
+          "label": "Chorus",
+          "text": "Yes, the Holy Ghost is locked up\nIn my earthen vessel (Chants)\nYes, the Holy Ghost is locked up\nIn my earthen vessel (Spirit pray)"
+        },
+        {
+          "label": "Post-Chorus",
+          "text": "Spirit pray ay ay\nPray ay ay\nSpirit pray\nFrom this earthen vessel"
+        },
+        {
+          "label": "Post-Chorus",
+          "text": "Spirit pray ay ay\nPray ay ay\nSpirit pray\nFrom this earthen vessel"
+        },
+        {
+          "label": "Post-Chorus",
+          "text": "Spirit pray ay ay\nPray ay ay\nSpirit pray\nFrom this earthen vessel (Yes, this Holy Ghost is locked up)"
+        },
+        {
+          "label": "Chorus",
+          "text": "Yes, the Holy Ghost is locked up\nIn my earthen vessel (Chants)\nYes, the Holy Ghost is locked up\nIn my earthen vessel (Chants)"
+        },
+        {
+          "label": "Chorus",
+          "text": "Yes, the Holy Ghost is locked up\nIn my earthen vessel (Chants)\nYes, the Holy Ghost is locked up\nIn my earthen vessel (There's this glory from within, there's this prayer from within oh)"
+        },
+        {
+          "label": "Chorus",
+          "text": "Yes, the Holy Ghost is locked up\nIn my earthen vessel (Chants)\nYes, the Holy Ghost is locked up\nIn my earthen vessel (Spirit pray)"
+        },
+        {
+          "label": "Post-Chorus",
+          "text": "Spirit pray ay ay\nPray ay ay\nSpirit pray\nFrom this earthen vessel"
+        },
+        {
+          "label": "Post-Chorus",
+          "text": "Spirit pray ay ay\nPray ay ay\nSpirit pray\nFrom this earthen vessel"
+        },
+        {
+          "label": "Post-Chorus",
+          "text": "Spirit pray ay ay\nPray ay ay\nSpirit pray\nFrom this earthen vessel"
+        },
+        {
+          "label": "Post-Chorus",
+          "text": "Spirit pray ay ay\nPray ay ay\nSpirit pray\nFrom this earthen vessel"
+        },
+        {
+          "label": "Chorus",
+          "text": "Yes, the Holy Ghost is locked up\nIn my earthen vessel (I can't hear you, lift up your voice and declare like somebody that knows)\nYes, the Holy Ghost is locked up\nIn my earthen vessel (Chants)"
+        },
+        {
+          "label": "Chorus",
+          "text": "Yes, the Holy Ghost is locked up\nIn my earthen vessel (I have life within me, life more abundantly)\nYes, the Holy Ghost is locked up\nIn my earthen vessel (The kingdom of God is expressed through my vessel)"
+        },
+        {
+          "label": "Chorus",
+          "text": "Yes, the Holy Ghost is locked up\nIn my earthen vessel (Chants)\nYes, the Holy Ghost is locked up\nIn my earthen vessel (Spirit pray)"
+        },
+        {
+          "label": "Post-Chorus",
+          "text": "Spirit pray ay ay\nPray ay ay\nSpirit pray\nFrom this earthen vessel"
+        },
+        {
+          "label": "Post-Chorus",
+          "text": "Spirit pray ay ay\nPray ay ay\nSpirit pray\nFrom this earthen vessel"
+        },
+        {
+          "label": "Post-Chorus",
+          "text": "Spirit reign\nReign\nSpirit reign\nFrom this earthen vessel"
+        },
+        {
+          "label": "Chorus",
+          "text": "Yes, the Holy Ghost is locked up\nIn my earthen vessel (Chants)\nYes, the Holy Ghost is locked up\nIn my earthen vessel (Chants)"
+        },
+        {
+          "label": "Chorus",
+          "text": "Yes, the Holy Ghost is locked up\nIn my earthen vessel (Chants)\nYes, the Holy Ghost is locked up\nIn my earthen vessel (Tongues)"
+        },
+        {
+          "label": "Chorus",
+          "text": "Yes, the Holy Ghost is locked up\nIn my earthen vessel (Tongues)\nYes, the Holy Ghost is locked up\nIn my earthen vessel (Tongues)"
+        },
+        {
+          "label": "Chorus",
+          "text": "Yes, the Holy Ghost is locked up\nIn my earthen vessel (Tongues)"
+        },
+        {
+          "label": "Post-Chorus",
+          "text": "Spirit pray ay ay\nPray ay ay\nSpirit pray\nFrom this earthen vessel"
+        },
+        {
+          "label": "Post-Chorus",
+          "text": "Spirit reign\nReign\nSpirit reign\nFrom this earthen vessel"
+        },
+        {
+          "label": "Post-Chorus",
+          "text": "Spirit rule\nRule\nSpirit rule\nFrom this earthen vessel"
+        },
+        {
+          "label": "Post-Chorus",
+          "text": "Spirit move\nMove\nSpirit move\nFrom this earthen vessel"
+        },
+        {
+          "label": "Interlude",
+          "text": "In 1 minute, if you know that the Holy Ghost dwells in your vessel\nCan you lift up your voice and just blast in the Holy Ghost\nAnd let the Spirit of God within your vessel, edify!\n(Tongues)"
+        },
+        {
+          "label": "Interlude",
+          "text": "Let the Spirit that quickeneth, that dwelleth in your vessel quicken you right now!\nLet Him hear you\n(Tongues)"
+        },
+        {
+          "label": "Interlude",
+          "text": "Let Him express Himself\nLet Him heal the sick through your vessel\nLet Him raise the dead through your vessel\nLet Him bring souls to the kingdom through your vessel\nLet the kingdom of God be expressed\n(Tongues)"
+        },
+        {
+          "label": "Interlude",
+          "text": "Oh my God, oh my God, oh my God\nEhhh Spirit pray"
+        },
+        {
+          "label": "Post-Chorus",
+          "text": "Spirit pray ay ay\nPray ay ay\nSpirit pray\nFrom this earthen vessel"
+        },
+        {
+          "label": "Post-Chorus",
+          "text": "Spirit pray ay ay\nPray ay ay\nSpirit pray\nFrom this earthen vessel"
+        },
+        {
+          "label": "Chorus",
+          "text": "Yes, the Holy Ghost is locked up\nIn my earthen vessel (Are you sure?)\nYes, the Holy Ghost is locked up\nIn my earthen vessel (Ehhhh, the Holy Ghost is locked up)"
+        },
+        {
+          "label": "Chorus",
+          "text": "Yes, the Holy Ghost is locked up\nIn my earthen vessel (Chants)"
+        },
+        {
+          "label": "Chorus",
+          "text": "(Spirit pray)"
+        },
+        {
+          "label": "Post-Chorus",
+          "text": "Spirit pray ay ay\nPray ay ay\nSpirit pray\nFrom this earthen vessel (One more time, Spirit pray)"
+        },
+        {
+          "label": "Post-Chorus",
+          "text": "Spirit pray ay ay\nPray ay ay\nSpirit pray\nFrom this earthen vessel"
+        },
+        {
+          "label": "Vamp",
+          "text": "Ee ee ee ee ee\nEe ee ee\nEe ee ee ee ee\nEe ee ee ee ee\nFrom this earthen vessel"
+        },
+        {
+          "label": "Vamp",
+          "text": "Ee ee ee ee ee\nEh eh eh\nEh eh eh eh eh\nEh eh eh eh eh\nFrom this earthen vessel"
+        },
+        {
+          "label": "Vamp",
+          "text": "Eh eh eh eh eh\nEh eh eh\nEh eh eh eh eh\nEh eh eh eh eh\nFrom this earthen vessel"
+        },
+        {
+          "label": "Vamp",
+          "text": "Eh eh eh eh eh\nEh eh eh\nEh eh eh eh eh\nEh eh eh eh eh\nFrom this earthen vessel"
+        },
+        {
+          "label": "Vamp",
+          "text": "Eh eh eh eh eh\nEh eh eh\nEh eh eh eh eh\nFrom this earthen vessel"
+        },
+        {
+          "label": "Vamp",
+          "text": "Eh eh eh\nEh eh eh eh eh\nEh eh eh eh eh\nFrom this earthen vessel"
+        },
+        {
+          "label": "Chorus",
+          "text": "Yes, the Holy Ghost is locked up\nIn my earthen vessel\nYes, this Holy Ghost is locked up\nIn my earthen vessel"
+        },
+        {
+          "label": "Chorus",
+          "text": "Yes, the Holy Ghost is locked up\nIn my earthen vessel"
+        },
+        {
+          "label": "Musical Interlude",
+          "text": "(Chants)"
+        },
+        {
+          "label": "Outro",
+          "text": "This is the house of the Lord\nI am His dwelling, I am His temple\nI am a house of the Lord\nThe city on a hill"
+        },
+        {
+          "label": "Outro",
+          "text": "This is the house of the Lord\nI am His dwelling, I am His temple\nI am a house of the Lord\nThe city of God"
+        },
+        {
+          "label": "Outro",
+          "text": "Yes, the Holy Ghost is locked up\nIn my earthen vessel\n[?]\n(Chants)"
+        }
+      ],
+      "createdAt": 1794097818143,
+      "updatedAt": 1794097818143
+    },
+    {
+      "id": "song-1794097728822-rqgw",
+      "title": "Na God I Dey Praise (Craze)",
+      "artist": "Chioma Jesus",
+      "slides": [
+        {
+          "label": "Verse 1",
+          "text": "The God wey Change my Life\nNa him I dey Praise Ooh\n(The God wey Change my Life\nNa him I dey Praise Ooh)"
+        },
+        {
+          "label": "Verse 1",
+          "text": "My Father wey Open my Doors\nNa Him I dey Praise Ooh\n(My Father wey Open my Doors\nNa him I dey Praise Ooh)"
+        },
+        {
+          "label": "Verse 1",
+          "text": "Olisa Kere Uwa\nNa Him I dey Praise Ooh\n(Olisa Kere Uwa\nNa Him I dey Praise Ooh)"
+        },
+        {
+          "label": "Verse 1",
+          "text": "The God wey no dey Fail me\nNa Him I dey Praise Ooh\n(God wey no dey Fail me\nNa Him I dey Praise Ooh)"
+        },
+        {
+          "label": "Pre – Chorus",
+          "text": "Aka Na’gwo Oria (Aah)\nOlisa Kerе Uwa (Aah)\nThe Mighty Man of War\nJesus is His name Ooh\nAka Na’gwo Oria (Aah)\nOlisa Kеre Uwa (Aah)\nThe Mighty Man of War\nJesus is His name Ooh"
+        },
+        {
+          "label": "Chorus",
+          "text": "No be say I dey Craze\nNa God I dey Praise Ooh\n(No be say I dey Craze\nNa God I dey Praise Ooh)"
+        },
+        {
+          "label": "Chorus",
+          "text": "No be say I dey Craze\nNa my Father I dey Praise Ooh\n(No be say I dey Craze\nNa God I dey Praise Ooh)"
+        },
+        {
+          "label": "Chorus",
+          "text": "Na God I dey Praise Ooh\n(Na God I dey Praise Ooh)\nNa my Father I dey Praise Ooh\n(Na God I dey Praise Ooh)\nNa God I dey Hail Ooh\n(Na God I dey Praise Ooh)"
+        },
+        {
+          "label": "Chorus",
+          "text": "You are Worthy Worthy Worthy\nWorthy of my Praise Ooh\n(Na God I dey Praise Ooh)\nI can not hold back my Praise Ooh\n(Na God I dey Praise Ooh)"
+        },
+        {
+          "label": "Verse 2",
+          "text": "L Call Him my Father\nMy Master Ooh oh Aah Ah\n(Ooh U Ooh my Master\nOoh Ooh Aah Aah)\nI Call Him Supplier\nMy Provider Ooh Ooh Aah Ah\n(Ooh U Ooh Provider\nOoh Ooh Aah Aah)"
+        },
+        {
+          "label": "Verse 2",
+          "text": "You are my Doctor\nMy Healer Ooh Ooh Aah Ah\n(Ooh U Ooh my Healer\nOoh Ooh Aah Aah)"
+        },
+        {
+          "label": "Pre – Chorus",
+          "text": "Aka Na’gwo Oria (Aah)\nOlisa Kere Uwa (Aah)\nThe Mighty Man of War\nJesus is His name Ooh\nAka Na’gwo Oria (Aah)\nOlisa Kere Uwa (Aah)\nThe Mighty Man of War\nJesus is His name Ooh"
+        },
+        {
+          "label": "Chorus",
+          "text": "No be say I dey Craze\nNa God I dey Praise Ooh\n(No be say I dey Craze\nNa God I dey Praise Ooh)\nThey think say I don Kolo\nNa my Father I dey Praise Ooh\n(No be say I dey Craze\nNa God I dey Praise Ooh)"
+        },
+        {
+          "label": "Chorus",
+          "text": "Na God I dey Praise Ooh\nNa my Father I dey Worship Ooh\n(No be say I dey Craze\nNa God I dey Praise Ooh)"
+        },
+        {
+          "label": "Outro",
+          "text": "Na my Father I dey give my Praise\n(Na God I dey Praise Ooh)\nNa God I dey Praise Ooh\n(Na God I dey Praise Ooh)\nOke Mmuo I dey Worship Ooh\n(Na God I dey Praise Ooh)\nThere is no other God like you\n(Na God I dey Praise Ooh)\nYou are Worthy to be Lifted up\n(Na God I dey Praise Ooh)\nCome and Join me and Praise Him\n(Na God I dey Praise Ooh)\nAll the Saints Let Praise him\n(Na God I dey Praise Ooh)\nChildren of God let’s Praise the Lord\n(Na God I dey Praise Ooh)\nEbube dike Ebube dike Na Agha\n(Na God I dey Praise Ooh)\nOje Na mmuo Oka ya o’me\n(Na God I dey Praise Ooh)\nOloro ihe Loro ehi\nOkemmuo N’eti Onwe ya\n(Na God I dey Praise Ooh)\nAbata Obiye ,Na God I dey Praise Ooh\n(Na God I dey Praise Ooh)"
+        },
+        {
+          "label": "Outro",
+          "text": ""
+        }
+      ],
+      "createdAt": 1794097728822,
+      "updatedAt": 1794097728822
+    },
+    {
+      "id": "song-1794097568576-wxaa",
+      "title": "When you see me dance",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "When you see me dance\nI dance like a winner man\nWhen you see me dance\nI dance like a winner man"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "When you see me jump\nI dance like a winner man\nWhen you see me jump\nI dance like a winner man"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "When you see me clap\nI dance like a winner man\nWhen you see me clap\nI dance like a winner man"
+        }
+      ],
+      "createdAt": 1794097568576,
+      "updatedAt": 1794097568576
+    },
+    {
+      "id": "song-1794097475198-dnt4",
+      "title": "Good News",
+      "artist": "Mr. M & Revelation",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "My joy is full and my good news is on the way\n(My joy is full and my good news is on the way)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Good news is on the way\n(Good news is on the way)\nGood news is on the way\n(Good news is on the way)\nYour good news is on the way\n(Good news is on the way)\nMy good news is on the way\n(Good news is on the way)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "My joy is full and my good news is on the way\n(My joy is full and my good news is on the way)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Good news is on the way\n(Good news is on the way)\nOya good news is on the way\n(Good news is on the way)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Good news is on your way\n(Good news is on the way)\nYour good news is on the way\n(Good news is on the way)\nYou say good is on the way\n(Good news is on the way)\nMy good news is on the way\n(Good news is on the way)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Obidogo\n(It has started)\nObidogo\n(It has started)\nE don start oh, Obidogo\n(It has started)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "I say Obidogo\n(It has started)\nObidogo\n(It has started)\nYour miracles, Obidogo\n(It has started)\nYour favour, Obidogo\n(It has started)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Good news is on your way\n(Good news is on the way)\nYour good news dey come gidigbamgbam\n(Your good news is coming mightily)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "I say Obidogo\n(It has started)\nObidogo\n(It has started)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Omebego\n(It’s happening)\nOmebego\n(It’s happening)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Everybody kpotuwa\n(Let it resound)\nYakpotuwa\n(Let it resound)\nIn your life, Yakpotuwa\n(Let it resound)\nIn my life, Yakpotuwa\n(Let it resound)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "You say good is on the way\n(Good news is on the way)\nMy good news is on the way\n(Good news is on the way)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Your good news dey come your way\n(Good news is on the way)\nIn the morning good news\nIn the noon time good news\nIn the evening good news\n(Good news is on the way)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Congratulation is on the way\n(Good news is on the way)\nCongratulations\nBrother congratulations\nSister congratulations\nCongratulations (Good news is on the way)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Testimony go jam testimony\n(I’m in the middle of it)\nTestimony go jam testimony\n(I’m in the middle of it)\nTestimony go jam testimony\n(I’m in the middle of it)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Good news is on the way\n(Good news is on the way)\nOya follow me, Follow me\nGood news follows me"
+        }
+      ],
+      "createdAt": 1794097475198,
+      "updatedAt": 1794097475198
+    },
+    {
+      "id": "song-1794097378797-zv2c",
+      "title": "Arise",
+      "artist": "Don Moen",
+      "slides": [
+        {
+          "label": "Intro",
+          "text": "Arise, arise, arise, arise\nArise, take Your place\nBe enthroned on our praise"
+        },
+        {
+          "label": "Verse 1",
+          "text": "One thing we ask of You\nOne thing that we desire\nThat as we worship You\nLord come and change our lives"
+        },
+        {
+          "label": "Chorus",
+          "text": "Arise, arise, arise, arise\nArise, take Your place\nBe enthroned on our praise, arise\nKing of kings, Holy God, as we sing arise\nArise, arise, arise"
+        },
+        {
+          "label": "Chorus",
+          "text": "One thing we ask of You\nOne thing that we desire\nThat as we worship You\nLord come and change our lives"
+        },
+        {
+          "label": "Chorus",
+          "text": "So arise, arise, arise, arise\nArise, take Your place\nBe enthroned on our praise, arise\nKing of kings, Holy God, as we sing arise\nArise, arise, arise"
+        },
+        {
+          "label": "Chorus",
+          "text": "We lift You up, we lift You up\nWe lift You up on our praises, yeah\nWe lift You up, we lift You up\nWe lift You up on our praises"
+        },
+        {
+          "label": "Chorus",
+          "text": "We lift You up, we lift You up\nWe lift You up on our praises, yeah\nWe lift You up, we lift You up\nWe lift You up on our praises\nWe lift"
+        },
+        {
+          "label": "Chorus",
+          "text": "We lift You up, we lift You up\nWe lift You up on our praises, yeah\nWe lift You up, we lift You up\nWe lift You up on our praises"
+        },
+        {
+          "label": "Chorus",
+          "text": "Arise, take Your place\nBe enthroned on our praise, arise\nKing of kings, Holy God, as we sing arise\nArise, arise, arise, arise"
+        },
+        {
+          "label": "Chorus",
+          "text": "Arise, take Your place\nBe enthroned on our praise, arise\nKing of kings, Holy God, as we sing arise\nArise, arise, arise, arise\nArise, arise, arise, arise, arise"
+        }
+      ],
+      "createdAt": 1794097378797,
+      "updatedAt": 1794097378797
+    },
+    {
+      "id": "song-1794096359456-jyhn",
+      "title": "Oba to Nja Funmi",
+      "artist": "Gbenga Akinfenwa",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "Eniyan nba ti gbemi mi o\nBikosewo Olorun to lagbara\nAye iba ti gbemi mi o\nBikosewo Oba to nja fun mi o"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Eniyan nba ti gbemi mi o\nBikosewo Olorun to lagbara\nAye iba ti gbemi mi o\nBikosewo Oba to nja fun mi o"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Eniyan nba ti gbemi mi o\nBikosewo Olorun to lagbara\nAye iba ti gbemi mi o\nBikosewo Oba to nja fun mi o"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Call: Thank you for fighting my battles for me Jehovah Olugbeja\nResp: Thank you for fighting my battles for me Jehovah Olugbeja"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Call: Thank you for not leaving me to the wishes of my enemies\nResp: Thank you for fighting my battles for me Jehovah Olugbeja"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Call: Ogbe ni nija keru obo nija Jehovah Lo nja fun gbenga\nResp: Thank you for fighting my battles for me Jehovah Olugbeja"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Call: I have seen your hands fighting\nwhen the enemies came like a Flood\nJehovah you raised your standard against them\nResp: Thank you for fighting my battles for me Jehovah Olugbeja"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Call: And I’m saying it again Only because you Made a way\nResp: Thank you for fighting my battles for me Jehovah Olugbeja"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Thank you for fighting my battles for me\nGbani gbani nijo Ogun le\nThank you Thank you Thank you L:ord\nThank you for fighting for me"
+        }
+      ],
+      "createdAt": 1794096359456,
+      "updatedAt": 1794096359456
+    },
+    {
+      "id": "song-1794096312891-y6rq",
+      "title": "You are worthy",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "You are worthy\nWorthy of my praise\nYou are the most High\nYou are worthy"
+        }
+      ],
+      "createdAt": 1794096312891,
+      "updatedAt": 1794096312891
+    },
+    {
+      "id": "song-1794096231775-ru8u",
+      "title": "You Are the Reason I Live",
+      "artist": "Sinach",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "You are the reason I Live\nYou’re the one for me\nYou’re the one for me"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Why should I fear when I have You\nSurrounded by your love\nYour everlasting love"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Why should I care what people say\nCause they don’t know\nWhat you mean to me"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "You’re the one for me…"
+        }
+      ],
+      "createdAt": 1794096231775,
+      "updatedAt": 1794096231775
+    },
+    {
+      "id": "song-1794096130996-4pym",
+      "title": "Lion of Judah",
+      "artist": "Mr Wealth",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "We hail you Lion of Judah,\nOh oh oh oh, Lamb of God."
+        },
+        {
+          "label": "Unlabeled",
+          "text": "We Honor you lion of Judah,\nOh oh oh oh Lamb of God."
+        }
+      ],
+      "createdAt": 1794096130996,
+      "updatedAt": 1794096172528
+    },
+    {
+      "id": "song-1792924089796-k87w",
+      "title": "if e reach your turn",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "if e reach your turn\nmake you no praise my God"
+        }
+      ],
+      "createdAt": 1792924089796,
+      "updatedAt": 1792924089796
+    },
+    {
+      "id": "song-1792919153094-gas9",
+      "title": "Reckless Love",
+      "artist": "Cory Asbury",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "Before I spoke a word, You were singing over me\nYou have been so, so good to me, uh-uh\nBefore I took a breath, You breathed Your life in me\nYou have been so, so kind to me"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Oh, the overwhelming, never-ending, reckless love of God\nOh, it chases me down, fights 'til I'm found, leaves the 99\nI couldn't earn it, and I don't deserve it, still, You give Yourself away\nOh, the overwhelming, never-ending, reckless love of God"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "When I was Your foe, still Your love fought for me (hmm)\nYou have been so, so good to me (yeah)\nWhen I felt no worth, You paid it all for me, oh\nYou have been so, so kind to me, yeah"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Oh, the overwhelming, never-ending, reckless love of God\nOh, it chases me down, fights 'til I'm found, leaves the 99\nI couldn't earn it, and I don't deserve it, still, You give Yourself away\nOh, the overwhelming, never-ending, reckless love of God, yeah\nOh-oh-oh-oh, yeah, oh yeah"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "There's no shadow You won't light up\nMountain You won't climb up\nComing after me\nThere's no wall You won't kick down\nLie You won't tear down\nComing after me"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Oh, the overwhelming, never-ending, reckless love of God\nOh, it chases me down, fights 'til I'm found, leaves the 99\nI couldn't earn it, and I don't deserve it, still, You give Yourself away\nOh, the overwhelming, never-ending, reckless love of God"
+        }
+      ],
+      "createdAt": 1792919153094,
+      "updatedAt": 1794226843723
+    },
+    {
+      "id": "song-1792918371785-j0ab",
+      "title": "OMnipotent God",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "Omnipotent God\nSeated upon the throne\nYou reign above all other gods\nTake all the glory and the praise"
+        }
+      ],
+      "createdAt": 1792918371785,
+      "updatedAt": 1792918371785
+    },
+    {
+      "id": "song-1792918195414-3t6x",
+      "title": "oluwatosin",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "Oh ooh oh oh oh\nEh eh eh eh eh"
+        },
+        {
+          "label": "Verse 1",
+          "text": "I've climbed the mountains\nCrossed the seas"
+        },
+        {
+          "label": "Verse 1",
+          "text": "I've found no other love like this\nYou are the treasure that I have"
+        },
+        {
+          "label": "Verse 1",
+          "text": "In You, I'm truly satisfied\nJesus, You're my everything"
+        },
+        {
+          "label": "Verse 1",
+          "text": "You're the light that shines through me\nYou are the treasure that I have\nIn You, I'm truly satisfied"
+        },
+        {
+          "label": "chorus",
+          "text": "Oluwatosin\nThe Jesus that I know\nIs enough for me"
+        },
+        {
+          "label": "chorus",
+          "text": "This Jesus that I've seen\nHa ha ha ha ha\nThis Jesus that I've heard\nOh oh oh oh oh\nThis Jesus that I know,\nEh, eh, eh, oh oh, oh, oh, o, h oh, eh\nYou are more than life to me\nYou are everything and more\nYou are the treasure inside of me\nIn You, I'm truly satisfied\nIzurukeme, Izurukeme\nThe Jesus that I have is enough for me\nIzurukeme, Chizurumkeme\nThe Jesus that I have is enough for me\nOluwatosin\nThe Jesus that I know\nIs enough for me\nO te fen mi, o te fen mi\n(He's enough for me, He's enough for me)\nJese te mo mee, o te fen mi\n(The Jesus that I know is enough for me)\nO te me o, o te me o\n(I'm satisfied, I'm satisfied)\nJese te mo mee, o te fen mi\n(The Jesus that I know is enough for me)\nOluwatosin\nThe Jesus that I know\nIs enough for me\nYou are enough for me\nYou are enough for me\nYou are enough for me\nJesus is enough\nJesus is enough for me"
+        }
+      ],
+      "createdAt": 1792918195414,
+      "updatedAt": 1792918195414
+    },
+    {
+      "id": "song-1792915041926-qq7v",
+      "title": "There shall be showers of blessings",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "1. There shall be showers of blessing:\nThis is the promise of love;\nThere shall be seasons refreshing,\nSent from the Savior above."
+        },
+        {
+          "label": "Refrain",
+          "text": "Showers of blessing,\nShowers of blessing we need:\nMercy-drops round us are falling,\nBut for the showers we plead."
+        },
+        {
+          "label": "Refrain",
+          "text": "2. There shall be showers of blessing,\nPrecious reviving again;\nOver the hills and the valleys,\nSound of abundance of rain. [Refrain]"
+        },
+        {
+          "label": "Refrain",
+          "text": "3. There shall be showers of blessing:\nSend them upon us, O Lord;\nGrant to us now a refreshing,\nCome and now honor Thy Word. [Refrain]"
+        },
+        {
+          "label": "Refrain",
+          "text": "4. There shall be showers of blessing:\nOh, that today they might fall,\nNow as to God we're confessing,\nNow as on Jesus we call! [Refrain]"
+        }
+      ],
+      "createdAt": 1792915041926,
+      "updatedAt": 1792915041926
+    },
+    {
+      "id": "song-1792914549604-d79y",
+      "title": "Come let's praise",
+      "artist": "Panam Percy Paul",
+      "slides": [
+        {
+          "label": "Intro",
+          "text": "Alright people of God (Yes)\nCome let′s praise the Lord (Alright)\nFor the Lord is good (And his mercies endureth forever)"
+        },
+        {
+          "label": "Chorus",
+          "text": "Come let's praise the Lord \n(Come let′s praise the Lord)\nCome let's praise the Lord \n(Come let's praise the Lord)"
+        },
+        {
+          "label": "Chorus",
+          "text": "He is Jehovah \n(Tell about His faithfulness)\nHe is El-Shaddai \n(Tell the world of His salvation)\nSpread the news around \n(Tell the world of his praise)\nLet us praise the Lord (Praise the Lord)"
+        },
+        {
+          "label": "Verse",
+          "text": "Forever and ever my God He is the same\nHe'll never Change\nFrom eternity to eternity\nHe′ll be my God, ooh"
+        },
+        {
+          "label": "Chrous",
+          "text": "Come let's praise the Lord \n(Come let′s praise the Lord)\nCome let's praise the Lord \n(Come let's praise the Lord)"
+        },
+        {
+          "label": "Chrous",
+          "text": "He is Jehovah \n(Tell about His faithfulness)\nHe is El-Shaddai \n(Tell the world of His salvation)\nSpread the news around \n(Tell the world of his praise)\nLet us praise the Lord (Praise the Lord)"
+        },
+        {
+          "label": "Verse",
+          "text": "Forever and ever my God He is the same\nHe'll never Change\nFrom eternity to eternity\nHe′ll be my God, ooh, yeah\nFor the Lord is good (And his mercies endureth forever)"
+        },
+        {
+          "label": "Verse",
+          "text": "Alright now, let's get ready to sing \"Praise Him\"\nNow here we go"
+        },
+        {
+          "label": "Bridge",
+          "text": "Praise Him!\nPraise Him!"
+        },
+        {
+          "label": "Bridge",
+          "text": "The Lord of Lords\nJehovah\nPraise Him!"
+        },
+        {
+          "label": "Bridge",
+          "text": "The Lord of Lords\nJehovah\nPraise Him!"
+        },
+        {
+          "label": "Bridge",
+          "text": "The Lord of Lords\nJehovah\nPraise Him!"
+        },
+        {
+          "label": "Bridge",
+          "text": "The Lord of Lords (King of kings, Prince of peace)\nPraise Him!"
+        },
+        {
+          "label": "Bridge",
+          "text": "The Lord of Lords (His Kingdoms will never seize)\nPraise Him!"
+        },
+        {
+          "label": "Bridge",
+          "text": "The Lord of Lords (King of kings, Prince of peace)\nPraise Him!"
+        },
+        {
+          "label": "Bridge",
+          "text": "The Lord of Lords (His Kingdoms will never seize)"
+        },
+        {
+          "label": "Chorus",
+          "text": "Come let′s praise the Lord \n(Come let's praise the Lord)\nCome let's praise the Lord \n(Come let′s praise the Lord)"
+        },
+        {
+          "label": "Chorus",
+          "text": "He is Jehovah \n(Tell about His faithfulness)\nHe is El-Shaddai \n(Tell the world of His salvation)\nSpread the news around \n(Tell the world of his praise)\nLet us praise the Lord (Praise the Lord)"
+        },
+        {
+          "label": "Chorus",
+          "text": "Come let′s praise the Lord (Come let's praise the Lord)\nCome let′s praise the Lord (Come let's praise the Lord)\nHe is Jehovah (Tell about His faithfulness)\nHe is El-Shaddai (Tell the world of His salvation)\nSpread the news around (Tell the world of his praise)\nLet us praise the Lord (Praise the Lord)"
+        },
+        {
+          "label": "Outro",
+          "text": "(Alright praise Him now)\nPraise Him!\nPraise Him!\nPraise Him!\nPraise Him!"
+        }
+      ],
+      "createdAt": 1792914549604,
+      "updatedAt": 1792914549604
+    },
+    {
+      "id": "song-1792914451540-rcjt",
+      "title": "Follow Follow",
+      "artist": "Tim Godfrey",
+      "slides": [
+        {
+          "label": "Verse",
+          "text": "Oh my God Carry me dey Go\nOh my God Carry me dey Go\nAnywhere better dey\nCarry me dey Go\nAnywhere better dey\nCarry me dey Go"
+        },
+        {
+          "label": "Chorus A",
+          "text": "God You dey Show me\nLove wey Jiji\n…… Shallow\nI dey Generate Power\nYou can call me Meter\nMy Life is Turning\nTurning, Turning all around\nPlenty Blessings just come\nAnywhere You dey,\nI’m Coming"
+        },
+        {
+          "label": "Bridge",
+          "text": "You be the Way\nThe Truth and Life\n(La La La La La La)\nThe Light\nWey dey make me Shine\nYou dey Answer when I Call\nCatch me when I Fall\nThis God\nYou’re just too Much"
+        },
+        {
+          "label": "Bridge",
+          "text": "You be the Way\nThe Truth and Life\nThe Light\nWey dey make me Shine\nYou dey Answer when I Call\nCatch me when I Fall\nThis God\nYou’re just too Much"
+        },
+        {
+          "label": "Chorus",
+          "text": "I go dey Follow You dey Go Eay\n(Follow You dey Go eay)\nI go dey Follow You dey Go Eay\n(Follow You dey Go eay)"
+        },
+        {
+          "label": "Chorus",
+          "text": "I go dey Follow You dey Go Eay\n(Follow You dey Go eay)\nI go dey Follow You dey Go Eay\n(Follow You dey Go eay)"
+        },
+        {
+          "label": "Chorus",
+          "text": "Follow Lo Lo (Follow Lo Lo)\nFollo Lo Lo (Follow Lo Lo)\nFollow Lo Lo (Follow Lo Lo)\nFollow Lo Lo (Follow Lo Lo)"
+        },
+        {
+          "label": "Chorus",
+          "text": "Follo Lo Lo (Follow Lo Lo)\nFollow Lo Lo (Follow Lo Lo)\nFollow Lo Lo (Follow Lo Lo)\nFollo Lo Lo (Follow Lo Lo)"
+        },
+        {
+          "label": "Chorus",
+          "text": "Tell am tell am tell am tell am\nTell anybody\nWey wan Hear am\nMake E beti wella\nSay Jesu Christi\nNar the Way now, Way now\nWay now, Way now\nFollow the Ladder\nTo the Father, Father, Father, Father\nEay Eay Eay Eay"
+        },
+        {
+          "label": "Bridge",
+          "text": "You be the Way\nThe Truth and Life\n(La La La La La La)\nThe Light\nWey dey make me Shine\nYou dey Answer when I Call\nCatch me when I Fall\nThis God\nYou’re just too Much"
+        },
+        {
+          "label": "Bridge",
+          "text": "You be the Way\nThe Truth and Life\nThe Light\nWey dey make me Shine\nYou dey Answer when I Call\nCatch me when I Fall\nThis God\nYou’re just too Much"
+        },
+        {
+          "label": "Chorus",
+          "text": "I go dey Follow You dey Go Eay\n(Follow You dey Go eay)\nI go dey Follow You dey Go Eay\n(Follow You dey Go eay)"
+        },
+        {
+          "label": "Chorus",
+          "text": "I go dey Follow You dey Go Eay\n(Follow You dey Go eay)\nI go dey Follow You dey Go Eay\n(Follow You dey Go eay)"
+        },
+        {
+          "label": "Chorus",
+          "text": "Follow Lo Lo (Follow Lo Lo)\nFollo Lo Lo (Follow Lo Lo)\nFollow Lo Lo (Follow Lo Lo)\nFollow Lo Lo (Follow Lo Lo)"
+        },
+        {
+          "label": "Chorus",
+          "text": "Follo Lo Lo (Follow Lo Lo)\nFollow Lo Lo (Follow Lo Lo)\nFollow Lo Lo (Follow Lo Lo)\nFollo Lo Lo (Follow Lo Lo)"
+        }
+      ],
+      "createdAt": 1792914451540,
+      "updatedAt": 1792914451540
+    },
+    {
+      "id": "song-1792914348560-ojvo",
+      "title": "A yo o o!",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "Ayo o, o!\nAyo o, o!\nAyo o, o!\nAbasi Ibom akama ukara"
+        }
+      ],
+      "createdAt": 1792914348560,
+      "updatedAt": 1792914348560
+    },
+    {
+      "id": "song-1792914166863-2osx",
+      "title": "E Ti Tobi To",
+      "artist": "Pelumi Deborah + EmmaOMG + BBO + The OhEmGee Choir",
+      "slides": [
+        {
+          "label": "Intro",
+          "text": "Oluwa tobi ni Sioni\n(God is great in Zion)"
+        },
+        {
+          "label": "Intro",
+          "text": "O si joba lori gbogbo orile-ede\n(He reigns over all nations)"
+        },
+        {
+          "label": "Intro",
+          "text": "Je ki won yin oruko re ti o tobi, ti o si leru\n(Let them praise His name, for it is great and full of awe)"
+        },
+        {
+          "label": "Intro",
+          "text": "Oh, my God"
+        },
+        {
+          "label": "Call and Response",
+          "text": "Lead: Gbogbo aye n wariri ni oruko re, won nkorin\n(The whole world is trembling at the mention of His name; they are singing)"
+        },
+        {
+          "label": "Call and Response",
+          "text": "Response: E ti tobi to, Jesu\n(You are great, Jesus)"
+        },
+        {
+          "label": "Call and Response",
+          "text": "Lead: Awon orun n seleri, won foribale niwaju ite re, won so wipe\n(The heavens are declaring, prostrating before His throne, saying)"
+        },
+        {
+          "label": "Call and Response",
+          "text": "Response: E ti tobi to, Jesu\n(You are great, Jesus)"
+        },
+        {
+          "label": "Call and Response",
+          "text": "Lead: Won ni, “E ti tobi to,” oh, oh, oh, Oluwa\n(They say You are great, oh Lord)"
+        },
+        {
+          "label": "Call and Response",
+          "text": "Response: E ti tobi to, Jesu\n(You are great, Jesus)"
+        },
+        {
+          "label": "Call and Response",
+          "text": "Lead: Won ni, “E ti tobi to,” oh, oh, oh, oh, Oluwa wa\n(They say You are great, oh Lord, our Lord)"
+        },
+        {
+          "label": "Call and Response",
+          "text": "Response: E ti tobi to, Jesu\n(You are great, Jesus)"
+        },
+        {
+          "label": "Declaration",
+          "text": ""
+        },
+        {
+          "label": "Declaration",
+          "text": "Lead: Awon oke nla nla won foribale o, tori iwo ni ogo ati ola ju oke nla ikogun won ni lo o"
+        },
+        {
+          "label": "Declaration",
+          "text": "(The great mountains are prostrating, for You are greater in glory and honor, greater than the mighty mountains)"
+        },
+        {
+          "label": "Declaration",
+          "text": "Response: E ti tobi to, Jesu\n(You are great, Jesus)"
+        },
+        {
+          "label": "Declaration",
+          "text": "Lead: Iwo ti Olorun ji dide ninu oku lati gba wa kuro ninu ibinu ti n bo o\n(You, the Lord God, who rose from the dead to save us from impending wrath)"
+        },
+        {
+          "label": "Declaration",
+          "text": "Response: E ti tobi to, Jesu\n(You are great, Jesus)"
+        },
+        {
+          "label": "Declaration",
+          "text": "Lead: Iwo Oluwa Olorun to n gbe larin awon kerubu, to po ni ipa ati agbara o\n(You, Lord God, who dwells among the cherubim, full of power and might)"
+        },
+        {
+          "label": "Response",
+          "text": "E ti tobi to, Jesu\n(You are great, Jesus)"
+        },
+        {
+          "label": "Call and Response",
+          "text": "Lead: Ani gbogbo aye n wariri ni oruko re, won nkorin, yee\n(Indeed, the whole world trembles at His name; they are singing)"
+        },
+        {
+          "label": "Response",
+          "text": "E ti tobi to, Jesu\n(You are great, Jesus)"
+        },
+        {
+          "label": "Response",
+          "text": "Lead: Awon orun n seleri, won foribale niwaju ite re\n(The heavens declare, prostrating before His throne)"
+        },
+        {
+          "label": "Response",
+          "text": "Response: E ti tobi to, Jesu\n(You are great, Jesus)"
+        },
+        {
+          "label": "Response",
+          "text": "Lead: E ti tobi to, oh, oh, oh, oh, Oluwa wa\n(You are great, oh Lord our Lord)"
+        },
+        {
+          "label": "Response",
+          "text": "Response: E ti tobi to, Jesu\n(You are great, Jesus)"
+        },
+        {
+          "label": "Declaration 2",
+          "text": ""
+        },
+        {
+          "label": "Declaration 2",
+          "text": "Lead: Ipekun ola, ipekun iye, ye, eh, eh, eh, E ti tobi to, oh, oh, oh, oh\n(Endless glory, endless life; oh yes, You are great)"
+        },
+        {
+          "label": "Response",
+          "text": "E ti tobi, Jesu\n(You are great, Jesus)"
+        },
+        {
+          "label": "Response",
+          "text": "Lead: Ireti wa o, eri wa o, oh, oh, oh, E ti tobi to, oh, oh, oh\n(Our hope, our reward; You are great)"
+        },
+        {
+          "label": "Response",
+          "text": "Response: E ti tobi to, Jesu\n(You are great, Jesus)"
+        },
+        {
+          "label": "Response",
+          "text": "Lead: Itan sho to wole, ro, ro, ro, ro, ro; E ti tobi to, aye ati orun n bo o\n(The story comes; the world and heaven tremble)"
+        },
+        {
+          "label": "Response",
+          "text": "Won n juba; E ti tobi to, Jesu; won foribale\n(They worship; You are great, Jesus; they prostrate)"
+        },
+        {
+          "label": "Response",
+          "text": "Biblical Declaration"
+        },
+        {
+          "label": "Response",
+          "text": "Lead: Jordani ri o, o pada seyin; okun ri o, o sa. E ti tobi to, Olodumare\n(The Jordan saw Him and turned back; the sea saw Him and parted. You are great, Almighty God)"
+        },
+        {
+          "label": "Response",
+          "text": "Response: E ti tobi to, Jesu\n(You are great, Jesus)"
+        },
+        {
+          "label": "Response",
+          "text": "Lead: Abetilukarabiajere, Baba mi, agba oye; E ti tobi to, oh, oh, oh, oh, oh\n(Great in power, my Father; You are great)"
+        },
+        {
+          "label": "Response",
+          "text": "Response: E ti tobi, Jesu\n(You are great, Jesus)"
+        },
+        {
+          "label": "Response",
+          "text": "Call and Response 3"
+        },
+        {
+          "label": "Response",
+          "text": "Lead: Tori na, gbogbo aye n wariri ni oruko re, won nkorin\n(For the whole world trembles at His name; they sing)"
+        },
+        {
+          "label": "Response",
+          "text": "Response: E ti tobi to, Jesu\n(You are great, Jesus)"
+        },
+        {
+          "label": "Response",
+          "text": "Lead: Awon orun n seleri, won foribale niwaju ite re, eh, eh, eh\n(The heavens declare, prostrating before His throne)"
+        },
+        {
+          "label": "Response",
+          "text": "Response: E ti tobi to, Jesu\n(You are great, Jesus)"
+        },
+        {
+          "label": "Response",
+          "text": "Lead: Won ni, “E ti tobi to,” oh, oh, oh, Oluwa wa\n(They say You are great, oh Lord our Lord)"
+        },
+        {
+          "label": "Response",
+          "text": "Response: E ti tobi to, Jesu\n(You are great, Jesus)"
+        },
+        {
+          "label": "Response",
+          "text": "Lead: Gbogbo idile Jesse, Jesu, won nkorin, foribale, won so wipe\n(The entire house of Jesse sings and prostrates, saying)"
+        },
+        {
+          "label": "Response",
+          "text": "Response: E ti tobi to, Jesu\n(You are great, Jesus)"
+        },
+        {
+          "label": "Response",
+          "text": "Declaration 3"
+        },
+        {
+          "label": "Response",
+          "text": "Lead: Ipekun ola, ipekun oro, ipekun agbara; E ti tobi to, E ti tobi to, oh, oh, oh, oh, oh\n(Endless glory, endless word, endless power; You are great)"
+        },
+        {
+          "label": "Response",
+          "text": "Response: E ti tobi to, Jesu\n(You are great, Jesus)"
+        },
+        {
+          "label": "Response",
+          "text": "Lead: Ore ati ola nla ni o wa ni iwaju re; ipa ati ewa n be ni ibi mimo re\n(Great power and glory are before You; strength and beauty are in Your holy place)"
+        },
+        {
+          "label": "Response",
+          "text": "Response: E ti tobi to, Jesu\n(You are great, Jesus)"
+        },
+        {
+          "label": "Response",
+          "text": "Lead: Aiikakatan o, aiibubutan o, atobi loye, ongbe leyin eni a n da loro o; E ti, E ti, E ti tobi to\n(There is none like You, none greater; You are great)"
+        },
+        {
+          "label": "Response",
+          "text": "Response: E ti tobi to, Jesu\n(You are great, Jesus)"
+        },
+        {
+          "label": "Response",
+          "text": "Final Call and Response"
+        },
+        {
+          "label": "Response",
+          "text": "Lead: Jesu, gbogbo aye n wariri ni oruko re, won nkorin\n(Jesus, the whole world trembles at His name; they sing)"
+        },
+        {
+          "label": "Response",
+          "text": "Response: E ti tobi to, Jesu\n(You are great, Jesus)"
+        },
+        {
+          "label": "Response",
+          "text": "Lead: Awon orun n seleri, won foribale niwaju ite re, oh, eh\n(The heavens declare, prostrating before His throne)"
+        },
+        {
+          "label": "Response",
+          "text": "Response: E ti tobi to, Jesu\n(You are great, Jesus)"
+        },
+        {
+          "label": "Response",
+          "text": "Worship Bridge"
+        },
+        {
+          "label": "Response",
+          "text": "Won juba fun Ajunilo o\nE ba n juba f'Ajunilo eh\nE ba n seba f'Ajunilo o\nE ba gbo'suba f'Ajunilo\nE ba n gbo osuba f'Ajunilo o\nE ba n kira f'Ajunilo o\nE ba n juba f'Ajunilo o\nE ba mi juba f'Ajunilo\nE ba n gbo'suba f'Ajunilo o\nE ba n seba f'Ajunilo o"
+        },
+        {
+          "label": "Response",
+          "text": "(They worship the Savior; let us worship the Savior, sing for the Savior, and call upon the Savior)"
+        },
+        {
+          "label": "Response",
+          "text": "Final Refrain"
+        },
+        {
+          "label": "Response",
+          "text": "Lead: Ani gbogbo aye n wariri ni oruko re, won nkorin\n(Indeed, the whole world trembles at His name; they sing)"
+        },
+        {
+          "label": "Response",
+          "text": "Response: E ti tobi to, Jesu\n(You are great, Jesus)"
+        },
+        {
+          "label": "Response",
+          "text": "Outro"
+        },
+        {
+          "label": "Response",
+          "text": "Oh, my God"
+        },
+        {
+          "label": "Response",
+          "text": ""
+        }
+      ],
+      "createdAt": 1792914166863,
+      "updatedAt": 1792914166863
+    },
+    {
+      "id": "song-1792913994882-09lo",
+      "title": "Give me chance",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Intro - Bidemi Olaoba",
+          "text": "Oh oh oh\nOh oh oh\nOh oh oh\nOh oh oh oh"
+        },
+        {
+          "label": "Intro - Bidemi Olaoba",
+          "text": "The Bible says\nThy testimony oh God have I taken as my inheritance for they are the rejoicing of my soul"
+        },
+        {
+          "label": "Verse 1",
+          "text": "It's amazing what the Lord has done\nCome and see what the Lord has done\nAs è shock you\nNa so è shock me too\nCome and see what the Lord has done"
+        },
+        {
+          "label": "Verse 1",
+          "text": "Come and see what the Lord has done, oh oh oh\nTestimonies all the way, way, way\nAs è shock you\nNa so è shock me too\nCome and see what the Lord has done"
+        },
+        {
+          "label": "Chorus - Bidemi Olaoba",
+          "text": "Give me chance oh, I want to praise my God\n(Give me chance oh, I want to praise my God)"
+        },
+        {
+          "label": "Chorus - Bidemi Olaoba",
+          "text": "Clear the road oh, I want to praise my God oh\n(Clear thе road oh, I want to praise my God)"
+        },
+        {
+          "label": "Chorus - Bidemi Olaoba",
+          "text": "My testimonies mi o lе dupe tan\n(Give me chance oh, I want to praise my God)"
+        },
+        {
+          "label": "Chorus - Bidemi Olaoba",
+          "text": "Clear the road oh, I want to praise my God\n(Clear the road oh, I want to praise my God)\n(Ah eh eh, ah eh eh)\n(Ah eh eh, ah eh eh)"
+        },
+        {
+          "label": "Verse 2",
+          "text": "Chai\nIt's amazing how You love me\nIt's amazing how You do the things You do for me\nTestimony o ti por por\nMany blessings oti surplus\nIt's amazing how You love me Lord\nIt's amazing how You do the things You do for me\nTestimonies o ti por por\nMany blessings oti yapa gan"
+        },
+        {
+          "label": "Chorus",
+          "text": "Give me chance oh, I want to praise my God\n(Give me chance oh, I want to praise my God)"
+        },
+        {
+          "label": "Chorus",
+          "text": "Clear the road oh, I want to praise my God oh\n(Clear the road oh, I want to praise my God)"
+        },
+        {
+          "label": "Chorus",
+          "text": "My testimonies mi o le dupe tan\n(Give me chance oh, I want to praise my God)"
+        },
+        {
+          "label": "Chorus",
+          "text": "Clear the road oh, I want to praise my God\n(Clear the road oh, I want to praise my God)\n(Ah eh eh, ah eh eh)\n(Ah eh eh, ah eh eh)"
+        },
+        {
+          "label": "Bridge",
+          "text": "Come and see, come and see\nTestimonies bo se por to"
+        },
+        {
+          "label": "Bridge",
+          "text": "You are my melody and my song\nI'll forever praise Your name"
+        },
+        {
+          "label": "Bridge",
+          "text": "Testimony people talk about oo, eh eh eh\nI no fit shout I cannot pariwo"
+        },
+        {
+          "label": "Bridge",
+          "text": "Testimony speaks louder than voice eh\nAkanchanwa se be si awa yo ma gbe o ga"
+        },
+        {
+          "label": "Bridge",
+          "text": "Naso Naso\nHe dey give me favour\nHe dey give me blessing\nThank You sir agunechemba\nOsimiriatata"
+        },
+        {
+          "label": "Chorus",
+          "text": "Give me chance oh, I want to praise my God\n(Give me chance oh, I want to praise my God)"
+        },
+        {
+          "label": "Chorus",
+          "text": "Clear the road oh, I want to praise my God oh\n(Clear the road oh, I want to praise my God)"
+        },
+        {
+          "label": "Chorus",
+          "text": "My testimonies mi o le dupe tan\n(Give me chance oh, I want to praise my God)"
+        },
+        {
+          "label": "Chorus",
+          "text": "Clear the road oh, I want to praise my God\n(Clear the road oh, I want to praise my God)\n(Ah eh eh, ah eh eh)\n(Ah eh eh, ah eh eh)"
+        }
+      ],
+      "createdAt": 1792913994882,
+      "updatedAt": 1792913994882
+    },
+    {
+      "id": "song-1792913881252-uybb",
+      "title": "O that men would praise the Lord",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "O that men would praise The Lord\nO that men would praise The Lord\nFor His goodness and for His wonderful works\nTo the children of men\nTo the children of men"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "For His goodness and for His wonderful works\nTo the children of men"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "He has broken the gates of brass\nAnd sawn the bars of iron asunder"
+        }
+      ],
+      "createdAt": 1792913881252,
+      "updatedAt": 1792913881252
+    },
+    {
+      "id": "song-1792913842292-zycb",
+      "title": "We are singing unto the Lord",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "We are singing unto the Lord,\nSinging Hallelujah!"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "We are singing unto the Lord,\nSinging Hallelujah!"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "We are dancing unto the Lord,\nDancing Hallelujah!"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "We are clapping unto the Lord,\nClapping Hallelujah!"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "We are jumping unto the Lord,\nJumping Hallelujah!"
+        }
+      ],
+      "createdAt": 1792913842292,
+      "updatedAt": 1792913842292
+    },
+    {
+      "id": "song-1792913741565-44bz",
+      "title": "Agam esoro ndi mmuozi",
+      "artist": "Emmasings",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "Agam Esoro Ndi muo ozi na enye gi ekele \n(I will join the Angels to give You praise)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Agam Esoro Ndi muo ozi na aja gi nma \n(I will join the Angels to glorify Your Name)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Osimiri na erughari na Otito gi nna \n(Rivers roll in Your praise Father)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Afifia no na ohia na efufe aka na enye gi ekele (Grasses in the Bush are waving to You in praise)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Ndi mmadu bi na uwa na egbu ikpere na aja gi nma \n(People that live on the earth kneel down to glorify Your Name)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Ha na asi imela imela imela \n(All are saying Thank You Thank You Thank You)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Agam Esoro Ndi muo ozi na enye gi ekele\nAgam Esoro Ndi muo ozi na aja gi nma papa\nOsimiri na erughari na Otito gi nna"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Afifia no na ohia na efufe aka na enye gi ekele\nNdi mmadu bi na uwa na egbu ikpere na aja gi nma"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Ha na asi imela imela imela\nHa na asi imela imela imela chukwu oma mu eh!\nImela imela imela"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Ha na si idi nma na ututu, ehihie na abali\nHa si imela imela imela"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Chineke onye bi na igwe\nKam bulie aha gi elu na ihi aha gi di nso\nAha go mara mma"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Chineke onye bi na igwe\nKam bulie aha gi elu na aha gi di nso\nAha go mara mma"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Chineke onye bi na igwe\nKam bulie aha gi elu na aha gi di nso\nAha go mara mma"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Aha gi di nso\nOnye oru ebube\nAha gi mara nma chimuoma\nAha gi di nso"
+        }
+      ],
+      "createdAt": 1792913741565,
+      "updatedAt": 1792913741565
+    },
+    {
+      "id": "song-1792913489098-6qaq",
+      "title": "Song of angels (Ndi mo zi)",
+      "artist": "Judikay",
+      "slides": [
+        {
+          "label": "Chorus",
+          "text": "Ndimozi binigwe\nAnasi halleluyah\nAnasi halleluyah\nJehovah meliwo omeliwo"
+        },
+        {
+          "label": "Chorus",
+          "text": "Ndimozi binigwe\nAnasi halleluyah\nAnasi halleluyah\nJehovah meliwo"
+        },
+        {
+          "label": "Verse 1",
+          "text": "Glory Honor Power\nTo the One who reigns forever Amen Amen\nBlessings and the praise\nTo the Lamb of God forever\nAmen"
+        },
+        {
+          "label": "Verse 1",
+          "text": "Glory Honor Power\nTo the One who reigns forever Amen\nBlessings and the praise\nTo the Lamb of God forever\nAmen"
+        },
+        {
+          "label": "Chorus",
+          "text": "Ndimozi binigwe\nAnasi halleluyah\nAnasi halleluyah\nJehovah meliwo omeliwo"
+        },
+        {
+          "label": "Chorus",
+          "text": "Ndimozi binigwe\nAnasi halleluyah\nAnasi halleluyah\nJehovah meliwo"
+        },
+        {
+          "label": "Chorus",
+          "text": "Why won't I shout Your praise\nWho won't serve a Father like You Ojuluenigwejuwa juwa oh oh oh"
+        },
+        {
+          "label": "Chorus",
+          "text": "Why won't I jump and shout\nWho won't love a Father like You oh\nOyoyo chimoma chimoma chimoma chimoma"
+        },
+        {
+          "label": "Chorus",
+          "text": "Why won't I shout Your praise ooo\nWho won't serve a Father like You oyoyo oyoyo chim chim chimo"
+        },
+        {
+          "label": "Chorus",
+          "text": "Heyyyy why won't I sing for joy oh\nWho won't love a Father like You reign King Jesus reign\nAgu Agu Agu"
+        },
+        {
+          "label": "Chorus",
+          "text": "Ndimozi binigwe\nNdimozi benenigwe\nAnasi halleluyah\nAgunecheobodo\nOh oh oh melimo oo"
+        },
+        {
+          "label": "Chorus",
+          "text": "Ndimozi binigwe\nAnasi halleluyah\nAnakwu halleluyah\nJehovah meliwo ayaya niglidi"
+        },
+        {
+          "label": "Chorus",
+          "text": "Practish keeper omeliwo tohsofristisha\nNnanika omeliwo nka ka ka\nMbrededisshakratus kibrandeledi gelegedi omeliwo\nSatati dadadinanatosakarh omeliwo\nAaah hah a omeliwo\nOooh ooo baradiyadiyaonanagrushika omeliwo\nBaladishatosafradadita omeliwo\nAbagadigaiyalolosita omeliwo\nDadadididito sha omeliwo\nLion of Judah as prevail omeliwo\nYou have prevail oh omeliwo\nI have prevail oh oh Jehovah omeliwo\nAnd so miracles breakout now in the Name of Jesus omeliwo\nEvery sickness we cast you out omeliwo\nBarreness out now omeliwo\nEvery form of oppression let loose we decree that men begin to burn for Jesus omeliwo\nCause He has prevailed omeliwo\nYou have prevailed\nJehovah omeliwo"
+        }
+      ],
+      "createdAt": 1792913489098,
+      "updatedAt": 1792913489098
+    },
+    {
+      "id": "song-1792913303938-hmjj",
+      "title": "Creator of the universe",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "Creator of the Universe\nWhat can’t You do\nWhat can’t You do Jesus\nName above every other name\nWhat can’t You change\nWhat can’t You change Jesus"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "You are able\nGreat and mighty God\nYou are able Jesus"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "There is nothing\nNothing You cannot do\nNothing You cannot change\nNothing You cannot\nTurn around\nYou are able\nGreat and mighty God\nI put my trust in You\nYou are able Jesus"
+        }
+      ],
+      "createdAt": 1792913303938,
+      "updatedAt": 1792913303938
+    },
+    {
+      "id": "song-1792913165837-63ph",
+      "title": "olorun to lagbara",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "olorun to lagbara\nosuba re ma re oooh\nehhhh ehhh ehh ehhh \nosuba re ma re oooh"
+        }
+      ],
+      "createdAt": 1792913165837,
+      "updatedAt": 1792913165837
+    },
+    {
+      "id": "song-1792912638361-rabv",
+      "title": "eze ebube",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "Eze ebube\nSee how far you've brought me\nEze ebube\nI'm so glad you found me worthy\nI can see\nI can tell\nAnd I know it's your grace\nAll my days I will sing your praise"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Oh oh oh oh oh"
+        }
+      ],
+      "createdAt": 1792912638361,
+      "updatedAt": 1792912638361
+    },
+    {
+      "id": "song-1792912535012-n9yu",
+      "title": "i love you lord",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "I love You, Lord\nFor Your mercy never fails me\nAll my days\nI've been held in Your hands\nFrom the moment that I wake up\nUntil I lay my head\nOh, I will sing of the goodness of God"
+        },
+        {
+          "label": "Chorus",
+          "text": "'Cause all my life you have been faithful\nAnd all my life you have been so, so good\nWith every breath that I am able\nOh, I will sing of the goodness of God"
+        },
+        {
+          "label": "Verse 2",
+          "text": "I love Your voice\nYou have lead me through the fire\nIn darkest nights\nYou are close like no other\nI've known You as a Father\nI've known You as a Friend\nAnd I have lived in the goodness of God (Hey)"
+        },
+        {
+          "label": "Chorus",
+          "text": "'Cause all my life you have been faithful (Oh, yes, you have)\nAnd all my life you have been so, so good\nWith every breath that I am able\nOh, I will sing of the goodness of God"
+        }
+      ],
+      "createdAt": 1792912535012,
+      "updatedAt": 1792912535012
+    },
+    {
+      "id": "song-1792844060565-1nsw",
+      "title": "F'iyin F'Oluwa",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "F'iyin F'Oluwa, F'iyin F'Oluwa\nF'ogo f'Oluwa, F'ola fun o o\nO ga, O t'obi o o yeye\nAanu Re ko l'afiwe"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "E seun o o\nE seun o o o\nE seun o\nE ma se e e e\nE seun o"
+        }
+      ],
+      "createdAt": 1792844060565,
+      "updatedAt": 1792844060565
+    },
+    {
+      "id": "song-1792310081284-9dx2",
+      "title": "Hallelujah Ehh",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "Hallelujah Eh! Hallelujah O Oh!\nHallelujah Eh! It's the sound of Victory\nHallelujah Eh! Hallelujah O Oh!\nLet the sound of rejoicing fill this House"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Oh Oh oh..."
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Hallelujah Eh! Hallelujah O Oh!\nHallelujah Eh! It's the sound of Victory\nHallelujah Eh! Hallelujah O Oh!\nLet the sound of rejoicing fill this House"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Hallelujah Eh! Hallelujah O Oh!\nHallelujah Eh! It's the sound of Victory\nHallelujah Eh! Hallelujah O Oh!\nLet the sound of rejoicing fill this House"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "He has made a way\nWhere there was no way\nHallelujah Eh! It's the sound of Breakthrough\nHallelujah Eh! Hallelujah O Oh!\nLet the sound of rejoicing fill this House"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Hallelujah Eh! Hallelujah O Oh!\nHallelujah Eh! It's the sound of Victory\nHallelujah Eh! Hallelujah O Oh!\nLet the sound of rejoicing fill this House"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "He has done for me\nWhat no man has done\nHallelujah Eh! It's the sound of Freedom\nHallelujah Eh! Hallelujah O Oh!\nLet the sound of rejoicing fill this House"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Hallelujah Eh! Hallelujah O Oh!\nHallelujah Eh! It's the sound of Victory\nHallelujah Eh! Hallelujah O Oh!\nLet the sound of rejoicing fill this place"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Shout to the lord, All the earth"
+        }
+      ],
+      "createdAt": 1792310081284,
+      "updatedAt": 1792310081284
+    },
+    {
+      "id": "song-1792309984128-8p86",
+      "title": "Iba",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "Blessed art Thou\nSon of David\nBlessed art Thou\nRoot of Jesse"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "You are eminently glorious\nImmaculately beautiful\nI can go on and on\nOn and on\nBut my words are not enough\nMy vocabularies will fail Me\nBut permit me to cry out"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "IBA ooh IBA ooh IBA\nIBA ooh IBA\nIBA ooh IBA\nIBA ooh IBA\nIBA ooh IBA"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Blessed art Thou\nRock of ages\nBlessed art Thou\nKing of Heaven\nBlessed art Thou\nRock of ages\nBlessed art Thou\nKing of Heaven\nYou are infinitely powerful\nMagnificently wonderful\nI can go on and on\nAnd on and on and on and on\nBut my words are not enough\nMy vocabularies they (always) fail me\nPermit me to bring this song of victory\nYou might also like\nWe Raise A Sound\nNosa & 121SELAH\nPraise\nElevation Worship\nWorthy of My Praise\nDunsin Oyekan\nIBA Ooh IBA IBA IBA\nIBA Ooh IBA, IBA Ooh IBA\nIBA Ooh IBA, IBA Ooh IBA\nIBA Ooh IBA, IBA Ooh IBA\nIBA Ooh IBA, IBA Ooh IBA\nIBA Ooh IBA, IBA Ooh IBA\nIBA Ooh IBA, IBA Ooh IBA"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "You tell the wind\nHow hard to blow\n(Aah Aah Aah)\nAnd tell the rain\nHow much to fall\nYou laid the path way\nFor the Lightning\n(Aah Aah Aah Aaah Aah Aah)\nThose who are wise\nWill worship You\nYou are cloth with Jasmine Splendor\n(Aah Aah Aah)\nAnd wrapped in blistering Light\nThere's no limit to Your power\n(Aah Aah Aah Aaah Aah Aah)\nThose who are wise\nWill honor You\nIBA Ooh IBA, IBA Ooh IBA\nIBA Ooh IBA, IBA Ooh IBA\nIBA Ooh IBA, IBA Ooh IBA\nIBA Ooh IBA, IBA Ooh IBA\nIBA Ooh IBA, IBA Ooh IBA\nIBA Ooh IBA, IBA Ooh IBA\nIBA Ooh IBA, IBA Ooh IBA\nIBA Ooh IBA, IBA Ooh IBA\nIBA Ooh IBA, IBA Ooh IBA\nIBA Ooh IBA, IBA Ooh IBA\nIBA Ooh IBA, IBA Ooh IBA\nIBA Ooh IBA, IBA Ooh IBA\nIBA Ooh IBA, IBA Ooh IBA\nIBA Ooh IBA, IBA Ooh IBA\nIBA Ooh IBA, IBA Ooh IBA\nIBA Ooh IBA, IBA Ooh IBA"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Elshaddai (Elshaddai)\nAdonai (Adonai)\nElgibor (Elgibor)\nElohim (Elohim)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "IBA Ooh IBA\nIBA Ooh IBA\nIBA Ooh IBA\nIBA Ooh IBA\nIBA Ooh IBA, IBA Ooh IBA\nIBA Ooh IBA, IBA Ooh IBA\nBlessed art Thou\nSon of David\nBlessed art Thou\nRoot of Jesse\nIBA"
+        }
+      ],
+      "createdAt": 1792309984128,
+      "updatedAt": 1792309984128
+    },
+    {
+      "id": "song-1792309896525-6fj0",
+      "title": "Ehh Ahh",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "Ehh ehh ehh ehh\nAhh ahh ahh ahh"
+        }
+      ],
+      "createdAt": 1792309896525,
+      "updatedAt": 1792309896525
+    },
+    {
+      "id": "song-1792309724912-5jkw",
+      "title": "Isi Gini",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "No matter what comes my way\nI am victorious\nNo matter what they say\nI am victorious"
+        },
+        {
+          "label": "Pre-Chorus",
+          "text": "Who Dey talk wetin God no talk\nI no dey hear wetin devil talk\nWho Dey talk wetin God no talk\nI no dey hear wetin devil talk"
+        },
+        {
+          "label": "Chorus",
+          "text": "Mio gbo pa (I cannot hear)\nMio gbo po (I did not hear)\nI no hear wetin devil talk\nA hin a a yan\nYou say\nIsi gini (you say what?)"
+        },
+        {
+          "label": "Verse",
+          "text": "No matter what comes my way\nI am victorious\nNo matter what they say\nI am victorious"
+        },
+        {
+          "label": "Verse",
+          "text": "No matter what comes my way\nI am victorious\nNo matter what they say\nI am victorious"
+        },
+        {
+          "label": "Verse",
+          "text": "bridge\n(Listen)\nintro\nOnce has he spoken\nTwice have I heard\nOnce has he said it\nThat all power belongs to God\nOnce has he spoken\nTwice have I heard\nOnce has he said it\nThat all power belongs to God\nverse\nJesu Kristi lo ba aye (Jesus is king over the earth)\nEverybody fara mò (Everybody Accepts His Kingship)\nJesu kristi lo ba aye (Jesus Christ is king over the earth)\nNo need to dey shalaye (no need for explanation)\nhook\nEti mi o gbo (my ear did not hear)\nKo gbo gbo ku gbo (did not what God has not said)\nEnu mi o so (my mouth will not speak)\nKo so so so ku so (will not say what God has not said)\nEti mi o gbo (my ear did not hear)\nKo gbo gbo ku gbo (did not what God has not said)\nEnu mi o so (my mouth will not speak)\nKo so so so ku so (will not say what God has not said)\nverse\nNo matter what comes my way\nI am victorious\nNo matter what they say\nI am victorious\nNo matter what comes my way\nI am victorious\nNo matter what they say\nI am victorious\npre-chorus\nWho Dey talk wetin God no talk\nI no dey hear wetin devil talk\nWho Dey talk wetin God no talk\nI no dey hear wetin devil talk\nhook\nSoro (speak)\nchorus\nMio gbo pa (I did not hear)\nMio gbo po (I cannot hear)\nI no hear watin devil talk\nA hin a a yan\nYou say\nIsi gini (you say what?)"
+        }
+      ],
+      "createdAt": 1792309724912,
+      "updatedAt": 1792309724912
+    },
+    {
+      "id": "song-1792309578291-3o7d",
+      "title": "Kadosh Kadosh",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Verse 1",
+          "text": "You reign\nYou Ancient Zion's King\nKadosh Kadosh\nYou are mighty on your throne"
+        },
+        {
+          "label": "Verse 2",
+          "text": "Break forth\nOh spirit of the deep\nCry out kadosh\nTo the lamb upon the throne"
+        },
+        {
+          "label": "Verse 2",
+          "text": "Sing loud\nOh saints of God most high\nSing loud kadosh\nTo the lamb upon the throne\nYou reign\nYou Ancient Zion's King\nKadosh kadosh\nYou are mighty on your throne\nYou reign\nYou Ancient Zion's King\nKadosh Kadosh\nYou are mighty on your throne\nYou are mighty on your throne\nYou are mighty on your throne\nYou are mighty on your throne\nYou are mighty on your throne\nYou are mighty on your throne\nYou are mighty on your throne\nYou are mighty on your throne\nYou are mighty on your throne\nKadosh kadosh\nYou reign, You reign\nKadosh kadosh\nAdonai, Lord we worship you\nKadosh kadosh\nYou reign, You reign\nKadosh kadosh\nAdonai, Lord we worship you\nKadosh kadosh\nYou reign, You reign\nKadosh kadosh\nAdonai, Lord we worship you\nYou are mighty on your throne\nYou are mighty on your throne\nYou are mighty on your throne\nYou are mighty on your throne\nYou are mighty on your throne\nYou are mighty on your throne\nYou are mighty on your throne\nYou are mighty on your throne\nYou are mighty mighty mighty\nYou are mighty mighty mighty\nYou are mighty mighty mighty\nYou are mighty mighty mighty\nYou reign\nYou Ancient Zion's King\nYou reign\nYou Ancient Zion's King\nKadosh Kadosh\nYou are mighty on your throne"
+        }
+      ],
+      "createdAt": 1792309578291,
+      "updatedAt": 1792309578291
+    },
+    {
+      "id": "song-1792309483144-f4li",
+      "title": "On Fire",
+      "artist": "Victoria Orenze",
+      "slides": [
+        {
+          "label": "Refrain",
+          "text": "Oh Lord, set my heart on Fire for You\nFor You, (I wanna burn) For You\nOh Lord, set my life in order for You\nFor You, For You"
+        },
+        {
+          "label": "Refrain",
+          "text": "I wanna know Your Heart\nI wanna know Your way\nLord, I want to know Your Heart\nLord, I want to know Your Way (Repeat)"
+        },
+        {
+          "label": "Refrain",
+          "text": "let me burn for You alone\nPlease Set my life in order for You\nFor You, For You, For You"
+        },
+        {
+          "label": "Refrain",
+          "text": "I wanna know Your heart (That is my prayer)\nI wanna know Your way\nI wanna walk like You\nI want to talk like You\nI want to think like You\nI want to feel like You\nThat is what makes sense\nI don’t see what else to pray for\nIf I’m not aligned\nI don’t see what else to pray for …"
+        },
+        {
+          "label": "Refrain",
+          "text": "I wanna know Your Heart\nI wanna know Your way\nI want to walk with You\nI want to be with You\nWhen they see me, they see Jesus x?\nLet me burn for You"
+        }
+      ],
+      "createdAt": 1792309483144,
+      "updatedAt": 1792309483144
+    },
+    {
+      "id": "song-1792309249938-y4or",
+      "title": "Way Maker",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Verse 1",
+          "text": "You are here, moving in our midst\nI worship You, I worship You\nYou are here, working in this place\nI worship You, I worship You"
+        },
+        {
+          "label": "Chorus",
+          "text": "Way maker, miracle worker\nPromise keeper, light in the darkness\nMy God, that is who You are"
+        },
+        {
+          "label": "Verse 2",
+          "text": "You are here, touching every heart\nI worship You, I worship You\nYou are here, healing every heart\nI worship You, I worship You"
+        },
+        {
+          "label": "Verse 3",
+          "text": "You are here, turning lives around\nI worship You, I worship You\nYou are here, mending every heart\nI worship You, I worship You"
+        },
+        {
+          "label": "Bridge",
+          "text": "You wipe away all tears, You mend the broken heart\nYou're the answer to it all, Jesus"
+        },
+        {
+          "label": "Bridge",
+          "text": "You wipe away all tears, You mend the broken heart\nYou’re the answer to it all, to it all, Jesus… yeah"
+        },
+        {
+          "label": "Verse 4",
+          "text": "You are here, touching every life\nI worship You, I worship You\nYou are here, meeting every need\nI worship You, I worship You"
+        }
+      ],
+      "createdAt": 1792309249938,
+      "updatedAt": 1792309249938
+    },
+    {
+      "id": "song-1792308703868-2bdb",
+      "title": "Worthy of my Praise",
+      "artist": "Dunsin Oyekan & Lawrence Oyor",
+      "slides": [
+        {
+          "label": "Intro",
+          "text": "(Eh eh eh ah)\n(Wake up, wake up, wake up, wake up)\n(Let the worshipper in you wake up)\n(Let the worshipper in you wake up)"
+        },
+        {
+          "label": "Verse 1",
+          "text": "This is my story\nYou are my song\nAll day, all night\nI will sing of your faithfulness"
+        },
+        {
+          "label": "Chorus",
+          "text": "From my spirit\nTo my soul\nUntil my voice\nRe-echoes\nYou are worthy of my worship\nWorthy of my praise"
+        },
+        {
+          "label": "Interlude",
+          "text": "(Somebody release your worship)\n(Eh eh eh ah)\n(We worship)"
+        },
+        {
+          "label": "Bridge",
+          "text": "Halle Halle Halle Lu Yah\nHalle Halle Halle Lu Yah\nYou are worthy of my worship\nWorthy of my praise"
+        },
+        {
+          "label": "Interlude",
+          "text": "(Can somebody release the chant of the Spirit)\n(Spiritual chants)"
+        },
+        {
+          "label": "Bridge",
+          "text": "Halle Halle eh eh eh\nHalle Halle eh eh eh\nHalle Halle, Halle Halle\nHalle Halle, Halle Halle"
+        },
+        {
+          "label": "Bridge",
+          "text": "Halle Halle eh eh eh\nHalle Halle eh eh eh\nHalle Halle eh eh eh"
+        },
+        {
+          "label": "Bridge 2",
+          "text": "La la la la la la la\nLa la la la la la la\nYou are worthy of my worship\nWorthy of my praise"
+        },
+        {
+          "label": "Outro",
+          "text": "(When I see my lover, I will sing for Him)\nHalle Halle eh eh eh\nHalle Halle eh eh eh\n(Speaks in tongues)"
+        }
+      ],
+      "createdAt": 1792308703868,
+      "updatedAt": 1792309020237
+    },
+    {
+      "id": "song-1792308555914-yq0c",
+      "title": "My Hope is built on nothing less",
+      "artist": "Edward Mote",
+      "slides": [
+        {
+          "label": "Verse 1",
+          "text": "My hope is built on nothing less\nThan Jesus Christ, my righteousness;\nI dare not trust the sweetest frame,\nBut wholly lean on Jesus’ name."
+        },
+        {
+          "label": "Refrain",
+          "text": "On Christ, the solid Rock, I stand;\nAll other ground is sinking sand,\nAll other ground is sinking sand."
+        },
+        {
+          "label": "Verse 2",
+          "text": "When darkness veils His lovely face,\nI rest on His unchanging grace;\nIn every high and stormy gale,\nMy anchor holds within the veil."
+        },
+        {
+          "label": "Verse 3",
+          "text": "His oath, His covenant, His blood,\nSupport me in the whelming flood;\nWhen all around my soul gives way,\nHe then is all my hope and stay."
+        },
+        {
+          "label": "Verse 4",
+          "text": "When He shall come with trumpet sound,\nOh, may I then in Him be found;\nIn Him, my righteousness, alone,\nFaultless to stand before the throne"
+        }
+      ],
+      "createdAt": 1792308555914,
+      "updatedAt": 1792309041541
+    },
+    {
+      "id": "song-1791709625946-nea9",
+      "title": "Do something new in my life",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "Do something new in my life\nSomething New in my Life\nDo something new in my life\nO God"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Do something new in my life\nSomething New in my Life\nO God"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "I can not do without you\nCannot do without you\nI can not do without you\nO Lord"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "I can not do without you\nCannot do without you\nI can not do without you\nO Lord"
+        }
+      ],
+      "createdAt": 1791709625946,
+      "updatedAt": 1791796807817
+    },
+    {
+      "id": "song-1791709464733-g3js",
+      "title": "Obinasom",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Intro",
+          "text": "Jesus, Ine me Obi nasom eh…\nObim na eme jiri jijiriri\nButterfly in my Belly\nObi nasom oh oh"
+        },
+        {
+          "label": "Verse 1",
+          "text": "See the way you love me\nSee the way you care for me\nYou Carry my Matter\nFor your Head oh\nAll: Ine me Obi nasom"
+        },
+        {
+          "label": "Verse 1",
+          "text": "Like a little baby\nYou watch over me oh\nYou no dey carry me dey play Oh\nAll: Ine me Obi nasom"
+        },
+        {
+          "label": "Chorus",
+          "text": "Ah ah ah ah\nAh ah ah ah\nObi nasom oh oh\nIneme Obi nasom"
+        },
+        {
+          "label": "Chorus",
+          "text": "Ah ah ah ah\nAh ah ah ah\nObi nasom oh oh\nIneme Obi nasom"
+        },
+        {
+          "label": "Chorus",
+          "text": "Jesus Ineme Obi nasom Oh\nObi nasom Oh oh\nObi nasom Oh oh\nIneme Obi nasom"
+        },
+        {
+          "label": "Chorus",
+          "text": "Jesus Ineme Obi nasom Oh\nObi nasom Oh oh\nObi nasom Oh oh\nIneme Obi nasom"
+        },
+        {
+          "label": "Verse 2",
+          "text": "Because of Jesus (Because of Jesus Christ)\nI’ve got joy overflow\nUnlimited Favour\nIt’s like a River in my Soul"
+        },
+        {
+          "label": "Verse 2",
+          "text": "Because of Jesus (Because of Jesus Christ)\nI’ve got joy overflow\nUnlimited Favour\nIt’s like a River in my Soul"
+        },
+        {
+          "label": "Chorus",
+          "text": "Ah ah ah ah\nAh ah ah ah\nObi nasom oh oh\nIneme Obi nasom\nAh ah ah ah\nAh ah ah ah\nObi nasom oh oh\nIneme Obi nasom"
+        },
+        {
+          "label": "Chorus",
+          "text": "Jesus Ineme Obi nasom Oh\nObi nasom Oh oh\nObi nasom Oh oh\nIneme Obi nasom"
+        },
+        {
+          "label": "Chorus",
+          "text": "Jesus Ineme Obi nasom Oh\nObi nasom Oh oh\nObi nasom Oh oh\nIneme Obi nasom"
+        },
+        {
+          "label": "Bridge",
+          "text": "What the World couldn’t Give\nYou gave it to me Abundantly\nObi nasom Oh oh\n(Abundantly)"
+        },
+        {
+          "label": "Bridge",
+          "text": "Obi nasom Oh, oh\nIneme Obi nasom"
+        },
+        {
+          "label": "Bridge",
+          "text": "What the World couldn’t Give\nYou gave it to me Abundantly\nObi nasom Oh oh\n(Abundantly)\nObi nasom Oh, oh\nIneme Obi nasom"
+        },
+        {
+          "label": "Bridge",
+          "text": "You made Everything brand New\n(Everything brand New)\nButterfly in my Belly\nObi nasom Oh, oh\nIneme Obi nasom"
+        },
+        {
+          "label": "Bridge",
+          "text": "You made Everything brand New\n(Everything brand New)\nButterfly in my Belly\nObi nasom Oh, oh\nIneme Obi nasom"
+        },
+        {
+          "label": "Bridge",
+          "text": "Now they call me Blessing\n(Because of Jesus Christ)\nI say they call me Favour\nBecause of Jesus Christ\nIneme Obi nasom"
+        },
+        {
+          "label": "Bridge",
+          "text": "Now they call me Blessing\n(Because of Jesus Christ)\nI say they call me Favour\nBecause of Jesus Christ\nIneme Obi nasom"
+        },
+        {
+          "label": "Chorus",
+          "text": "Ah ah ah ah\nAh ah ah ah\nObi nasom oh oh\nIneme Obi nasom"
+        },
+        {
+          "label": "Chorus",
+          "text": "Ah ah ah ah\nAh ah ah ah\nObi nasom oh oh\nIneme Obi nasom"
+        },
+        {
+          "label": "Outro",
+          "text": "You made Everything brand New\nEverything brand New\nButterfly in my Belly\nObi nasom Oh, oh"
+        },
+        {
+          "label": "Outro",
+          "text": "You made Everything brand New\nEverything brand New\nButterfly in my Belly\nObi nasom Oh, oh\nIneme Obi nasom…"
+        }
+      ],
+      "createdAt": 1791709464733,
+      "updatedAt": 1791709504310
+    },
+    {
+      "id": "song-1791709422494-vr6x",
+      "title": "You are God",
+      "artist": "Nathaniel Bassey",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "You are God from beginning to the end\nThere's no place for argument\nYou are God all by yourself\nYou are God from beginning to the end\nThere's no place for argument\nYou are God all by yourself"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "You've got times and seasons in your hands\nYou called for light out of darkness\nYou don't need a man to be the God you are\nBut you have chosen to call me your own"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "You are God from beginning to the end\nThere's no place for argument\nYou are God all by yourself\nYou are God from beginning to the end\nThere's no place for argument\nYou are God all by yourself"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "You've got times and seasons in your hands\nYou called for light out of darkness\nYou don't need a man to be the God you are\nBut in your mercy, you've called us your own"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "You are God from beginning to the end\nThere's no place for argument\nYou are God all by yourself\nYou are God from beginning to the end\nThere's no place for argument\nYou are God all by yourself\nYou are God from beginning to the end\nThere's no place for argument\nYou are God all by yourself\nYou are God from beginning to the end\nThere's no place for argument\nYou are God all by yourself\nYou are God from beginning to the end\nThere's no place for argument\nYou are God all by yourself\nYou are God from beginning to the end\nThere's no place for argument\nYou are God all by yourself"
+        }
+      ],
+      "createdAt": 1791709422494,
+      "updatedAt": 1791709422494
+    },
+    {
+      "id": "song-1791709015851-6ttj",
+      "title": "Your Spirit",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "Oh-oh-oh-oh-oh\nOh-oh-oh"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Not by might, not by power\nBy Your spirit, God\nSend Your spirit, God\nNot by might, not by power\nBy Your spirit, God\nSend Your spirit, God"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "You are the fire, we are the temple\nYour are the voice, we are Your song\nYou are our God, we are Your people\nYou are the light, we stand in awe"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "We stand in awe of You\nWe stand in awe of You"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Not by might, not by power\nBy Your spirit, God\nSend Your spirit, God\nNot by might, not by power\nBy Your spirit, God\nSend Your spirit, God"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "You called us out, out of the darkness\nInto Your love, into Your light\nGrace upon grace, beauty for ashes\nYou come to us, we come alive"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "We stand in awe of You\nWe stand in awe of You"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Not by might, not by power\nBy Your spirit, God\nSend Your spirit, God\nNot by might, not by power\nBy Your spirit, God\nSend Your spirit, God\nNot by might, not by power\nBy Your spirit, God\nSend Your spirit, God\nNot by might, not by power\nBy Your spirit, God\nSend Your spirit, God"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Breathe, come and breathe on us\nSpirit breathe, come and breathe on us\nBreathe, come and breathe on us\nSpirit breathe, breathe on us\nBreathe, come and breathe on us\nSpirit breathe, spirit breathe on us\nBreathe, come and breathe on us\nSpirit breathe, spirit breathe on us"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "We stand in awe of You\nWe stand in awe of You\nWe stand in awe of You\nWe stand in awe of You"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Not by might, not by power\nBy Your spirit, God\nSend Your spirit, God"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Breathe, come and breathe on us\nSpirit breathe, spirit breathe on us\nBreathe, come and breathe on us\nSpirit breathe, spirit breathe on us\nBreathe, come and breathe on us\nSpirit breathe, spirit breathe on us\nBreathe, come and breathe on us\nSpirit breathe, spirit breathe on us"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Not by might, not by power\nSend Your spirit, God\nSend Your spirit, God\nNot by might, not by power\nSend Your spirit, God\nSend Your spirit, God"
+        }
+      ],
+      "createdAt": 1791709015851,
+      "updatedAt": 1791709015851
+    },
+    {
+      "id": "song-1791706023027-1l90",
+      "title": "Alpha and Omega",
+      "artist": "Unknown Artist",
+      "slides": [
+        {
+          "label": "Intro",
+          "text": "It's a song we learned in Zimbabwe"
+        },
+        {
+          "label": "Verse",
+          "text": "You are Alpha and Omega, sing\nWe worship You, our Lord\nYou are worthy to be praised (Sing it again)"
+        },
+        {
+          "label": "Verse",
+          "text": "You are Alpha and Omega\nWe worship You, our Lord\nYou are worthy to be praised (We give You all the glory)"
+        },
+        {
+          "label": "Chorus",
+          "text": "We give You all the glory\nWe worship You, our Lord\nYou are worthy to be praised (We give You all the glory)"
+        },
+        {
+          "label": "Chorus",
+          "text": "We give You all the glory (We worship You)\nWe worship You, our Lord\nYou are worthy to be praised (Said You are Alpha and Omega)"
+        },
+        {
+          "label": "Verse",
+          "text": "You are Alpha and Omega\nWe worship You, our Lord\nYou are worthy to be praised (We give You all, we give You all, we give You all, we—)"
+        },
+        {
+          "label": "Chorus",
+          "text": "We give You all the glory\nWe worship You, our Lord\nYou are worthy to be praised\nWe give You all the glory\nWe worship You, our Lord\nYou are worthy to be praised (Come on, say it again, we give You all)\nWe give You all the glory\nWe worship You our Lord\nYou are worthy to be praised (Come on, one more time, declare it, declare it)\nWe give You all the glory\nWe worship You, our Lord\nYou are worthy to be praised (We give You all)\nYou might also like\nHabits\nEminem & White Gold\nPort Antonio\nJ. Cole\nStory of My Life\nOne Direction\n[Chorus]\nWe give You all the glory\nWe worship You, our Lord (You are worthy)\nYou are worthy to be praised (Oh, we)\nWe give You all the glory\nWe worship You, our Lord\nYou are worthy to be praised"
+        },
+        {
+          "label": "Break",
+          "text": "With your hands lifted up, in your own voice\nWith your own song\nFill this room with worship\nFill this room with worship\nWe love you, Lord, we love you, Lord, we love you\nWe love you, Lord, we love you, Lord\nAfrica will rise and give You glory\nAfrica will rise and give You glory\nAfrica will rise and give You glory\nAmerica will rise and give You glory, oh"
+        },
+        {
+          "label": "Chorus",
+          "text": "We give You all the glory\nWe worship You, our Lord\nYou are worthy to be praised (We give You all)\nWe give You all the glory\nWe worship You, our Lord\nYou are worthy to be praised"
+        }
+      ],
+      "createdAt": 1791706023027,
+      "updatedAt": 1791706070288
+    },
+    {
+      "id": "song-1791660432673-l67g",
+      "title": "Omemma",
+      "artist": "Chandler Moore",
+      "slides": [
+        {
+          "label": "Bridge",
+          "text": "Omemma (Always)\nAlways on time (You can't do no wrong)\nYou can't do no wrong"
+        },
+        {
+          "label": "Bridge",
+          "text": "Omemma (You leave)\nLeave the ninety-nine, always for the one"
+        },
+        {
+          "label": "Intro",
+          "text": "Can we turn up, can we turn up?\nCan we turn up, can we turn up? Hey\nHe really, really moves o\nThis is what it says"
+        },
+        {
+          "label": "Verse",
+          "text": "I know He loves me, I know He cares\nWhenever I call, He always is right there"
+        },
+        {
+          "label": "Verse",
+          "text": "In times of trouble, He is my help\nYeah, I know no fear\nI know He'll be right there"
+        },
+        {
+          "label": "Chorus",
+          "text": "Ayy\nHe really does what He says He will do\nMy God really moves o"
+        },
+        {
+          "label": "Chorus",
+          "text": "Ayy\nWhy would I doubt when He always comes through\nMy God really moves o"
+        },
+        {
+          "label": "Post-Chorus",
+          "text": "He really, really moves o\nCome on, sing the verse y'all\nI know He loves me"
+        },
+        {
+          "label": "Bridge",
+          "text": "Omemma\nYou're always on time\nYou can't do no wrong"
+        },
+        {
+          "label": "Bridge",
+          "text": "Omemma,\nYou leave the ninety-nine\nAlways for the one"
+        },
+        {
+          "label": "Bridge",
+          "text": "Omemma (You're the God who does good)\nAlways on time (You can't do no)\nYou can't do no wrong"
+        },
+        {
+          "label": "Bridge",
+          "text": "Omemma (Yeah, Baba, Baba)\nLeave the ninety-nine\nAlways for the one (Come on, Omemma)"
+        },
+        {
+          "label": "Bridge",
+          "text": "Omemma (You're always)\nAlways on time (You can't do no)\nYou can't do no wrong (Omemma)"
+        },
+        {
+          "label": "Bridge",
+          "text": "Omemma (You leave)\nLeave the ninety-nine (You got one more in you, come on)\nAlways for the one (Omemma)"
+        },
+        {
+          "label": "Bridge",
+          "text": "Omemma (You're always)\nAlways on time (You can't do no)\nYou can't do no wrong"
+        },
+        {
+          "label": "Bridge",
+          "text": "Omemma (You leave)\nLeave the ninety-nine\nAlways for the one (Come on)"
+        },
+        {
+          "label": "Refrain",
+          "text": "So glad You leave the ninety-nine\nAlways for the one"
+        },
+        {
+          "label": "Refrain",
+          "text": "So glad You leave the ninety-nine\nAlways for the one"
+        },
+        {
+          "label": "Refrain",
+          "text": "(I remember when You came and saved me, I'm glad You)\nLeave the ninety-nine (Hey)\nAlways for the one"
+        },
+        {
+          "label": "Refrain",
+          "text": "(Oh, the overwhelming, never-ending love of God, You)\nLeave the ninety-nine (Hey)\nAlways for the one"
+        },
+        {
+          "label": "Refrain",
+          "text": "(Oh, the overwhelming, never-ending love of God, You)\nLeave the ninety-nine\nAlways for the one"
+        },
+        {
+          "label": "Refrain",
+          "text": "(There's no wall that You won't get down, I'm so glad that You will)\nLeave the ninety-nine\nAlways for the one"
+        },
+        {
+          "label": "Refrain",
+          "text": "(There's no lie that You won't take down, I'm so glad that You will)\nLeave the ninety-nine\nAlways for the one"
+        },
+        {
+          "label": "Refrain",
+          "text": "(Baba-Baba, Imela, Baba-Baba, so glad You)\nLeave the ninety-nine\nAlways for the one"
+        },
+        {
+          "label": "Interlude",
+          "text": "Whatever it takes, whatever it takes\nWhatever it takes, whatever it takes\nWhatever it takes, whatever it takes\nWhatever it takes, whatever it takes\nWhatever it takes, whatever it takes"
+        }
+      ],
+      "createdAt": 1791660432673,
+      "updatedAt": 1791660959542
+    },
+    {
+      "id": "song-1791660050941-1qd3",
+      "title": "Bigger Everyday",
+      "artist": "Moses Bliss",
+      "slides": [
+        {
+          "label": "Unlabeled",
+          "text": "Ooh, oh, oh, ooh, oh oh\nOoh, oh, oh, ooh, oh oh\nOoh, oh, oh, ooh, oh oh\nOooh, oooh"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "I have Jesus in my life\nLiving for His glory\nI'm on fire every day"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "And nothing can stop me\nIt doesn't matter what I face\nI am getting bigger everyday, everyday"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "I have Jesus in my life\nLiving for His glory\nI'm on fire every day"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "And nothing can stop me\nIt doesn't matter what I face\nI am getting bigger every day"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Every day I have Jesus..."
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Fire everyday\n(And nothing can stop me)\n(It doesn't matter what I face)\n(I am getting bigger every day) Getting bigger\n(Everyday)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Jesus in my life\n(Living for His glory)\n(I'm on fire every day) I'm on fire every day"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "(And nothing can stop me)\n(It doesn't matter what I face)\n(I am getting bigger every day) \nGetting bigger\n(Everyday)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "No limitations\n(We've taken over) We've taken over\n(We're getting bigger every day)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Oh oh oh oh oh\nWhen we step in the arena\nIs a banger\nSilence the voice of failure\nWe make success louder, oh\nBigger and bigger, we're bigger\nAnd it's realer than real\nAnd we are on fire\nAnd this is the life that we choose\nWe balling in the Holy Ghost\nHigher we go\nWe will never stop, oh"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "There's a Spirit that's alive in me\nThe Spirit of the Lord\nAnd it's taking me to levels\nMe, I've never been before"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "I gat joy like a river\nChopping life like a pizza\n'Cause I'm bigger, bigger\nI'm bigger, bigger, bigger, yeah"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "We know who we are\nWe're born of God, oh\nWe know what to do\nWe are the future"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "I'm unstoppable\nI'm the fourth man\nI'm like a city that is set upon the hilltop"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Upward and forward, oh\nUpward and forward, oh"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "We are on fire, oh\nWe are on fire, oh"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Nothing can stop us, oh\nNothing can stop us, oh"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "They cannot stand us, oh\nThey cannot stand us, oh"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "We are on fire\nWe are on fire\nWe are on fire\nOh oh oh oh oh"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "I function by His grace\nWinning all the way\nShining everywhere\nGetting brighter every day\nSee the lines are fallen\nInto pleasant places for me, for me\nYeah, I'm getting bigger\nEvery day I'm a giver\nPastor Chris na my father\nSo I say to the pain is over, hey\nOkwa chukwu nom nazu\nNgozi Jehova nma kam nafu\nMana ututu, mana'nyasi\nNgozi Jehova nma kam nebu\nHasi na odir'izi, mana this year\nDem go surely see\nThe difference between\nNdi kwere ekwe nwane na pharisee\nOkwa chukwu binelu\nTochukwu, akan'elu\nIfeoma ona enyek'wam\nObu madu nam'kwurugwo ehn"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Not by power, not by might\nBut by the Spirit of the living God\nAnything is possible"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Bigger than we used to be\nWe have moved\nI say we have moved"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Not by might\n(Not by might)\n(But by the Spirit of the living God, oh)\nAnything is possible"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Bigger than we used to be\n(We have moved) We have moved\n(I say we have moved)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Not by power\nNot by might\n(Not by might) Oh nana\n(But by the Spirit of the living God)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "Anything is possible\nBigger than we used to be\nWe have moved\n(I say we have moved)"
+        },
+        {
+          "label": "Unlabeled",
+          "text": "We're getting bigger, bigger\nWe're getting bigger\nNo limitations\nWe're getting bigger"
+        }
+      ],
+      "createdAt": 1791660050941,
+      "updatedAt": 1791661419948
+    },
+    {
+      "id": "song-1791659685122-tlis",
+      "title": "My Daddy, My Daddy",
+      "artist": "Lawrence Oyor",
+      "slides": [
+        {
+          "label": "Verse 1",
+          "text": "You are my daddy \nMy daddy, my daddy\nYour baby is singing\nI will be singing and dancing and chanting for the rest of eternity"
+        },
+        {
+          "label": "Verse 2",
+          "text": "My Jesus, My Jesus \nYour beloved is singing \nI will be singing and dancing and chanting for the rest of eternity"
+        },
+        {
+          "label": "Chorus",
+          "text": "Only You, Only You\nTill we meet only You"
+        },
+        {
+          "label": "Chorus",
+          "text": "Only You\nOnly You I love"
+        },
+        {
+          "label": "Chorus",
+          "text": "My darling, my darling\nYour honey is singing\nI will be singing and dancing and chanting for the rest of eternity"
+        },
+        {
+          "label": "Chorus",
+          "text": "La la la la la la La la la la la la La la la la la la La la la la la"
+        }
+      ],
+      "createdAt": 1791659685122,
+      "updatedAt": 1791659685122
+    },
+    {
+      "id": "song-1791659509754-ptm0",
+      "title": "Favour",
+      "artist": "Lawrence Oyor",
+      "slides": [
+        {
+          "label": "Verse 1",
+          "text": "Favour, it surrounds me like a shield\nAnd it will cover me from now\nUntil the day I see my King"
+        },
+        {
+          "label": "Verse 1",
+          "text": "Favour, it surrounds me like a shield\nIt will cover me from now (Ah)\nUntil the day I see my King (Shout it louder, favour)"
+        },
+        {
+          "label": "Verse 1",
+          "text": "Favour, it surrounds me like a shield\nIt will cover me from now\nUntil the day I see my King (The next one)"
+        },
+        {
+          "label": "Verse 2",
+          "text": "Power, it's erupting from within (It is moving me)\nIt is moving me from now (Until the day)\nUntil the day I see my King (Agbara, power!)"
+        },
+        {
+          "label": "Verse 2",
+          "text": "Power, it's erupting from within (It is moving me from now)\nIt is moving me from now (Are you sure?)\nUntil the day I see my King (One more time, power)"
+        },
+        {
+          "label": "Verse 2",
+          "text": "Power, it's erupting from within (It is moving me from now)\nIt is moving me from now (Until the day)\nUntil the day I see my King (Fire, fire, fire, fire, fire)"
+        },
+        {
+          "label": "Verse 3",
+          "text": "Fire, it is burning up my soul (It is driving me from now)\nIt is driving me from now (Until the day)\nUntil the day I see my King (Shout fire)"
+        },
+        {
+          "label": "Verse 3",
+          "text": "Fire, it is burning up my soul (And it is driving me from now)\nIt is driving me from now (Until the day)\nUntil the day I see my King (One more time, fire)"
+        },
+        {
+          "label": "Verse 3",
+          "text": "Fire, it is burning up my soul (It is driving me now)\nIt is driving me from now (Until the day)\nUntil the day (The next one now)"
+        },
+        {
+          "label": "Verse 4",
+          "text": "Angels, they are all around me now\nAnd they are following me from now (Until to the day)\nUntil to the day I see my King (Angels)"
+        },
+        {
+          "label": "Verse 4",
+          "text": "Angels, they are all around me now\nThey are following me from now (Until the day)\nUntil the day I see my King (See what you are saying, you are surrounded, angels)"
+        },
+        {
+          "label": "Verse 4",
+          "text": "Angels, they are all around me now (They are following me from now)\nThey are following you from now (They are following you)\nUntil the day I see my King (One more time shouting, angels)"
+        },
+        {
+          "label": "Verse 4",
+          "text": "Angels, they are all around me now\nThey are following me from now (Until the day)\nUntil the day I see my King (Mercy, oh)"
+        },
+        {
+          "label": "Verse 5",
+          "text": "Mercy (Come on, shout it)\nIt has washed away my sin\nAnd it is opening doors for me (Oh)\nUntil the day I see my King (Mercy, oh)"
+        },
+        {
+          "label": "Verse 5",
+          "text": "Mercy (Oh)\nIt has washed away my sin\nAnd it is opening doors for me (Mercy is opening doors)\nUntil the day I see my King (Favour)"
+        },
+        {
+          "label": "Verse 6",
+          "text": "Favour (Just the voices)\nIt surrounds me like a shield\nIt will cover me from now (Until the day)\nUntil the day I see my King (Your hands, favour)"
+        },
+        {
+          "label": "Verse 6",
+          "text": "Favour, it surrounds me like a shield\nIt will cover me from now (Until the day)\nUntil the day I see my King (One more time, favour)"
+        },
+        {
+          "label": "Verse 6",
+          "text": "Favour, it surrounds me like a shield\nAnd it will cover me from now (Until the day)\nUntil the day I see my King (One last time, say it loud)"
+        },
+        {
+          "label": "Outro",
+          "text": "Favour, it surrounds me like a shield\nAnd it will cover me from now\nUntil the day I see my King\nCome on, celebrate Jesus"
+        }
+      ],
+      "createdAt": 1791659509754,
+      "updatedAt": 1791660293602
+    },
     {
       "id": "song-1791110442420-hx95",
       "title": "oh jesus i have promised",
@@ -1086,19 +3802,6 @@
       "updatedAt": 1790481376478
     },
     {
-      "id": "song-1789899271138-rw9h",
-      "title": "Account Number",
-      "artist": "Unknown Artist",
-      "slides": [
-        {
-          "label": "Unlabeled",
-          "text": "Account Number: 1010799342\nBank: Zenith"
-        }
-      ],
-      "createdAt": 1789899271138,
-      "updatedAt": 1791112150476
-    },
-    {
       "id": "song-1789895528419-lny2",
       "title": "At the centre of it all",
       "artist": "Unknown Artist",
@@ -1121,19 +3824,23 @@
         },
         {
           "label": "Bridge",
-          "text": "{You arе Bigger\nBigger than the biggеst\nYou are Stronger"
+          "text": "You arе Bigger\nBigger than the biggеst"
         },
         {
           "label": "Bridge",
-          "text": "Stronger than the strongest\nYou are Higher"
+          "text": "You are Stronger\nStronger than the strongest"
         },
         {
           "label": "Bridge",
-          "text": "Higher than the highest\nYou are Greater\nGreater than the greatest} [x4]"
+          "text": "You are Higher\nHigher than the highest"
+        },
+        {
+          "label": "Bridge",
+          "text": "You are Greater\nGreater than the greatest"
         }
       ],
       "createdAt": 1789895528419,
-      "updatedAt": 1790890176805
+      "updatedAt": 1792309454338
     },
     {
       "id": "song-1789893489219-dg2g",
@@ -1410,7 +4117,7 @@
       "slides": [
         {
           "label": "Unlabeled",
-          "text": "Carry me dey go\nJehovah carry me dey go dey go dey go\nCarry me dey go\nJehovah carry me dey go dey go dey go"
+          "text": "Carry me dey go\nJehovah carry me dey go dey go dey go"
         },
         {
           "label": "Unlabeled",
@@ -1426,7 +4133,7 @@
         }
       ],
       "createdAt": 1789890216413,
-      "updatedAt": 1790484650694
+      "updatedAt": 1791659352286
     },
     {
       "id": "song-1789889851125-nbg6",
@@ -1690,6 +4397,63 @@
   ],
   "overlays": [
     {
+      "id": "overlay-1794728896199-rz2azt",
+      "name": "Timer B",
+      "kind": "timer",
+      "x": 77,
+      "y": 6,
+      "width": 18,
+      "height": 15,
+      "shapes": [],
+      "elements": [
+        {
+          "id": "shape-1794728994941-u0qj3",
+          "name": "Rectangle 1",
+          "kind": "rectangle",
+          "x": 0,
+          "y": 0,
+          "width": 100,
+          "height": 100,
+          "fill": "#000000",
+          "stroke": "#ffffff",
+          "strokeWidth": 0,
+          "opacity": 0.9,
+          "radius": 24,
+          "rotation": 0,
+          "layer": "behind",
+          "type": "shape"
+        },
+        {
+          "id": "widget-1794728896199-etj2b",
+          "name": "Timer 1",
+          "type": "timer",
+          "x": 5,
+          "y": 5,
+          "width": 90.1,
+          "height": 90,
+          "text": "{time}",
+          "durationSeconds": 540,
+          "fontSize": 240,
+          "fontWeight": 700,
+          "textAlign": "center",
+          "color": "#ffffff",
+          "showPanel": false,
+          "panelColor": "#15151e",
+          "showAccent": false,
+          "accentColor": "#913eff",
+          "opacity": 1,
+          "rotation": 0
+        }
+      ],
+      "message": "Service begins soon",
+      "durationSeconds": 300,
+      "backgroundColor": "#15151e",
+      "foregroundColor": "#ffffff",
+      "accentColor": "#913eff",
+      "createdAt": 1794728896199,
+      "updatedAt": 1794729057820
+    },
+    {
       "id": "overlay-1790969537447-mklmg3",
       "name": "Speaker Name",
       "kind": "name",
@@ -1765,15 +4529,15 @@
           "name": "Timer 1",
           "type": "timer",
           "x": 86.1,
-          "y": 0,
+          "y": 2.7,
           "width": 13.9,
           "height": 12.9,
           "text": "{time}",
-          "durationSeconds": 240,
+          "durationSeconds": 600,
           "fontSize": 88,
           "fontWeight": 700,
           "textAlign": "center",
-          "color": "#ffffff",
+          "color": "#000000",
           "showPanel": false,
           "panelColor": "#15151e",
           "showAccent": false,
@@ -1788,7 +4552,7 @@
       "foregroundColor": "#ffffff",
       "accentColor": "#913eff",
       "createdAt": 1790847497472,
-      "updatedAt": 1791108622867
+      "updatedAt": 1794733357040
     }
   ],
   "templates": [
@@ -1818,6 +4582,7 @@
         "backgroundEnd": "#090a13",
         "backgroundOverlayOpacity": 0.35,
         "backgroundMedia": null,
+        "cameraMedia": null,
         "layers": [
           {
             "id": "shape-1788741383504-2",
@@ -2027,7 +4792,7 @@
         "width": 1920,
         "height": 1080,
         "background": "#0f1117",
-        "backgroundMode": "media",
+        "backgroundMode": "color",
         "backgroundColor": "",
         "backgroundGradientStart": "#0f1117",
         "backgroundGradientEnd": "#25204a",
@@ -2035,6 +4800,38 @@
         "backgroundGradientStyle": "linear",
         "backgroundBlur": 0,
         "backgroundMedia": null,
+        "cameraMedia": {
+          "type": "camera",
+          "src": "",
+          "name": "DroidCam Virtual Camera",
+          "fit": "cover",
+          "loop": false,
+          "x": 0,
+          "y": 0,
+          "width": 100,
+          "height": 100,
+          "opacity": 1,
+          "blendMode": "normal",
+          "muted": true,
+          "speed": 1,
+          "flipX": false,
+          "flipY": false,
+          "cropTop": 0,
+          "cropRight": 0,
+          "cropBottom": 0,
+          "cropLeft": 0,
+          "hueRotate": 0,
+          "invert": 0,
+          "blur": 0,
+          "grayscale": 0,
+          "sepia": 0,
+          "brightness": 100,
+          "contrast": 100,
+          "saturate": 100,
+          "cameraSourceType": "local",
+          "cameraDeviceId": "28B8549A63B277D04935BD6905A39E266FF89638",
+          "cameraLabel": "DroidCam Virtual Camera"
+        },
         "fabricVersion": "7.4.0",
         "objects": [
           {
@@ -2376,6 +5173,7 @@
         "backgroundEnd": "#090a13",
         "backgroundOverlayOpacity": 0.35,
         "backgroundMedia": null,
+        "cameraMedia": null,
         "layers": [
           {
             "id": "text-1788740452449-1",
@@ -2383,9 +5181,9 @@
             "visible": true,
             "locked": false,
             "x": 3.0502656249999998,
-            "y": 6.065240740740741,
+            "y": 23.16513888888889,
             "width": 93.84738541666667,
-            "height": 87.77692830445122,
+            "height": 53.57713098878695,
             "rotation": 0,
             "zIndex": 1,
             "opacity": 1,
@@ -2415,7 +5213,7 @@
         ]
       },
       "createdAt": 1788740577326,
-      "updatedAt": 1791111097542,
+      "updatedAt": 1792915264281,
       "studioDocument": {
         "id": "studio-1788740448454-qhzdii",
         "name": "Main Song Template",
@@ -2431,6 +5229,7 @@
         "backgroundGradientStyle": "linear",
         "backgroundBlur": 0,
         "backgroundMedia": null,
+        "cameraMedia": null,
         "fabricVersion": "7.4.0",
         "objects": [
           {
@@ -2458,16 +5257,16 @@
             "studioRole": "layer",
             "studioName": "Text 1",
             "verticalAlign": "center",
-            "studioBoxHeight": 947.9908256880732,
+            "studioBoxHeight": 578.633014678899,
             "autoSize": "Grow to fit",
             "type": "Textbox",
             "version": "7.4.0",
             "originX": "left",
             "originY": "top",
             "left": 58.5651,
-            "top": 65.5046,
+            "top": 250.1835,
             "width": 1801.8698,
-            "height": 947.9908,
+            "height": 578.633,
             "fill": "#f4f7ff",
             "stroke": null,
             "strokeWidth": 1,
@@ -2494,7 +5293,7 @@
           }
         ],
         "createdAt": 1788740448454,
-        "updatedAt": 1791111097542
+        "updatedAt": 1792915264278
       }
     },
     {
@@ -2522,6 +5321,7 @@
         "backgroundEnd": "#090a13",
         "backgroundOverlayOpacity": 0.35,
         "backgroundMedia": null,
+        "cameraMedia": null,
         "layers": [
           {
             "id": "shape-1788700063729-2",
@@ -2769,7 +5569,7 @@
         ]
       },
       "createdAt": 1788700263103,
-      "updatedAt": 1790485453685,
+      "updatedAt": 1792919279589,
       "studioDocument": {
         "id": "studio-1788700035952-n69mdm",
         "name": "Lower Third",
@@ -2785,6 +5585,38 @@
         "backgroundGradientStyle": "linear",
         "backgroundBlur": 0,
         "backgroundMedia": null,
+        "cameraMedia": {
+          "type": "camera",
+          "src": "",
+          "name": "DroidCam Virtual Camera (V4L2)",
+          "fit": "cover",
+          "loop": false,
+          "x": 0,
+          "y": 0,
+          "width": 100,
+          "height": 100,
+          "opacity": 1,
+          "blendMode": "normal",
+          "muted": true,
+          "speed": 1,
+          "flipX": false,
+          "flipY": false,
+          "cropTop": 0,
+          "cropRight": 0,
+          "cropBottom": 0,
+          "cropLeft": 0,
+          "hueRotate": 0,
+          "invert": 0,
+          "blur": 0,
+          "grayscale": 0,
+          "sepia": 0,
+          "brightness": 100,
+          "contrast": 100,
+          "saturate": 100,
+          "cameraSourceType": "local",
+          "cameraDeviceId": "D341E191E301380221C39691A65794B232F80741",
+          "cameraLabel": "DroidCam Virtual Camera (V4L2)"
+        },
         "fabricVersion": "7.4.0",
         "objects": [
           {
@@ -3141,10 +5973,11 @@
         "aspectRatio": "16:9",
         "canvasWidth": 1920,
         "canvasHeight": 1080,
-        "backgroundStart": "#4b2f7d",
+        "backgroundStart": "#0f1117",
         "backgroundEnd": "#090a13",
         "backgroundOverlayOpacity": 0.35,
         "backgroundMedia": null,
+        "cameraMedia": null,
         "layers": [
           {
             "id": "text-1788349071737-1",
@@ -3219,7 +6052,7 @@
         ]
       },
       "createdAt": 1788349089813,
-      "updatedAt": 1790884541800,
+      "updatedAt": 1792919292047,
       "studioDocument": {
         "id": "studio-1788349067213-if2lpu",
         "name": "Simple Template",
@@ -3235,6 +6068,7 @@
         "backgroundGradientStyle": "linear",
         "backgroundBlur": 0,
         "backgroundMedia": null,
+        "cameraMedia": null,
         "fabricVersion": "7.4.0",
         "objects": [
           {
@@ -3391,7 +6225,7 @@
           }
         ],
         "createdAt": 1788349067213,
-        "updatedAt": 1790491657517
+        "updatedAt": 1792919292046
       },
       "layout": "widescreen"
     }

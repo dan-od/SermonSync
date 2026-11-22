@@ -35,8 +35,8 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("app preset pack", () => {
   it("contains the local songs, overlays, and template designs", () => {
-    expect(appPresetPack.songs).toHaveLength(49);
-    expect(appPresetPack.overlays).toHaveLength(2);
+    expect(appPresetPack.songs).toHaveLength(104);
+    expect(appPresetPack.overlays).toHaveLength(3);
     expect(appPresetPack.templates).toHaveLength(4);
   });
 
