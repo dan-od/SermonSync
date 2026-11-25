@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { type SongSlide } from "../../stores/songStore";
 import { type TemplateScene } from "../../types/templates";
 import { type ProjectorSlide } from "../../types/state";
@@ -12,6 +13,13 @@ export function SongPreview({
   activeProjectorSlide: ProjectorSlide;
   currentSlide: SongSlide;
 }) {
+  const previewScene = useMemo(
+    () => defaultSongScene
+      ? { ...defaultSongScene, backgroundStart: "#000000", backgroundEnd: "#000000" }
+      : null,
+    [defaultSongScene],
+  );
+
   return (
     <div
       style={{
@@ -34,7 +42,7 @@ export function SongPreview({
           alignItems: "center",
           justifyContent: "center",
           position: "relative",
-          background: "radial-gradient(circle at center, rgba(30, 30, 42, 0.6) 0%, rgba(15, 15, 22, 0.95) 100%)",
+          background: "var(--bg-surface)",
         }}
       >
         <div
@@ -43,15 +51,15 @@ export function SongPreview({
             maxHeight: "100%",
             aspectRatio: "16 / 9",
             position: "relative",
-            borderRadius: "8px",
+            borderRadius: "1px",
             overflow: "hidden",
-            border: "1px solid var(--border-base)",
-            boxShadow: "var(--shadow-lg)",
+            border: "none",
+            boxShadow: "none",
           }}
         >
-          {defaultSongScene ? (
+          {previewScene ? (
             <TemplateSceneOverlay
-              scene={defaultSongScene}
+              scene={previewScene}
               slide={activeProjectorSlide}
               category="songs"
               fitToContainer
@@ -65,7 +73,7 @@ export function SongPreview({
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                background: "linear-gradient(135deg, #181824 0%, #0d0d14 100%)",
+                background: "#000000",
                 color: "#ffffff",
                 fontSize: "24px",
                 textAlign: "center",

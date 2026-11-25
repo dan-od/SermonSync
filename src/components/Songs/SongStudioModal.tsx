@@ -9,14 +9,16 @@ import { useSongStudioEditor } from "./useSongStudioEditor";
 interface SongStudioModalProps {
   open: boolean;
   song: Song | null;
+  initialLanguage?: string;
   onClose: () => void;
   onCreateCue?: (cue: { title: string; slides: SongSlide[] }) => void;
   onBackToResults?: () => void;
   onDirtyChange?: (dirty: boolean) => void;
+  onLanguageChange?: (language: string) => void;
 }
 
 
-export function SongStudioModal({ open, song, onClose, onCreateCue, onBackToResults, onDirtyChange }: SongStudioModalProps) {
+export function SongStudioModal({ open, song, initialLanguage, onClose, onCreateCue, onBackToResults, onDirtyChange, onLanguageChange }: SongStudioModalProps) {
   if (!song) return null;
 
   return (
@@ -24,21 +26,26 @@ export function SongStudioModal({ open, song, onClose, onCreateCue, onBackToResu
       key={song.id}
       open={open}
       song={song}
+      initialLanguage={initialLanguage}
       onClose={onClose}
       onCreateCue={onCreateCue}
       onBackToResults={onBackToResults}
       onDirtyChange={onDirtyChange}
+      onLanguageChange={onLanguageChange}
     />
   );
 }
 
-function SongStudioContent({ open, song, onClose, onCreateCue, onBackToResults, onDirtyChange }: Omit<SongStudioModalProps, "song"> & { song: Song }) {
+function SongStudioContent({ open, song, initialLanguage, onClose, onCreateCue, onBackToResults, onDirtyChange, onLanguageChange }: Omit<SongStudioModalProps, "song"> & { song: Song }) {
   const {
     title,
     setTitle,
     artist,
     setArtist,
     slides,
+    activeLanguage,
+    availableLanguages,
+    switchLanguage,
     songText,
     cueModalOpen,
     setCueModalOpen,
@@ -62,7 +69,7 @@ function SongStudioContent({ open, song, onClose, onCreateCue, onBackToResults, 
     handleReorder,
     handleSlideLabelChange,
     activeProjectorSlide,
-  } = useSongStudioEditor({ song, onClose, onCreateCue, onDirtyChange });
+  } = useSongStudioEditor({ song, initialLanguage, onClose, onCreateCue, onDirtyChange, onLanguageChange });
 
   return createPortal(
     <div
@@ -89,7 +96,7 @@ function SongStudioContent({ open, song, onClose, onCreateCue, onBackToResults, 
           width: "min(1380px, 98vw)",
           height: "min(840px, 94vh)",
           background: "var(--bg-base)",
-          borderRadius: "12px",
+          borderRadius: "1px",
           border: "1px solid var(--border-base)",
           display: "grid",
           gridTemplateRows: "auto minmax(0, 1fr) auto",
@@ -99,13 +106,16 @@ function SongStudioContent({ open, song, onClose, onCreateCue, onBackToResults, 
       >
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, borderBottom: onBackToResults ? "1px solid var(--border-base)" : undefined }}>
-        {onBackToResults && <button type="button" onClick={onBackToResults} style={{ marginLeft: 14, border: "none", borderRadius: 6, background: "var(--bg-elevated)", color: "var(--fg-base)", padding: "7px 10px", cursor: "pointer", fontWeight: 600 }}>← Back to results</button>}
+        {onBackToResults && <button type="button" onClick={onBackToResults} style={{ marginLeft: 14, border: "none", borderRadius: 1, background: "var(--bg-elevated)", color: "var(--fg-base)", padding: "7px 10px", cursor: "pointer", fontWeight: 600 }}>← Back to results</button>}
         <div style={{ flex: 1, minWidth: 0 }}>
         <SongStudioHeader
           title={title}
           setTitle={setTitle}
           artist={artist}
           setArtist={setArtist}
+          activeLanguage={activeLanguage}
+          availableLanguages={availableLanguages}
+          onLanguageChange={switchLanguage}
           hasTaggedSections={hasTaggedSections}
           openCueBuilder={openCueBuilder}
           handleSave={handleSave}

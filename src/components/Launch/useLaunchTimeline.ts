@@ -28,7 +28,6 @@ export interface LaunchTimeline {
   bootRef: RefObject<HTMLDivElement | null>;
   footRef: RefObject<HTMLDivElement | null>;
   skipRef: RefObject<HTMLButtonElement | null>;
-  appInRef: RefObject<HTMLDivElement | null>;
   /** Exit now, from the skip pill. */
   skip: () => void;
 }
@@ -77,7 +76,6 @@ export function useLaunchTimeline({
   const bootRef = useRef<HTMLDivElement | null>(null);
   const footRef = useRef<HTMLDivElement | null>(null);
   const skipRef = useRef<HTMLButtonElement | null>(null);
-  const appInRef = useRef<HTMLDivElement | null>(null);
 
   // Live values the loop reads, so the loop itself is mounted once.
   const readyAtRef = useRef(readyAt);
@@ -124,7 +122,6 @@ export function useLaunchTimeline({
         wordmarkRef.current.style.transform = "none";
       }
       if (taglineRef.current) taglineRef.current.style.transform = "none";
-      if (appInRef.current) appInRef.current.style.transform = "none";
     }
 
     const showSkip = () => {
@@ -174,10 +171,9 @@ export function useLaunchTimeline({
       tr(footRef.current, { opacity: "0" }, 300);
       tr(skipRef.current, { opacity: "0" }, 200);
       skipRef.current?.classList.remove("is-visible");
-      after(380, () => {
-        tr(appInRef.current, { opacity: "1", transform: "translateY(0px)" }, 500);
-        after(500, () => onCompleteRef.current());
-      });
+      // Let the launch screen finish fading, then mount authentication directly.
+      // A placeholder console curtain here flashed three empty panels before login.
+      after(500, () => onCompleteRef.current());
     };
     exitRef.current = exit;
 
@@ -215,5 +211,5 @@ export function useLaunchTimeline({
 
   const skip = useCallback(() => exitRef.current(), []);
 
-  return { glowRef, wordmarkRef, taglineRef, bootRef, footRef, skipRef, appInRef, skip };
+  return { glowRef, wordmarkRef, taglineRef, bootRef, footRef, skipRef, skip };
 }

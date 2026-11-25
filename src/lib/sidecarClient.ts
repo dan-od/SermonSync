@@ -166,7 +166,7 @@ export function getSidecarStatus() {
 }
 
 export function getSidecarLogs() {
-  return fetchJson<SidecarLogsResponse>("/api/logs");
+  return fetchJson<SidecarLogsResponse>("/api/logs", { cache: "no-store" });
 }
 
 export function getSystemStatus() {

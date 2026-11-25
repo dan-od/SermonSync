@@ -11,18 +11,17 @@ export const modalBackdropStyle: CSSProperties = {
 };
 
 export const modalSectionStyle: CSSProperties = {
-  width: "min(1180px, 95vw)",
-  height: "min(760px, 90vh)",
+  width: "min(560px, 94vw)",
   maxHeight: "90vh",
-  overflow: "hidden",
-  padding: 24,
-  border: "none",
-  borderRadius: 12,
-  background: "linear-gradient(145deg, var(--bg-surface), var(--bg-base))",
+  overflowY: "auto",
+  padding: 20,
+  border: "1px solid var(--border-base)",
+  borderRadius: "var(--radius-lg)",
+  background: "var(--bg-surface)",
   boxShadow: "var(--shadow-lg)",
-  display: "grid",
-  gridTemplateRows: "auto minmax(0, 1fr) auto",
-  gap: 0,
+  display: "flex",
+  flexDirection: "column",
+  gap: 14,
 };
 
 export const modalHeaderRow: CSSProperties = {
@@ -35,60 +34,8 @@ export const modalHeaderRow: CSSProperties = {
 export const modalTitleStyle: CSSProperties = {
   margin: 0,
   color: "var(--fg-base)",
-  fontSize: 18,
+  fontSize: 16,
   fontWeight: 700,
-  letterSpacing: "-0.01em",
-};
-
-export const studioStageStyle: CSSProperties = {
-  width: "100%",
-  aspectRatio: "16 / 9",
-  minHeight: 280,
-  border: "1px solid var(--border-base)",
-  borderRadius: 10,
-  background: "#171827",
-  boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.03), 0 10px 30px rgba(10, 8, 24, 0.18)",
-  overflow: "hidden",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-};
-
-export const studioWorkspaceStyle: CSSProperties = {
-  minHeight: 0,
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) 300px",
-  gap: 18,
-  padding: "18px 0",
-  overflow: "hidden",
-};
-
-export const studioCanvasColumnStyle: CSSProperties = {
-  minWidth: 0,
-  minHeight: 0,
-  display: "flex",
-  flexDirection: "column",
-  gap: 12,
-};
-
-export const studioInspectorStyle: CSSProperties = {
-  minWidth: 0,
-  minHeight: 0,
-  overflowY: "auto",
-  padding: "2px 2px 2px 16px",
-  borderLeft: "1px solid var(--border-base)",
-  display: "flex",
-  flexDirection: "column",
-  gap: 14,
-};
-
-export const studioFooterStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 12,
-  paddingTop: 14,
-  borderTop: "1px solid var(--border-base)",
 };
 
 export const modalCloseButtonStyle: CSSProperties = {
@@ -113,7 +60,7 @@ export const fieldLabelStyle: CSSProperties = {
 
 export const fieldInputStyle: CSSProperties = {
   padding: "8px 10px",
-  border: "none",
+  border: "1px solid var(--border-base)",
   borderRadius: 6,
   background: "var(--bg-base)",
   color: "var(--fg-base)",

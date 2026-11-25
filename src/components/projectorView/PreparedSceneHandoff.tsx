@@ -27,7 +27,7 @@ export function PreparedSceneHandoff({
   sceneTransition?: TransitionSetting;
   onForegroundReady: () => void;
   retain: boolean;
-  videoPlayback: { playing: boolean; loop: boolean; onVideoElementChange: (video: HTMLVideoElement | null, removedVideo?: HTMLVideoElement) => void };
+  videoPlayback: { playing: boolean; loop: boolean; onVideoElementChange: (video: HTMLVideoElement | null, removedVideo?: HTMLVideoElement) => void; onPlaybackEnded: () => void };
   cameraPaused: boolean;
   animationStyle?: CSSProperties;
 }) {

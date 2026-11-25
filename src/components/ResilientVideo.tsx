@@ -19,6 +19,7 @@ export function ResilientVideo({
   loop = media.loop !== false,
   sourcePath,
   onVideoElementChange,
+  onPlaybackEnded,
   onReady,
   onFailure,
   presentationVisible = true,
@@ -31,6 +32,7 @@ export function ResilientVideo({
   loop?: boolean;
   sourcePath?: string;
   onVideoElementChange?: (video: HTMLVideoElement | null, removedVideo?: HTMLVideoElement) => void;
+  onPlaybackEnded?: () => void;
   onReady?: () => void;
   onFailure?: () => void;
   /** A prepared scene stays hidden until its background has a frame; start playback once it is on screen. */
@@ -42,8 +44,10 @@ export function ResilientVideo({
   const visibleRef = useRef(presentationVisible);
   const onReadyRef = useRef(onReady);
   const onFailureRef = useRef(onFailure);
+  const onPlaybackEndedRef = useRef(onPlaybackEnded);
   useLayoutEffect(() => { onReadyRef.current = onReady; }, [onReady]);
   useLayoutEffect(() => { onFailureRef.current = onFailure; }, [onFailure]);
+  useLayoutEffect(() => { onPlaybackEndedRef.current = onPlaybackEnded; }, [onPlaybackEnded]);
   useLayoutEffect(() => { visibleRef.current = presentationVisible; }, [presentationVisible]);
 
   // Decode/attach the source after the current paint. Large persisted data URLs
@@ -202,8 +206,10 @@ export function ResilientVideo({
       }
     };
 
+    const handleEnded = () => onPlaybackEndedRef.current?.();
+
     const handleUnexpectedPause = () => {
-      if (!active || !playingRef.current || !visibleRef.current || video.ended || pauseRetries >= 3) return;
+      if (!active || !playingRef.current || !visibleRef.current || video.ended || video.seeking || pauseRetries >= 3) return;
       pauseRetries += 1;
       if (pauseRetryTimer !== null) window.clearTimeout(pauseRetryTimer);
       pauseRetryTimer = window.setTimeout(requestPlayback, 250);
@@ -236,6 +242,7 @@ export function ResilientVideo({
       video.addEventListener("loadeddata", handleLoaded);
       video.addEventListener("canplay", requestPlayback);
       video.addEventListener("timeupdate", handleProgress);
+      video.addEventListener("ended", handleEnded);
       video.addEventListener("pause", handleUnexpectedPause);
       host.appendChild(video);
       if (!warmedVideo) {
@@ -284,6 +291,7 @@ export function ResilientVideo({
         video.removeEventListener("loadeddata", handleLoaded);
         video.removeEventListener("canplay", requestPlayback);
         video.removeEventListener("timeupdate", handleProgress);
+        video.removeEventListener("ended", handleEnded);
         video.removeEventListener("pause", handleUnexpectedPause);
       } catch {
         // Ignore cleanup for an already-invalid media node.

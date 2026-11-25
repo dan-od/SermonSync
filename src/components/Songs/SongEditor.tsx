@@ -72,44 +72,49 @@ export function SongSlideList({
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
-            width: "26px",
-            height: "26px",
-            border: "1px solid var(--border-base)",
-            borderRadius: "6px",
+            gap: "5px",
+            border: "none",
+            borderRadius: "1px",
             background: "var(--bg-elevated)",
             color: "var(--fg-base)",
-            fontFamily: "var(--font-mono)",
-            fontSize: "18px",
-            lineHeight: 1,
-            fontWeight: 700,
+            fontFamily: "var(--font-sans)",
+            fontSize: "12px",
+            lineHeight: 1.2,
+            fontWeight: 600,
+            padding: "5px 8px",
             cursor: "pointer",
-            transition: "background 120ms ease, border-color 120ms ease",
+            transition: "background 120ms ease",
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.background = "var(--color-primary-muted)";
-            e.currentTarget.style.borderColor = "var(--color-primary)";
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = "var(--bg-elevated)";
-            e.currentTarget.style.borderColor = "var(--border-base)";
           }}
         >
-          +
+          <span aria-hidden="true">+</span>
+          <span>Add slide</span>
         </button>
       </div>
 
       {/* Slides List */}
       <div
+        className="song-studio-slides-scroll"
         style={{
           flex: 1,
           minHeight: 0,
           overflowY: "auto",
-          padding: "12px",
+          padding: "12px 24px 12px 12px",
           display: "flex",
           flexDirection: "column",
           gap: "12px",
         }}
       >
+        {slides.length === 0 && (
+          <div style={{ color: "var(--fg-subtle)", fontSize: "11px", textAlign: "center", padding: "16px 8px" }}>
+            No lyrics for this language yet
+          </div>
+        )}
         {slides.map((slide, index) => {
           const isActive = index === activeSlideIndex;
           const isDragOver = dragOverIndex === index;
@@ -148,17 +153,13 @@ export function SongSlideList({
                 flexDirection: "column",
                 gap: "6px",
                 padding: "8px",
-                borderRadius: "8px",
-                border: isActive
-                  ? `2px solid ${tagColor(slide.label)}`
-                  : isDragOver
-                    ? "2px dashed var(--color-primary)"
-                    : "1px solid var(--border-base)",
-                background: isActive ? "var(--color-primary-muted)" : "var(--bg-base)",
+                borderRadius: "1px",
+                border: "none",
+                background: isActive || isDragOver ? "var(--color-primary-muted)" : "var(--bg-base)",
                 cursor: "pointer",
                 position: "relative",
-                transition: "border-color 120ms ease, background 120ms ease",
-                boxShadow: isActive ? "var(--shadow-sm)" : "none",
+                transition: "background 120ms ease",
+                boxShadow: "none",
               }}
             >
               {/* Header Controls */}
@@ -172,7 +173,7 @@ export function SongSlideList({
                       color: "var(--fg-on-accent)",
                       background: tagColor(slide.label),
                       padding: "1px 5px",
-                      borderRadius: "4px",
+                      borderRadius: "1px",
                       flexShrink: 0,
                     }}
                   >
@@ -202,7 +203,7 @@ export function SongSlideList({
                       style={{
                         width: "100%",
                         border: "1px solid var(--color-primary)",
-                        borderRadius: "4px",
+                        borderRadius: "1px",
                         background: "var(--bg-surface)",
                         color: "var(--fg-base)",
                         fontSize: "11px",
@@ -284,8 +285,8 @@ export function SongSlideList({
                   aspectRatio: "16 / 9",
                   position: "relative",
                   overflow: "hidden",
-                  borderRadius: "5px",
-                  border: "1px solid var(--border-base)",
+                  borderRadius: "1px",
+                  border: "none",
                   background: "var(--bg-surface)",
                 }}
               >
@@ -361,7 +362,7 @@ export function SongTextEditor({
           width: "100%",
           minHeight: 0,
           border: "none",
-          borderRadius: 0,
+          borderRadius: "1px",
           background: "var(--bg-base)",
           color: "var(--fg-base)",
           padding: "14px",

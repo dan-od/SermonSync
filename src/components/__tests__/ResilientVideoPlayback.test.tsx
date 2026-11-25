@@ -123,6 +123,16 @@ describe("ResilientVideo playback recovery", () => {
     expect(video?.loop).toBe(true);
   });
 
+  it("reports when a non-looping video reaches its end", async () => {
+    const media = { type: "video" as const, src: "/app/video-cache/eeeeeeeeeeeeeeee.mp4", fit: "cover" as const, loop: false, x: 0, y: 0, width: 100, height: 100, opacity: 1 };
+    const onPlaybackEnded = vi.fn();
+    await act(async () => root.render(<ResilientVideo media={media} style={{ width: "100%" }} loop={false} onPlaybackEnded={onPlaybackEnded} />));
+
+    await act(async () => container.querySelector("video")?.dispatchEvent(new Event("ended")));
+
+    expect(onPlaybackEnded).toHaveBeenCalledOnce();
+  });
+
   it("recovers a stream error with the file fallback without hiding the video", async () => {
     const media = { type: "video" as const, src: "/app/video-cache/1d3323d24ccb4bf2.mp4", fit: "cover" as const, loop: true, x: 0, y: 0, width: 100, height: 100, opacity: 1 };
     await act(async () => root.render(<ResilientVideo media={media} style={{ width: "100%" }} />));

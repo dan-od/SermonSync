@@ -1,0 +1,11 @@
+{
+	"mcpServers": {
+		"sermonsync": {
+			"type": "http",
+			"url": "https://kanban.okoro.me/mcp",
+			"tools": [
+				"*"
+			]
+		}
+	}
+}

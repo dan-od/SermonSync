@@ -17,33 +17,36 @@ export function IconButton({
     <button
       type="button"
       title={title}
+      aria-label={title}
       disabled={disabled}
       onClick={onClick}
       style={{
         border: "none",
-        background: "transparent",
-        color: danger ? "var(--color-error)" : "var(--fg-subtle)",
-        borderRadius: "4px",
-        width: "18px",
-        height: "18px",
+        background: "var(--bg-elevated)",
+        color: danger ? "var(--color-error)" : "var(--fg-base)",
+        borderRadius: "1px",
+        minWidth: "24px",
+        height: "22px",
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
         cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.3 : 0.8,
-        fontSize: "11px",
-        padding: 0,
+        opacity: disabled ? 0.45 : 1,
+        fontSize: "12px",
+        fontWeight: 600,
+        padding: "0 4px",
+        transition: "background 120ms ease, color 120ms ease",
       }}
       onMouseEnter={(e) => {
         if (!disabled) {
-          e.currentTarget.style.opacity = "1";
-          e.currentTarget.style.background = danger ? "rgba(255, 75, 96, 0.15)" : "var(--bg-elevated)";
+          e.currentTarget.style.background = danger ? "var(--color-error-muted)" : "var(--color-primary-muted)";
+          e.currentTarget.style.color = danger ? "var(--color-error)" : "var(--color-primary)";
         }
       }}
       onMouseLeave={(e) => {
         if (!disabled) {
-          e.currentTarget.style.opacity = "0.8";
-          e.currentTarget.style.background = "transparent";
+          e.currentTarget.style.background = "var(--bg-elevated)";
+          e.currentTarget.style.color = danger ? "var(--color-error)" : "var(--fg-base)";
         }
       }}
     >

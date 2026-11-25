@@ -200,6 +200,24 @@ export function ProjectorView({ title, slide, media = null, overlays = [], feedO
   const setControlVideoLooping = hasLogoVideo ? setIsLogoVideoLooping : hasBackgroundVideo ? setIsBackgroundVideoLooping : hasMediaAudio ? setIsMediaAudioLooping : setIsMediaVideoLooping;
   const controlPlaying = previewAudioBlocked ? false : (playback?.playing ?? isControlVideoPlaying);
   const controlLooping = playback?.looping ?? isControlVideoLooping;
+  const pendingSeekTimeRef = useRef<number | null>(null);
+  const commitPendingSeek = useCallback(() => {
+    const time = pendingSeekTimeRef.current;
+    if (time === null) return;
+    pendingSeekTimeRef.current = null;
+    if (onSeek) {
+      onSeek(time);
+      return;
+    }
+    const video = controlVideoRef.current;
+    if (video && Number.isFinite(time)) video.currentTime = time;
+  }, [controlVideoRef, onSeek]);
+  const handleVideoEnded = useCallback(() => {
+    onPlaybackChange?.({ playing: false });
+    if (hasLogoVideo) setIsLogoVideoPlaying(false);
+    else if (hasBackgroundVideo) setIsBackgroundVideoPlaying(false);
+    else if (hasMediaVideo) setIsMediaVideoPlaying(false);
+  }, [hasBackgroundVideo, hasLogoVideo, hasMediaVideo, onPlaybackChange]);
 
   useEffect(() => {
     if (playback?.seekTime == null) return;
@@ -316,7 +334,8 @@ export function ProjectorView({ title, slide, media = null, overlays = [], feedO
     playing: (presentationMode === "scene" || outgoingPresentationMode === "scene") && (playback?.playing ?? isBackgroundVideoPlaying),
     loop: playback?.looping ?? isBackgroundVideoLooping,
     onVideoElementChange: updateBackgroundVideoElement,
-  }), [isBackgroundVideoLooping, isBackgroundVideoPlaying, outgoingPresentationMode, playback?.looping, playback?.playing, presentationMode, updateBackgroundVideoElement]);
+    onPlaybackEnded: handleVideoEnded,
+  }), [handleVideoEnded, isBackgroundVideoLooping, isBackgroundVideoPlaying, outgoingPresentationMode, playback?.looping, playback?.playing, presentationMode, updateBackgroundVideoElement]);
 
   const storeTransitions = useProjectorStore((s) => s.transitions);
   const transitions = transitionsOverride ?? storeTransitions;
@@ -532,6 +551,7 @@ export function ProjectorView({ title, slide, media = null, overlays = [], feedO
                 audioLoading={audioLoading}
                 audioError={audioError}
                 onVideoElementChange={updateMediaVideoElement}
+                onPlaybackEnded={handleVideoEnded}
                 onAudioElementChange={updateMediaAudioElement}
                 onPlaybackChange={updateMediaAudioPlayback}
                 onSeek={onSeek}
@@ -593,6 +613,7 @@ export function ProjectorView({ title, slide, media = null, overlays = [], feedO
                   playing={playback?.playing ?? isLogoVideoPlaying}
                   loop={playback?.looping ?? isLogoVideoLooping}
                   onVideoElementChange={updateLogoVideoElement}
+                  onPlaybackEnded={handleVideoEnded}
                 />
               ) : (
                 <img
@@ -670,17 +691,27 @@ export function ProjectorView({ title, slide, media = null, overlays = [], feedO
           onChange={(event) => {
             if (previewAudioBlocked) return;
             const time = Number(event.target.value);
-            const video = controlVideoRef.current;
-            if (video && Number.isFinite(time)) video.currentTime = time;
+            if (!Number.isFinite(time)) return;
+            pendingSeekTimeRef.current = time;
             setVideoProgress(time);
-            onSeek?.(time);
           }}
+          onPointerUp={commitPendingSeek}
+          onPointerCancel={commitPendingSeek}
+          onKeyUp={commitPendingSeek}
+          onBlur={commitPendingSeek}
           aria-label={`${title} ${controlMediaName} progress`}
           style={{ flex: 1, minWidth: 0, accentColor: "var(--color-primary)", cursor: hasPlaybackControl && !previewAudioBlocked ? "pointer" : "not-allowed", opacity: hasPlaybackControl && !previewAudioBlocked ? 1 : 0.42 }}
         />}
         <button
           type="button"
-          onClick={() => onPlaybackChange ? onPlaybackChange({ looping: !controlLooping }) : setControlVideoLooping((current) => !current)}
+          onClick={() => {
+            const looping = !controlLooping;
+            if (onPlaybackChange) onPlaybackChange({ looping, ...(looping ? { playing: true } : {}) });
+            else {
+              setControlVideoLooping(looping);
+              if (looping) setControlVideoPlaying(true);
+            }
+          }}
           disabled={previewAudioBlocked || !hasPlaybackControl || hasCameraPreview}
           aria-pressed={controlLooping}
           aria-label={`${controlLooping ? "Disable" : "Enable"} loop for ${title} ${controlMediaName}`}
