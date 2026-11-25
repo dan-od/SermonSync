@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { useAudioPeaks } from "../../lib/waveform";
+import { audioPlaybackErrorMessage } from "../../lib/audioPlayback";
+import { useProjectorStore } from "../../stores/projectorStore";
 import type { AudioMediaSettings } from "../../types/media";
 import { WaveformCanvas } from "./Waveform";
 import {
@@ -35,8 +37,10 @@ export function AudioStudioModal({ open, name, src, sourcePath, settings, onClos
   const [trimStart, setTrimStart] = useState(settings.trimStart);
   const [trimEnd, setTrimEnd] = useState<number | null>(settings.trimEnd);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const liveAudioActive = useProjectorStore((state) => state.feedOverride === "live" && state.liveMedia?.category === "audio" && state.livePlayback.playing);
   const { peaks, duration, loading, error } = useAudioPeaks(open ? src : null, 220, sourcePath);
 
   useEffect(() => {
@@ -82,7 +86,15 @@ export function AudioStudioModal({ open, name, src, sourcePath, settings, onClos
     if (audio.currentTime < trimStart || (trimEnd != null && audio.currentTime >= trimEnd)) {
       audio.currentTime = trimStart;
     }
-    void audio.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+    if (liveAudioActive) {
+      setPlaybackError("Pause Live audio before auditioning another track.");
+      return;
+    }
+    setPlaybackError(null);
+    void audio.play().then(() => setIsPlaying(true)).catch((playError: unknown) => {
+      setIsPlaying(false);
+      setPlaybackError(audioPlaybackErrorMessage(playError, audio));
+    });
   };
 
   const handleSeek = (time: number) => {
@@ -118,6 +130,8 @@ export function AudioStudioModal({ open, name, src, sourcePath, settings, onClos
           ref={audioRef}
           src={src}
           preload="auto"
+          onPause={() => setIsPlaying(false)}
+          onError={(event) => setPlaybackError(audioPlaybackErrorMessage(event.currentTarget.error, event.currentTarget))}
           onLoadedMetadata={(event) => {
             if (trimEnd == null) setTrimEnd(event.currentTarget.duration);
           }}
@@ -127,6 +141,7 @@ export function AudioStudioModal({ open, name, src, sourcePath, settings, onClos
           <button type="button" onClick={togglePlay} title={isPlaying ? "Pause" : "Play"} style={playButtonStyle}>
             {isPlaying ? "Ⅱ" : "▶"}
           </button>
+          {playbackError ? <div role="alert" style={{ color: "var(--color-error)", fontSize: 12 }}>{playbackError}</div> : null}
           <div style={{ flex: 1, minWidth: 0 }}>
             {loading ? (
               <div style={{ color: "var(--fg-subtle)", fontSize: 12 }}>Decoding waveform…</div>

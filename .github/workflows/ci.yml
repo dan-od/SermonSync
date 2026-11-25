@@ -183,6 +183,11 @@ jobs:
           $target = (rustc -vV | Select-String '^host: ').ToString().Split(' ')[1]
           New-Item -ItemType Directory -Force -Path src-tauri/binaries | Out-Null
           Set-Content -Path "src-tauri/binaries/python-sidecar-$target.exe" -Value "python-sidecar placeholder (CI build)"
+          # The Windows Tauri config also bundles these production resource
+          # directories. CI only needs them to exist for bundle validation.
+          New-Item -ItemType Directory -Force -Path src-tauri/resources/sidecar, src-tauri/resources/whisper | Out-Null
+          Set-Content -Path src-tauri/resources/sidecar/CI_PLACEHOLDER.txt -Value "sidecar resources omitted in CI"
+          Set-Content -Path src-tauri/resources/whisper/CI_PLACEHOLDER.txt -Value "Whisper model omitted in CI"
 
       - name: Install Node dependencies
         run: npm ci
