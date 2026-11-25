@@ -8,7 +8,7 @@
  *
  * Everything below is scaffolding for PRD areas that don't have a real
  * backend/store wired up yet (audio capture, display/middleware output,
- * archival, session profiles, logs). These are intentionally mock so the UI
+ * archival, session profiles). These are intentionally mock so the UI
  * shape exists ahead of the Rust/Python implementation — see SermonSync PRD
  * v3.0 §5–§10.
  */
@@ -158,51 +158,6 @@ export interface SessionLogEntry {
   category: "detection" | "audio" | "ai" | "display" | "system";
   message: string;
 }
-
-export const MOCK_SESSION_LOGS: SessionLogEntry[] = [
-  {
-    id: "1",
-    timestamp: "2026-07-29 09:41:02",
-    type: "success",
-    category: "detection",
-    message: 'Explicit reference matched via trie: "John 3:16" (confidence 0.98, stage 1).',
-  },
-  {
-    id: "2",
-    timestamp: "2026-07-29 09:40:55",
-    type: "info",
-    category: "audio",
-    message: "Worship/speech detector switched to SPEECH mode after 4.2s of silence.",
-  },
-  {
-    id: "3",
-    timestamp: "2026-07-29 09:38:10",
-    type: "info",
-    category: "audio",
-    message: "Energy-based detector identified sustained music energy — transcription paused.",
-  },
-  {
-    id: "4",
-    timestamp: "2026-07-29 09:31:47",
-    type: "success",
-    category: "ai",
-    message: 'Groq contextual resolver matched "the next verse" → Romans 8:29.',
-  },
-  {
-    id: "5",
-    timestamp: "2026-07-29 09:15:03",
-    type: "warning",
-    category: "ai",
-    message: "Groq API latency exceeded 2.5s — falling back to algorithmic matcher only.",
-  },
-  {
-    id: "6",
-    timestamp: "2026-07-29 09:00:00",
-    type: "success",
-    category: "system",
-    message: "Session started. Church ID FSQ-PH-MGBUOGBA-01 authenticated. Bible DB loaded (ENGLISHNKJ, 31,102 verses).",
-  },
-];
 
 export interface SessionProfilePreset {
   id: SessionProfileId;

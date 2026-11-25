@@ -31,7 +31,7 @@ export function LaunchScreen({ onProceedToAuth }: LaunchScreenProps) {
   const { steps, readyAt, error, retry, engineVersion } = useBootStatus();
   const unitId = useConfigStore((state) => state.unitId);
 
-  const { glowRef, wordmarkRef, taglineRef, bootRef, footRef, skipRef, appInRef, skip } =
+  const { glowRef, wordmarkRef, taglineRef, bootRef, footRef, skipRef, skip } =
     useLaunchTimeline({
       readyAt,
       blocked: error !== undefined,
@@ -81,13 +81,6 @@ export function LaunchScreen({ onProceedToAuth }: LaunchScreenProps) {
 
         <div className="line">
           <i style={{ width: `${progress}%` }} />
-        </div>
-
-        <div className="app-in" ref={appInRef} aria-hidden="true">
-          <div className="hdr" />
-          <i />
-          <i />
-          <i />
         </div>
       </div>
     </div>

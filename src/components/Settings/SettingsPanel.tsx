@@ -337,6 +337,7 @@ export function SettingsPanel({
               onClick={onClose}
               title="Close settings"
               aria-label="Close settings"
+              className="settings-close-button"
               style={{
                 display: "grid",
                 placeItems: "center",
@@ -344,8 +345,6 @@ export function SettingsPanel({
                 height: "28px",
                 borderRadius: "var(--radius-md)",
                 border: "none",
-                background: "var(--bg-elevated)",
-                color: "var(--fg-muted)",
                 cursor: "pointer",
               }}
             >
@@ -353,7 +352,7 @@ export function SettingsPanel({
             </button>
           </header>
 
-          <main style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "var(--space-6)" }}>
+          <main className="settings-content-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "var(--space-6)" }}>
             <div style={{ maxWidth: "760px", margin: "0 auto" }}>
               {visitedTabs.has("general") ? <div style={{ display: activeTab === "general" ? "block" : "none" }}><GeneralTab panelState={panelState} onPanelChange={handlePanelChange} /></div> : null}
               {visitedTabs.has("audio") ? <div style={{ display: activeTab === "audio" ? "block" : "none" }}><AudioDetectionTab
@@ -379,7 +378,7 @@ export function SettingsPanel({
               {visitedTabs.has("transitions") ? <div style={{ display: activeTab === "transitions" ? "block" : "none" }}><TransitionsTab panelState={panelState} onPanelChange={handlePanelChange} /></div> : null}
               {visitedTabs.has("theme") ? <div style={{ display: activeTab === "theme" ? "block" : "none" }}><ThemeTab theme={uiTheme} onThemeChange={onUiThemeChange} /></div> : null}
               {visitedTabs.has("archive") ? <div style={{ display: activeTab === "archive" ? "block" : "none" }}><ArchivalTab panelState={panelState} onPanelChange={handlePanelChange} /></div> : null}
-              {visitedTabs.has("logs") ? <div style={{ display: activeTab === "logs" ? "block" : "none" }}><LogsTab /></div> : null}
+              {visitedTabs.has("logs") ? <div style={{ display: activeTab === "logs" ? "block" : "none" }}><LogsTab active={activeTab === "logs"} /></div> : null}
               {visitedTabs.has("profiles") ? <div style={{ display: activeTab === "profiles" ? "block" : "none" }}><ProfilesTab
                 panelState={panelState}
                 onPanelChange={handlePanelChange}

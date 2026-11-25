@@ -11,7 +11,7 @@ export interface PreparedMedia {
   key: string;
 }
 
-function PreparedMediaLayer({ entry, visible, preparing, outgoing, playing, loop, audioEnabled, muted, audioOwner, outputProgress, audioPeaks, audioMinPeaks, audioMaxPeaks, audioDuration, audioLoading, audioError, onReady, onVideoElementChange, onAudioElementChange, onPlaybackChange, onSeek, onAudioProgress }: {
+function PreparedMediaLayer({ entry, visible, preparing, outgoing, playing, loop, audioEnabled, muted, audioOwner, outputProgress, audioPeaks, audioMinPeaks, audioMaxPeaks, audioDuration, audioLoading, audioError, onReady, onVideoElementChange, onPlaybackEnded, onAudioElementChange, onPlaybackChange, onSeek, onAudioProgress }: {
   entry: PreparedMedia;
   visible: boolean;
   preparing: boolean;
@@ -30,6 +30,7 @@ function PreparedMediaLayer({ entry, visible, preparing, outgoing, playing, loop
   audioError: string | null;
   onReady: () => void;
   onVideoElementChange: (video: HTMLVideoElement | null, removedVideo?: HTMLVideoElement) => void;
+  onPlaybackEnded: () => void;
   onAudioElementChange: (audio: HTMLAudioElement | null, removedAudio?: HTMLAudioElement) => void;
   onPlaybackChange?: (patch: Partial<Pick<ProjectorPlaybackState, "playing" | "looping">>) => void;
   onSeek?: (time: number) => void;
@@ -77,6 +78,7 @@ function PreparedMediaLayer({ entry, visible, preparing, outgoing, playing, loop
           onReady={preparing ? onReady : undefined}
           presentationVisible={visible}
           onVideoElementChange={captureVideo}
+          onPlaybackEnded={onPlaybackEnded}
         />
       ) : entry.media.category === "audio" ? (
         <ProjectedAudioLayer entry={entry} visible={visible} playing={playing} loop={loop} enabled={audioEnabled} muted={muted} owner={audioOwner} outputProgress={outputProgress} peaks={audioPeaks} minPeaks={audioMinPeaks} maxPeaks={audioMaxPeaks} waveformDuration={audioDuration} loading={audioLoading} error={audioError} onReady={preparing ? onReady : () => undefined} onAudioElementChange={captureAudio} onPlaybackChange={onPlaybackChange} onSeek={onSeek} onProgress={onAudioProgress} />
@@ -88,7 +90,7 @@ function PreparedMediaLayer({ entry, visible, preparing, outgoing, playing, loop
 }
 
 /** Decode the incoming media behind the current frame, then reveal it. */
-export function PreparedMediaHandoff({ media, source, hidden, clearTransition, playing, loop, audioEnabled, muted, audioOwner, outputProgress, audioPeaks, audioMinPeaks, audioMaxPeaks, audioDuration, audioLoading, audioError, onVideoElementChange, onAudioElementChange, onPlaybackChange, onSeek, onAudioProgress, onForegroundReady, retain }: {
+export function PreparedMediaHandoff({ media, source, hidden, clearTransition, playing, loop, audioEnabled, muted, audioOwner, outputProgress, audioPeaks, audioMinPeaks, audioMaxPeaks, audioDuration, audioLoading, audioError, onVideoElementChange, onPlaybackEnded, onAudioElementChange, onPlaybackChange, onSeek, onAudioProgress, onForegroundReady, retain }: {
   media: ProjectorMedia | null;
   source: string;
   hidden: boolean;
@@ -106,6 +108,7 @@ export function PreparedMediaHandoff({ media, source, hidden, clearTransition, p
   audioLoading: boolean;
   audioError: string | null;
   onVideoElementChange: (video: HTMLVideoElement | null, removedVideo?: HTMLVideoElement) => void;
+  onPlaybackEnded: () => void;
   onAudioElementChange: (audio: HTMLAudioElement | null, removedAudio?: HTMLAudioElement) => void;
   onPlaybackChange?: (patch: Partial<Pick<ProjectorPlaybackState, "playing" | "looping">>) => void;
   onSeek?: (time: number) => void;
@@ -174,6 +177,7 @@ export function PreparedMediaHandoff({ media, source, hidden, clearTransition, p
           audioError={audioError}
           onReady={reveal}
           onVideoElementChange={onVideoElementChange}
+          onPlaybackEnded={onPlaybackEnded}
           onAudioElementChange={onAudioElementChange}
           onPlaybackChange={onPlaybackChange}
           onSeek={onSeek}

@@ -52,7 +52,7 @@ async function decodeAudioFile(src: string): Promise<AudioBuffer> {
   }
   const ctx = getAudioContext();
   return new Promise((resolve, reject) => {
-    ctx.decodeAudioData(arrayBuffer, resolve, (error) => reject(error ?? new Error("Failed to decode audio.")));
+    ctx.decodeAudioData(arrayBuffer.slice(0), resolve, (error) => reject(error ?? new Error("Failed to decode audio.")));
   });
 }
 

@@ -6,16 +6,57 @@ export interface SongSlide {
   text: string;
 }
 
+export interface SongLanguageVariant {
+  language: string;
+  slides: SongSlide[];
+}
+
 export interface Song {
   id: string;
   title: string;
   artist: string;
   slides: SongSlide[];
+  languageVariants?: SongLanguageVariant[];
+  defaultLanguage?: string;
   createdAt?: number;
   updatedAt?: number;
   sourceName?: string;
   sourceUrl?: string;
   sourceProvider?: string;
+}
+
+export function getSongLanguageVariants(song: Song): SongLanguageVariant[] {
+  const variants = song.languageVariants?.filter((variant) => variant.language.trim().length > 0);
+  if (variants?.length) return variants;
+
+  return [{
+    language: song.defaultLanguage?.trim() || "English",
+    slides: song.slides,
+  }];
+}
+
+export function getSongLanguageVariant(song: Song, language?: string): SongLanguageVariant {
+  const variants = getSongLanguageVariants(song);
+  const selected = language
+    ? variants.find((variant) => variant.language.toLowerCase() === language.toLowerCase())
+    : undefined;
+  if (selected) return selected;
+
+  const defaultVariant = song.defaultLanguage
+    ? variants.find((variant) => variant.language.toLowerCase() === song.defaultLanguage?.toLowerCase())
+    : undefined;
+  return defaultVariant ?? variants[0]!;
+}
+
+function normalizeSong(song: Song): Song {
+  const languageVariants = getSongLanguageVariants(song);
+  const defaultVariant = getSongLanguageVariant(song, song.defaultLanguage);
+  return {
+    ...song,
+    defaultLanguage: defaultVariant.language,
+    languageVariants,
+    slides: defaultVariant.slides,
+  };
 }
 
 const STORAGE_KEY = "sermonsync_songs";
@@ -28,7 +69,7 @@ function loadSongsFromStorage(): Song[] {
     const raw = storage.getItem(STORAGE_KEY);
     if (typeof raw !== "string" || !raw) return [];
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) return parsed;
+    if (Array.isArray(parsed)) return parsed.map((song) => normalizeSong(song as Song));
   } catch {
     // Ignore invalid JSON
   }
@@ -68,18 +109,24 @@ export const useSongStore = create<SongStore>((set, get) => ({
 
   createSong: (songData) => {
     const now = Date.now();
+    const slides = songData.slides && songData.slides.length > 0
+      ? songData.slides
+      : [
+          { label: "Verse 1", text: "Enter verse 1 lyrics here..." },
+          { label: "Chorus", text: "Enter chorus lyrics here..." },
+        ];
     return {
       id: `song-${now}-${Math.random().toString(36).slice(2, 6)}`,
       title: songData.title.trim() || "New Song",
       artist: (songData.artist ?? "").trim() || "Unknown Artist",
-      slides: songData.slides && songData.slides.length > 0
-        ? songData.slides
-        : [
-            { label: "Verse 1", text: "Enter verse 1 lyrics here..." },
-            { label: "Chorus", text: "Enter chorus lyrics here..." },
-          ],
+      slides,
       createdAt: now,
       updatedAt: now,
+      defaultLanguage: "English",
+      languageVariants: [{
+        language: "English",
+        slides,
+      }],
       sourceName: songData.sourceName,
       sourceUrl: songData.sourceUrl,
       sourceProvider: songData.sourceProvider,
@@ -93,10 +140,11 @@ export const useSongStore = create<SongStore>((set, get) => ({
   },
 
   saveSong: (song) => {
-    const existing = get().songs.some((entry) => entry.id === song.id);
+    const normalizedSong = normalizeSong(song);
+    const existing = get().songs.some((entry) => entry.id === normalizedSong.id);
     const nextSongs = existing
-      ? get().songs.map((entry) => (entry.id === song.id ? { ...song, updatedAt: Date.now() } : entry))
-      : [song, ...get().songs];
+      ? get().songs.map((entry) => (entry.id === normalizedSong.id ? { ...normalizedSong, updatedAt: Date.now() } : entry))
+      : [normalizedSong, ...get().songs];
     set({ songs: nextSongs });
     saveSongsToStorage(nextSongs);
   },

@@ -19,6 +19,7 @@ export function Dropdown({
   containerStyle,
   minMenuWidth,
   ariaLabel,
+  cornerRadius = 0,
 }: {
   value: string;
   options: { value: string; label: string }[];
@@ -29,6 +30,7 @@ export function Dropdown({
   containerStyle?: CSSProperties;
   minMenuWidth?: number;
   ariaLabel?: string;
+  cornerRadius?: number;
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -98,6 +100,7 @@ export function Dropdown({
           gap: "4px",
           padding: "0 8px",
           border: "none",
+          borderRadius: cornerRadius,
           outline: "none",
         }}
       >
@@ -122,7 +125,7 @@ export function Dropdown({
                 background: "var(--bg-elevated)",
                 boxShadow: "var(--shadow-md)",
                 ...menuStyle,
-                borderRadius: "5px",
+                borderRadius: cornerRadius,
                 padding: "4px",
                 border: "none",
               }}
@@ -155,7 +158,7 @@ export function Dropdown({
                       minHeight: "25px",
                       boxSizing: "border-box",
                       padding: "0 8px",
-                      borderRadius: "3px",
+                      borderRadius: cornerRadius,
                     }}
                     onMouseEnter={() => setHighlightedOption(opt.value)}
                     onMouseLeave={() => setHighlightedOption(null)}

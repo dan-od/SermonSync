@@ -61,14 +61,14 @@ vi.mock("../../stores/projectorStore", () => {
 });
 vi.mock("../CameraFeed", () => ({ CameraFeed: ({ onError }: { onError?: (message: string) => void }) => <button type="button" data-testid="camera-feed" onClick={() => onError?.("Camera offline")}>Camera feed</button> }));
 vi.mock("../ResilientVideo", () => ({
-  ResilientVideo: ({ media, playing, loop, onVideoElementChange, onReady, presentationVisible = true }: { media: { src: string; muted?: boolean }; playing?: boolean; loop?: boolean; onVideoElementChange?: (video: HTMLVideoElement | null) => void; onReady?: () => void; presentationVisible?: boolean }) => {
+  ResilientVideo: ({ media, playing, loop, onVideoElementChange, onPlaybackEnded, onReady, presentationVisible = true }: { media: { src: string; muted?: boolean }; playing?: boolean; loop?: boolean; onVideoElementChange?: (video: HTMLVideoElement | null) => void; onPlaybackEnded?: () => void; onReady?: () => void; presentationVisible?: boolean }) => {
     videoMediaProps.push({ src: media.src, muted: media.muted });
     videoElementCallbacks(onVideoElementChange);
     useEffect(() => {
       if (onReady) readyCallbacks.set(media.src, onReady);
       return () => { if (readyCallbacks.get(media.src) === onReady) readyCallbacks.delete(media.src); };
     }, [media.src, onReady]);
-    return <div data-testid="background-video" data-src={media.src} data-playing={String(playing)} data-loop={String(loop)} data-visible={String(presentationVisible)} />;
+    return <div data-testid="background-video" data-src={media.src} data-playing={String(playing)} data-loop={String(loop)} data-visible={String(presentationVisible)}><button type="button" data-testid="simulate-video-ended" onClick={onPlaybackEnded}>Video ended</button></div>;
   },
 }));
 
@@ -384,6 +384,29 @@ describe("live screen playback controls", () => {
     expect([...container.querySelectorAll('[data-testid="background-video"]')].every((video) => video.getAttribute("data-loop") === "false")).toBe(true);
   });
 
+  it("updates playback when a non-looping video ends and resumes when looping is re-enabled", () => {
+    const slide = { reference: { book: "John", chapter: 3, verse: 16 }, text: "Verse", version: "KJV" };
+    let playback = { playing: true, looping: false, seekTime: null, seekRevision: 0 };
+    const change = vi.fn((patch: Partial<typeof playback>) => {
+      playback = { ...playback, ...patch };
+    });
+    const render = () => root.render(<ProjectorView title="LIVE" slide={slide} feedOverride="live" overlayMode="widescreen" theme="cross" isLive fontSizePx={48} playback={playback} onPlaybackChange={change} />);
+
+    act(render);
+    act(() => container.querySelector<HTMLButtonElement>('[data-testid="simulate-video-ended"]')?.click());
+    expect(change).toHaveBeenLastCalledWith({ playing: false });
+    act(render);
+    expect(container.querySelector<HTMLButtonElement>('button[aria-label="Play LIVE video"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="background-video"]')?.getAttribute("data-playing")).toBe("false");
+
+    act(() => container.querySelector<HTMLButtonElement>('button[aria-label="Enable loop for LIVE video"]')?.click());
+    expect(change).toHaveBeenLastCalledWith({ looping: true, playing: true });
+    act(render);
+    expect(container.querySelector<HTMLButtonElement>('button[aria-label="Pause LIVE video"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="background-video"]')?.getAttribute("data-playing")).toBe("true");
+    expect(container.querySelector('[data-testid="background-video"]')?.getAttribute("data-loop")).toBe("true");
+  });
+
   it("applies a LIVE seek command to the output video", () => {
     const slide = { reference: { book: "John", chapter: 3, verse: 16 }, text: "Verse", version: "KJV" };
     const playback = { playing: true, looping: true, seekTime: null as number | null, seekRevision: 0 };
@@ -394,6 +417,35 @@ describe("live screen playback controls", () => {
 
     act(() => root.render(<ProjectorView title="PROJECTOR OUTPUT" slide={slide} feedOverride="live" overlayMode="widescreen" theme="cross" isLive fontSizePx={48} chrome={false} playback={{ ...playback, seekTime: 12.5, seekRevision: 1 }} />));
     expect(video.currentTime).toBe(12.5);
+  });
+
+  it("commits one video seek after the progress slider is released", () => {
+    const slide = { reference: { book: "John", chapter: 3, verse: 16 }, text: "Verse", version: "KJV" };
+    const onSeek = vi.fn();
+    const playback = { playing: true, looping: true, seekTime: null, seekRevision: 0 };
+    act(() => root.render(<ProjectorView title="LIVE" slide={slide} feedOverride="live" overlayMode="widescreen" theme="cross" isLive fontSizePx={48} playback={playback} onPlaybackChange={vi.fn()} onSeek={onSeek} />));
+    const onVideoElementChange = videoElementCallbacks.mock.lastCall?.[0] as ((video: HTMLVideoElement | null) => void) | undefined;
+    const video = document.createElement("video");
+    Object.defineProperties(video, {
+      currentTime: { configurable: true, writable: true, value: 2 },
+      duration: { configurable: true, value: 10 },
+    });
+    act(() => onVideoElementChange?.(video));
+    const progress = container.querySelector<HTMLInputElement>('input[aria-label="LIVE video progress"]');
+    expect(progress?.disabled).toBe(false);
+    const setRangeValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+
+    act(() => {
+      setRangeValue?.call(progress, "4");
+      progress!.dispatchEvent(new Event("input", { bubbles: true }));
+      setRangeValue?.call(progress, "7");
+      progress!.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(onSeek).not.toHaveBeenCalled();
+
+    act(() => progress?.dispatchEvent(new Event("pointerup", { bubbles: true })));
+    expect(onSeek).toHaveBeenCalledOnce();
+    expect(onSeek).toHaveBeenLastCalledWith(7);
   });
 
   it("keeps camera behavior on the template that contains the camera", () => {

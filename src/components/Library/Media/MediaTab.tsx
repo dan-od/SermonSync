@@ -578,10 +578,10 @@ export function MediaTab({ onPreviewMedia, onSendMedia, clickAction, onClickActi
       {/* Category-specific studio editors */}
       {studioTarget?.category === "images" ? (
         <ImageStudioModal
+          key={studioTarget.id}
           open
           name={studioTarget.name}
           src={studioTarget.path ? (() => { try { return managedVideoUrl(studioTarget.path) ?? convertFileSrc(studioTarget.path); } catch { return ""; } })() : ""}
-          sourcePath={studioTarget.path}
           settings={studioTarget.imageSettings ?? DEFAULT_IMAGE_SETTINGS}
           onClose={() => setStudioTarget(null)}
           onSave={(name, settings: ImageMediaSettings) => {
@@ -592,10 +592,10 @@ export function MediaTab({ onPreviewMedia, onSendMedia, clickAction, onClickActi
       ) : null}
       {studioTarget?.category === "videos" ? (
         <VideoStudioModal
+          key={studioTarget.id}
           open
           name={studioTarget.name}
           src={studioTarget.path ? (() => { try { return managedVideoUrl(studioTarget.path) ?? convertFileSrc(studioTarget.path); } catch { return ""; } })() : ""}
-          sourcePath={studioTarget.path}
           settings={studioTarget.videoSettings ?? DEFAULT_VIDEO_SETTINGS}
           onClose={() => setStudioTarget(null)}
           onSave={(name, settings: VideoMediaSettings) => {
@@ -606,6 +606,7 @@ export function MediaTab({ onPreviewMedia, onSendMedia, clickAction, onClickActi
       ) : null}
       {studioTarget?.category === "audio" ? (
         <AudioStudioModal
+          key={studioTarget.id}
           open
           name={studioTarget.name}
           src={studioTarget.path ? (() => { try { return managedAudioUrl(studioTarget.path) ?? convertFileSrc(studioTarget.path); } catch { return ""; } })() : ""}

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { importVideo, isManagedVideo, managedVideoUrl } from "../../lib/videoImport";
 
 import { filtersToCss, flipTransform } from "../../lib/mediaFilters";
 import type { VideoMediaSettings } from "../../types/media";
@@ -19,11 +18,6 @@ import {
   primaryButtonStyle,
   secondaryButtonStyle,
   sectionTitleStyle,
-  studioCanvasColumnStyle,
-  studioFooterStyle,
-  studioInspectorStyle,
-  studioStageStyle,
-  studioWorkspaceStyle,
   toggleButtonStyle,
   twoColumnGrid,
 } from "./studioStyles";
@@ -32,38 +26,17 @@ interface VideoStudioModalProps {
   open: boolean;
   name: string;
   src: string;
-  sourcePath?: string;
   settings: VideoMediaSettings;
   onClose: () => void;
   onSave: (name: string, settings: VideoMediaSettings) => void;
 }
 
-type VideoStudioContentProps = Omit<VideoStudioModalProps, "open">;
-
-export function VideoStudioModal(props: VideoStudioModalProps) {
-  if (!props.open) return null;
-
-  return (
-    <VideoStudioContent
-      key={`${props.src}:${props.name}`}
-      name={props.name}
-      src={props.src}
-      sourcePath={props.sourcePath}
-      settings={props.settings}
-      onClose={props.onClose}
-      onSave={props.onSave}
-    />
-  );
-}
-
-function VideoStudioContent({ name, src, sourcePath, settings, onClose, onSave }: VideoStudioContentProps) {
+export function VideoStudioModal({ open, name, src, settings, onClose, onSave }: VideoStudioModalProps) {
   const [title, setTitle] = useState(name);
   const [local, setLocal] = useState<VideoMediaSettings>(settings);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [playbackSrc, setPlaybackSrc] = useState(src);
-  const [normalizationAttempted, setNormalizationAttempted] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
@@ -98,7 +71,13 @@ function VideoStudioContent({ name, src, sourcePath, settings, onClose, onSave }
     };
   }, [local.trimEnd, local.trimStart, local.loop]);
 
-  useEffect(() => () => videoRef.current?.pause(), []);
+  useEffect(() => {
+    if (!open) return;
+    const video = videoRef.current;
+    return () => video?.pause();
+  }, [open]);
+
+  if (!open) return null;
 
   const togglePlay = () => {
     const video = videoRef.current;
@@ -132,33 +111,67 @@ function VideoStudioContent({ name, src, sourcePath, settings, onClose, onSave }
 
   return createPortal(
     <div role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }} style={modalBackdropStyle}>
-      <section className="studio-modal" role="dialog" aria-modal="true" aria-labelledby="video-studio-title" style={modalSectionStyle}>
+      <section role="dialog" aria-modal="true" aria-labelledby="video-studio-title" style={modalSectionStyle}>
         <div style={modalHeaderRow}>
-          <div>
-            <h2 id="video-studio-title" style={modalTitleStyle}>Video Canvas Studio</h2>
-            <div style={{ marginTop: 4, color: "var(--fg-subtle)", fontSize: 11 }}>Preview, trim, and tune this motion asset for live projection.</div>
-          </div>
+          <h2 id="video-studio-title" style={modalTitleStyle}>Video Studio</h2>
           <button type="button" onClick={onClose} title="Close" style={modalCloseButtonStyle}>×</button>
         </div>
 
-        <div style={studioWorkspaceStyle}>
-          <div style={studioCanvasColumnStyle}>
-            <label style={fieldLabelStyle}>
-              Asset name
-              <input value={title} onChange={(event) => setTitle(event.target.value)} style={fieldInputStyle} />
-            </label>
-            <div style={{ ...studioStageStyle, flex: 1, minHeight: 0 }}>
-              <video ref={videoRef} src={playbackSrc} playsInline preload="metadata" onError={() => { if (!sourcePath || isManagedVideo(sourcePath) || normalizationAttempted) return; setNormalizationAttempted(true); void importVideo(sourcePath, { legacy: true }).then((asset) => setPlaybackSrc(managedVideoUrl(asset.path) ?? asset.path)).catch(() => undefined); }} onLoadedMetadata={(event) => { const nextDuration = event.currentTarget.duration; setDuration(nextDuration); setLocal((current) => (current.trimEnd == null ? { ...current, trimEnd: nextDuration } : current)); }} style={{ width: "100%", height: "100%", objectFit: local.fit, opacity: local.opacity, filter: filtersToCss(local.filters), transform: flipTransform(local.flipX, local.flipY) }} />
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <button type="button" onClick={togglePlay} title={isPlaying ? "Pause" : "Play"} style={playButtonStyle}>{isPlaying ? "Ⅱ" : "▶"}</button>
-              <input type="range" min={0} max={duration || 1} step="0.01" value={Math.min(currentTime, duration || 1)} onChange={handleSeek} style={{ flex: 1, minWidth: 0, accentColor: "var(--color-primary)" }} />
-              <span style={{ color: "var(--fg-subtle)", fontFamily: "var(--font-mono)", fontSize: 10 }}>{currentTime.toFixed(1)}s</span>
-            </div>
-          </div>
-          <aside className="studio-scroll-pane" style={studioInspectorStyle}>
-            <div style={sectionTitleStyle}>PLAYBACK</div>
-            <div style={twoColumnGrid}>
+        <label style={fieldLabelStyle}>
+          Name
+          <input value={title} onChange={(event) => setTitle(event.target.value)} style={fieldInputStyle} />
+        </label>
+
+        <div
+          style={{
+            width: "100%",
+            aspectRatio: "16 / 9",
+            borderRadius: 8,
+            border: "1px solid var(--border-base)",
+            background: "#000",
+            overflow: "hidden",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <video
+            ref={videoRef}
+            src={src}
+            playsInline
+            preload="metadata"
+            onLoadedMetadata={(event) => {
+              const nextDuration = event.currentTarget.duration;
+              setDuration(nextDuration);
+              setLocal((current) => (current.trimEnd == null ? { ...current, trimEnd: nextDuration } : current));
+            }}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: local.fit,
+              opacity: local.opacity,
+              filter: filtersToCss(local.filters),
+              transform: flipTransform(local.flipX, local.flipY),
+            }}
+          />
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <button type="button" onClick={togglePlay} title={isPlaying ? "Pause" : "Play"} style={playButtonStyle}>
+            {isPlaying ? "Ⅱ" : "▶"}
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={duration || 1}
+            step="0.01"
+            value={Math.min(currentTime, duration || 1)}
+            onChange={handleSeek}
+            style={{ flex: 1, minWidth: 0, accentColor: "var(--color-primary)" }}
+          />
+        </div>
+
+        <div style={twoColumnGrid}>
           <label style={fieldLabelStyle}>
             Fit
             <Dropdown
@@ -172,9 +185,6 @@ function VideoStudioContent({ name, src, sourcePath, settings, onClose, onSave }
               triggerStyle={fieldInputStyle}
             />
           </label>
-            </div>
-            <div style={sectionTitleStyle}>TIMELINE</div>
-            <div style={twoColumnGrid}>
           <label style={fieldLabelStyle}>
             Speed
             <input
@@ -187,7 +197,6 @@ function VideoStudioContent({ name, src, sourcePath, settings, onClose, onSave }
               style={fieldInputStyle}
             />
           </label>
-            </div>
           <label style={fieldLabelStyle}>
             Trim start (s)
             <input
@@ -220,23 +229,21 @@ function VideoStudioContent({ name, src, sourcePath, settings, onClose, onSave }
             Opacity ({Math.round(local.opacity * 100)}%)
             <input type="range" min={0} max={1} step={0.01} value={local.opacity} onChange={(event) => setLocal({ ...local, opacity: Number(event.target.value) })} />
           </label>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button type="button" style={toggleButtonStyle(local.loop)} onClick={() => setLocal({ ...local, loop: !local.loop })}>{local.loop ? "Looping" : "Loop"}</button>
           <button type="button" style={toggleButtonStyle(local.muted)} onClick={() => setLocal({ ...local, muted: !local.muted })}>{local.muted ? "Muted" : "Mute"}</button>
           <button type="button" style={toggleButtonStyle(local.flipX)} onClick={() => setLocal({ ...local, flipX: !local.flipX })}>Flip horizontally</button>
           <button type="button" style={toggleButtonStyle(local.flipY)} onClick={() => setLocal({ ...local, flipY: !local.flipY })}>Flip vertically</button>
-            </div>
-            <div style={sectionTitleStyle}>FILTERS</div>
-            <MediaFiltersPanel filters={local.filters} onChange={(filters) => setLocal({ ...local, filters })} />
-          </aside>
         </div>
 
-        <div style={studioFooterStyle}>
-          <span style={{ color: "var(--fg-subtle)", fontFamily: "var(--font-mono)", fontSize: 10 }}>VIDEO ASSET</span>
-          <div style={modalFooterRow}>
+        <div style={sectionTitleStyle}>Filters</div>
+        <MediaFiltersPanel filters={local.filters} onChange={(filters) => setLocal({ ...local, filters })} />
+
+        <div style={modalFooterRow}>
           <button type="button" onClick={onClose} style={secondaryButtonStyle}>Cancel</button>
           <button type="button" onClick={handleSave} style={primaryButtonStyle}>Save</button>
-          </div>
         </div>
       </section>
     </div>,

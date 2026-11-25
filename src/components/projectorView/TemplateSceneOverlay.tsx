@@ -35,6 +35,7 @@ export const TemplateSceneOverlay = memo(function TemplateSceneOverlay({
     playing: boolean;
     loop: boolean;
     onVideoElementChange: (video: HTMLVideoElement | null, removedVideo?: HTMLVideoElement) => void;
+    onPlaybackEnded: () => void;
   };
   cameraPaused?: boolean;
   /** Leaves static canvas elements visible while suppressing dynamic slide layers. */
@@ -127,6 +128,7 @@ export const TemplateSceneOverlay = memo(function TemplateSceneOverlay({
                 playing={isThumbnail ? false : videoPlayback?.playing}
                 loop={isThumbnail ? false : videoPlayback?.loop}
                 onVideoElementChange={videoPlayback?.onVideoElementChange}
+                onPlaybackEnded={videoPlayback?.onPlaybackEnded}
                 onReady={onBackgroundReady}
                 onFailure={onBackgroundReady}
                 presentationVisible={backgroundVisible}

@@ -37,7 +37,7 @@ export function ProjectionCueModal({
           maxHeight: "min(620px, 88vh)",
           overflow: "auto",
           padding: 20,
-          borderRadius: "var(--radius-lg)",
+          borderRadius: "1px",
           background: "var(--bg-surface)",
           boxShadow: "var(--shadow-lg)",
         }}
@@ -58,7 +58,7 @@ export function ProjectionCueModal({
             minHeight: 220,
             boxSizing: "border-box",
             border: "none",
-            borderRadius: "var(--radius-sm)",
+            borderRadius: "1px",
             background: "var(--bg-base)",
             color: "var(--fg-base)",
             padding: "12px",
@@ -78,7 +78,7 @@ export function ProjectionCueModal({
                   key={`${tag}-${index}`}
                   style={{
                     padding: "3px 7px",
-                    borderRadius: "var(--radius-sm)",
+                    borderRadius: "1px",
                     background: tagColor(tag),
                     color: "var(--fg-on-accent)",
                     fontFamily: "var(--font-mono)",
@@ -98,7 +98,7 @@ export function ProjectionCueModal({
             style={{
               padding: "8px 13px",
               border: "none",
-              borderRadius: 6,
+              borderRadius: 1,
               background: "var(--bg-elevated)",
               color: "var(--fg-base)",
               cursor: "pointer",
@@ -114,7 +114,7 @@ export function ProjectionCueModal({
             style={{
               padding: "8px 13px",
               border: "none",
-              borderRadius: 6,
+              borderRadius: 1,
               background: "var(--color-primary)",
               color: "var(--fg-on-accent)",
               cursor: cueOrder.trim() ? "pointer" : "not-allowed",

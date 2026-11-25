@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { type Song, type SongSlide, useSongStore } from "../../../stores/songStore";
+import { getSongLanguageVariant, getSongLanguageVariants, type Song, type SongSlide, useSongStore } from "../../../stores/songStore";
 import type { ProjectorSlide } from "../../../types/state";
+import { Dropdown } from "../../Settings/Dropdown";
 import { NewSongModal } from "../../Songs/NewSongModal";
 import { SongStudioModal } from "../../Songs/SongStudioModal";
 import { SongSearchModal } from "../../Songs/SongSearchModal";
@@ -26,6 +27,7 @@ export function SongsTab({ isActive, previewReference, liveReference, onPreviewS
   const renameSong = useSongStore((s) => s.renameSong);
 
   const [selectedSongId, setSelectedSongId] = useState<string | null>(null);
+  const [selectedLanguage, setSelectedLanguage] = useState("English");
   const [hoveredSongId, setHoveredSongId] = useState<string | null>(null);
   const [selectedSlideReference, setSelectedSlideReference] = useState<string | null>(null);
   const [slidesWidth, setSlidesWidth] = useState<number>(738);
@@ -78,7 +80,7 @@ export function SongsTab({ isActive, previewReference, liveReference, onPreviewS
         return true;
       }
 
-      return `${song.title} ${song.artist} ${song.slides.map((slide) => `${slide.label} ${slide.text}`).join(" ")}`
+      return `${song.title} ${song.artist} ${getSongLanguageVariants(song).flatMap((variant) => variant.slides).map((slide) => `${slide.label} ${slide.text}`).join(" ")}`
         .toLowerCase()
         .includes(normalizedSearchQuery);
     }).sort((first, second) => first.title.localeCompare(second.title, undefined, { sensitivity: "base" }));
@@ -89,10 +91,40 @@ export function SongsTab({ isActive, previewReference, liveReference, onPreviewS
     return songs.find((song) => song.id === selectedSongId) ?? null;
   }, [selectedSongId, songs]);
 
+  const selectedLanguageVariants = useMemo(
+    () => selectedSong
+      ? getSongLanguageVariants(selectedSong).filter((variant) => variant.slides.some((slide) => slide.text.trim().length > 0))
+      : [],
+    [selectedSong],
+  );
+  const selectedSongLanguage = selectedSong
+    ? selectedLanguageVariants.find((variant) => variant.language.toLowerCase() === selectedLanguage.toLowerCase())?.language
+      ?? selectedLanguageVariants.find((variant) => variant.language === selectedSong.defaultLanguage)?.language
+      ?? selectedLanguageVariants[0]?.language
+      ?? selectedLanguage
+    : selectedLanguage;
+  const selectedSlides = useMemo(
+    () => selectedLanguageVariants.find((variant) => variant.language === selectedSongLanguage)?.slides ?? [],
+    [selectedLanguageVariants, selectedSongLanguage],
+  );
+
+  useEffect(() => {
+    if (!selectedSong) {
+      onSelectedSongChange?.(null);
+      return;
+    }
+
+    onSelectedSongChange?.({ ...selectedSong, slides: selectedSlides });
+  }, [onSelectedSongChange, selectedSong, selectedSlides]);
+
   const handleSongSelect = (songId: string) => {
+    const song = songs.find((entry) => entry.id === songId);
     setSelectedSongId(songId);
     setSelectedSlideReference(null);
-    onSelectedSongChange?.(songs.find((song) => song.id === songId) ?? null);
+    if (song) {
+      const variant = getSongLanguageVariant(song);
+      setSelectedLanguage(variant.language);
+    }
   };
 
   const handleDividerMouseDown = (e: React.MouseEvent) => {
@@ -147,19 +179,29 @@ export function SongsTab({ isActive, previewReference, liveReference, onPreviewS
   const navigateSongSlides = useCallback(
     (direction: -1 | 1) => {
       const song = selectedSong ?? filteredSongs[0];
-      if (!song || song.slides.length === 0) return;
+      if (!song) return;
+      const slides = getSongLanguageVariant(song, selectedLanguage).slides;
+      if (slides.length === 0) return;
 
-      if (!selectedSong) setSelectedSongId(song.id);
+      if (!selectedSong) {
+        setSelectedSongId(song.id);
+        setSelectedLanguage(getSongLanguageVariant(song).language);
+      }
       const currentReference = selectedSlideReference ?? liveReference;
-      const currentIndex = song.slides.findIndex((_, index) => `${song.title} 1:${index + 1}` === currentReference);
-      const nextIndex = (currentIndex + direction + song.slides.length) % song.slides.length;
-      const nextSlide = toSongProjectorSlide(song, song.slides[nextIndex], nextIndex);
+      const currentIndex = slides.findIndex((_, index) => `${song.title} 1:${index + 1}` === currentReference);
+      const nextIndex = (currentIndex + direction + slides.length) % slides.length;
+      const nextSlide = toSongProjectorSlide(song, slides[nextIndex]!, nextIndex);
       setSelectedSlideReference(`${song.title} 1:${nextIndex + 1}`);
       onPreviewSlide(nextSlide);
       onSendLive(nextSlide);
     },
-    [filteredSongs, liveReference, onPreviewSlide, onSendLive, selectedSlideReference, selectedSong],
+    [filteredSongs, liveReference, onPreviewSlide, onSendLive, selectedLanguage, selectedSlideReference, selectedSong],
   );
+
+  const handleLanguageSelect = (language: string) => {
+    setSelectedLanguage(language);
+    setSelectedSlideReference(null);
+  };
 
   useEffect(() => {
     if (isActive === false) return;
@@ -235,11 +277,11 @@ export function SongsTab({ isActive, previewReference, liveReference, onPreviewS
                 onMouseLeave={() => setHoveredSongId((current) => (current === song.id ? null : current))}
                 onClick={() => {
                   handleSongSelect(song.id);
-                  const firstSlide = song.slides[0];
+                  const firstSlide = getSongLanguageVariant(song).slides[0];
                   if (firstSlide) onPreviewSlide(toSongProjectorSlide(song, firstSlide, 0));
                 }}
                 onDoubleClick={() => {
-                  const firstSlide = song.slides[0];
+                  const firstSlide = getSongLanguageVariant(song).slides[0];
                   if (!firstSlide) return;
                   handleSongSelect(song.id);
                   onSendLive(toSongProjectorSlide(song, firstSlide, 0));
@@ -379,23 +421,39 @@ export function SongsTab({ isActive, previewReference, liveReference, onPreviewS
         <ScripturePane
           title="Slides"
           action={
-            <div role="group" aria-label="Slide click action" style={{ display: "flex", overflow: "hidden", borderRadius: "var(--radius-sm)" }}>
-              <button
-                type="button"
-                aria-pressed={slideClickAction === "preview"}
-                onClick={() => setSlideClickAction("preview")}
-                style={slideActionButtonStyle(slideClickAction === "preview")}
-              >
-                Preview First
-              </button>
-              <button
-                type="button"
-                aria-pressed={slideClickAction === "live"}
-                onClick={() => setSlideClickAction("live")}
-                style={slideActionButtonStyle(slideClickAction === "live")}
-              >
-                Live
-              </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {selectedSong && selectedLanguageVariants.length > 0 && (
+                <Dropdown
+                  value={selectedSongLanguage}
+                  options={selectedLanguageVariants.map((variant) => ({ value: variant.language, label: variant.language }))}
+                  onChange={handleLanguageSelect}
+                  ariaLabel="Projection language"
+                  containerStyle={{ width: 120 }}
+                  triggerStyle={{
+                    background: "color-mix(in srgb, var(--fg-base) 18%, var(--bg-surface))",
+                    color: "var(--fg-base)",
+                    fontWeight: 600,
+                  }}
+                />
+              )}
+              <div role="group" aria-label="Slide click action" style={{ display: "flex", overflow: "hidden", borderRadius: "var(--radius-sm)" }}>
+                <button
+                  type="button"
+                  aria-pressed={slideClickAction === "preview"}
+                  onClick={() => setSlideClickAction("preview")}
+                  style={slideActionButtonStyle(slideClickAction === "preview")}
+                >
+                  Preview First
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={slideClickAction === "live"}
+                  onClick={() => setSlideClickAction("live")}
+                  style={slideActionButtonStyle(slideClickAction === "live")}
+                >
+                  Live
+                </button>
+              </div>
             </div>
           }
         >
@@ -414,14 +472,15 @@ export function SongsTab({ isActive, previewReference, liveReference, onPreviewS
                 }}
               >
                 {/* 4-up Grid */}
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-                    gap: "var(--space-3)",
-                  }}
-                >
-                  {selectedSong.slides.map((slide, index) => {
+                {selectedSlides.length > 0 ? (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+                      gap: "var(--space-3)",
+                    }}
+                  >
+                    {selectedSlides.map((slide, index) => {
                     const projSlide = toSongProjectorSlide(selectedSong, slide, index);
                     const label = `${projSlide.reference.book} ${projSlide.reference.chapter}:${projSlide.reference.verse}`;
                     const isPreview = previewReference === label;
@@ -437,33 +496,37 @@ export function SongsTab({ isActive, previewReference, liveReference, onPreviewS
                       onPreviewSlide(projSlide);
                     };
 
-                    return (
-                      <div key={index} style={{ position: "relative" }}>
-                      <SlideThumbnail
-                        key={index}
-                        slide={projSlide}
-                        label={slide.label}
-                        isPreview={isPreview}
-                        isLive={isLive}
-                        isSelected={isSelected}
-                        onClick={slideClickAction === "preview" ? previewSlide : sendSlideLive}
-                        onDoubleClick={slideClickAction === "preview" ? sendSlideLive : () => {}}
-                        onFocus={selectSlide}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            if (slideClickAction === "preview") {
-                              previewSlide();
-                            } else {
-                              sendSlideLive();
-                            }
-                          }
-                        }}
-                      />
-                      </div>
-                    );
-                  })}
-                </div>
+                      return (
+                        <div key={index} style={{ position: "relative" }}>
+                          <SlideThumbnail
+                            slide={projSlide}
+                            label={slide.label}
+                            isPreview={isPreview}
+                            isLive={isLive}
+                            isSelected={isSelected}
+                            onClick={slideClickAction === "preview" ? previewSlide : sendSlideLive}
+                            onDoubleClick={slideClickAction === "preview" ? sendSlideLive : () => {}}
+                            onFocus={selectSlide}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                if (slideClickAction === "preview") {
+                                  previewSlide();
+                                } else {
+                                  sendSlideLive();
+                                }
+                              }
+                            }}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div style={{ color: "var(--fg-subtle)", fontSize: "var(--text-xs)", textAlign: "center", padding: "20px 12px" }}>
+                    No lyrics in {selectedSongLanguage} yet
+                  </div>
+                )}
               </div>
             </div>
           ) : (
@@ -497,6 +560,7 @@ export function SongsTab({ isActive, previewReference, liveReference, onPreviewS
             onClick={() => {
               const s = contextMenu.song;
               setContextMenu(null);
+              handleSongSelect(s.id);
               setStudioSong(s);
               setIsStudioOpen(true);
             }}
@@ -785,6 +849,8 @@ export function SongsTab({ isActive, previewReference, liveReference, onPreviewS
       <SongStudioModal
         open={isStudioOpen}
         song={studioSong}
+        initialLanguage={selectedLanguage}
+        onLanguageChange={setSelectedLanguage}
         onCreateCue={onCreateCue}
         onDirtyChange={setIsStudioDirty}
         onBackToResults={isSearchDraft ? () => {

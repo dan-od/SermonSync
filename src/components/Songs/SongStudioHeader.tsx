@@ -1,8 +1,13 @@
+import { Dropdown } from "../Settings/Dropdown";
+
 export function SongStudioHeader({
   title,
   setTitle,
   artist,
   setArtist,
+  activeLanguage,
+  availableLanguages,
+  onLanguageChange,
   hasTaggedSections,
   openCueBuilder,
   handleSave,
@@ -12,6 +17,9 @@ export function SongStudioHeader({
   setTitle: (title: string) => void;
   artist: string;
   setArtist: (artist: string) => void;
+  activeLanguage: string;
+  availableLanguages: string[];
+  onLanguageChange: (language: string) => void;
   hasTaggedSections: boolean;
   openCueBuilder: () => void;
   handleSave: () => void;
@@ -49,7 +57,7 @@ export function SongStudioHeader({
           style={{
             background: "var(--bg-elevated)",
             border: "1px solid var(--border-base)",
-            borderRadius: "6px",
+            borderRadius: "1px",
             padding: "6px 10px",
             color: "var(--fg-base)",
             fontSize: "13px",
@@ -69,12 +77,26 @@ export function SongStudioHeader({
           style={{
             background: "var(--bg-elevated)",
             border: "1px solid var(--border-base)",
-            borderRadius: "6px",
+            borderRadius: "1px",
             padding: "6px 10px",
             color: "var(--fg-muted)",
             fontSize: "13px",
             outline: "none",
             width: "180px",
+          }}
+        />
+
+        <Dropdown
+          value={activeLanguage}
+          options={availableLanguages.map((language) => ({ value: language, label: language }))}
+          onChange={onLanguageChange}
+          ariaLabel="Song language"
+          cornerRadius={1}
+          containerStyle={{ width: 130 }}
+          triggerStyle={{
+            background: "color-mix(in srgb, var(--fg-base) 18%, var(--bg-surface))",
+            color: "var(--fg-base)",
+            fontWeight: 600,
           }}
         />
       </div>
@@ -85,11 +107,11 @@ export function SongStudioHeader({
           onClick={openCueBuilder}
           disabled={!hasTaggedSections}
           style={{
-            border: "1px solid var(--color-primary)",
-            background: "var(--color-primary-muted)",
-            color: "var(--color-primary)",
-            borderRadius: "var(--radius-sm)",
-            padding: "8px 12px",
+            border: "none",
+            background: "var(--bg-elevated)",
+            color: "var(--fg-base)",
+            borderRadius: "1px",
+            padding: "7px 10px",
             fontWeight: 600,
             fontSize: "12px",
             cursor: !hasTaggedSections ? "not-allowed" : "pointer",
@@ -98,13 +120,13 @@ export function SongStudioHeader({
           }}
           onMouseEnter={(event) => {
             if (hasTaggedSections) {
-              event.currentTarget.style.background = "var(--color-primary)";
-              event.currentTarget.style.color = "var(--fg-on-accent)";
+              event.currentTarget.style.background = "var(--color-primary-muted)";
+              event.currentTarget.style.color = "var(--color-primary)";
             }
           }}
           onMouseLeave={(event) => {
-            event.currentTarget.style.background = "var(--color-primary-muted)";
-            event.currentTarget.style.color = "var(--color-primary)";
+            event.currentTarget.style.background = "var(--bg-elevated)";
+            event.currentTarget.style.color = "var(--fg-base)";
           }}
         >
           Create projection cue
@@ -116,8 +138,8 @@ export function SongStudioHeader({
             border: "none",
             background: "var(--color-primary)",
             color: "var(--fg-on-accent)",
-            borderRadius: "8px",
-            padding: "8px 16px",
+            borderRadius: "1px",
+            padding: "7px 12px",
             fontWeight: 700,
             fontSize: "13px",
             cursor: "pointer",
@@ -132,7 +154,7 @@ export function SongStudioHeader({
             border: "none",
             background: "var(--bg-elevated)",
             color: "var(--fg-base)",
-            borderRadius: "6px",
+            borderRadius: "1px",
             width: "30px",
             height: "30px",
             cursor: "pointer",

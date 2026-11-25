@@ -18,11 +18,6 @@ import {
   playButtonStyle,
   primaryButtonStyle,
   secondaryButtonStyle,
-  studioCanvasColumnStyle,
-  studioFooterStyle,
-  studioInspectorStyle,
-  studioStageStyle,
-  studioWorkspaceStyle,
   twoColumnGrid,
 } from "./studioStyles";
 
@@ -36,45 +31,22 @@ interface AudioStudioModalProps {
   onSave: (name: string, settings: AudioMediaSettings) => void;
 }
 
-type AudioStudioContentProps = Omit<AudioStudioModalProps, "open">;
-
-export function AudioStudioModal(props: AudioStudioModalProps) {
-  if (!props.open) return null;
-
-  return (
-    <AudioStudioContent
-      key={`${props.src}:${props.name}`}
-      name={props.name}
-      src={props.src}
-      sourcePath={props.sourcePath}
-      settings={props.settings}
-      onClose={props.onClose}
-      onSave={props.onSave}
-    />
-  );
-}
-
-function AudioStudioContent({ name, src, sourcePath, settings, onClose, onSave }: AudioStudioContentProps) {
+export function AudioStudioModal({ open, name, src, sourcePath, settings, onClose, onSave }: AudioStudioModalProps) {
   const [title, setTitle] = useState(name);
   const [volume, setVolume] = useState(settings.volume);
   const [trimStart, setTrimStart] = useState(settings.trimStart);
   const [trimEnd, setTrimEnd] = useState<number | null>(settings.trimEnd);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const liveAudioActive = useProjectorStore((state) => state.feedOverride === "live" && state.liveMedia?.category === "audio" && state.livePlayback.playing);
-  const { peaks, duration, loading, error } = useAudioPeaks(src, 220, sourcePath);
+  const { peaks, duration, loading, error } = useAudioPeaks(open ? src : null, 220, sourcePath);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (audio) audio.volume = Math.max(0, Math.min(1, volume));
   }, [volume]);
-
-  useEffect(() => {
-    if (!liveAudioActive) return;
-    audioRef.current?.pause();
-  }, [liveAudioActive]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -95,7 +67,13 @@ function AudioStudioContent({ name, src, sourcePath, settings, onClose, onSave }
     };
   }, [trimEnd]);
 
-  useEffect(() => () => audioRef.current?.pause(), []);
+  useEffect(() => {
+    if (!open) return;
+    const audio = audioRef.current;
+    return () => audio?.pause();
+  }, [open]);
+
+  if (!open) return null;
 
   const togglePlay = () => {
     const audio = audioRef.current;
@@ -105,15 +83,15 @@ function AudioStudioContent({ name, src, sourcePath, settings, onClose, onSave }
       setIsPlaying(false);
       return;
     }
+    if (audio.currentTime < trimStart || (trimEnd != null && audio.currentTime >= trimEnd)) {
+      audio.currentTime = trimStart;
+    }
     if (liveAudioActive) {
       setPlaybackError("Pause Live audio before auditioning another track.");
       return;
     }
     setPlaybackError(null);
-    if (audio.currentTime < trimStart || (trimEnd != null && audio.currentTime >= trimEnd)) {
-      audio.currentTime = trimStart;
-    }
-    void audio.play().then(() => { setIsPlaying(true); setPlaybackError(null); }).catch((playError: unknown) => {
+    void audio.play().then(() => setIsPlaying(true)).catch((playError: unknown) => {
       setIsPlaying(false);
       setPlaybackError(audioPlaybackErrorMessage(playError, audio));
     });
@@ -137,14 +115,16 @@ function AudioStudioContent({ name, src, sourcePath, settings, onClose, onSave }
 
   return createPortal(
     <div role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }} style={modalBackdropStyle}>
-      <section className="studio-modal" role="dialog" aria-modal="true" aria-labelledby="audio-studio-title" style={modalSectionStyle}>
+      <section role="dialog" aria-modal="true" aria-labelledby="audio-studio-title" style={modalSectionStyle}>
         <div style={modalHeaderRow}>
-          <div>
-            <h2 id="audio-studio-title" style={modalTitleStyle}>Audio Canvas Studio</h2>
-            <div style={{ marginTop: 4, color: "var(--fg-subtle)", fontSize: 11 }}>Cut and balance this track for the service timeline.</div>
-          </div>
+          <h2 id="audio-studio-title" style={modalTitleStyle}>Audio Studio</h2>
           <button type="button" onClick={onClose} title="Close" style={modalCloseButtonStyle}>×</button>
         </div>
+
+        <label style={fieldLabelStyle}>
+          Name
+          <input value={title} onChange={(event) => setTitle(event.target.value)} style={fieldInputStyle} />
+        </label>
 
         <audio
           ref={audioRef}
@@ -155,17 +135,14 @@ function AudioStudioContent({ name, src, sourcePath, settings, onClose, onSave }
           onLoadedMetadata={(event) => {
             if (trimEnd == null) setTrimEnd(event.currentTarget.duration);
           }}
-          style={{ display: "none" }}
         />
 
-        <div style={studioWorkspaceStyle}>
-          <div style={studioCanvasColumnStyle}>
-            <label style={fieldLabelStyle}>Asset name<input value={title} onChange={(event) => setTitle(event.target.value)} style={fieldInputStyle} /></label>
-            <div style={{ ...studioStageStyle, flex: 1, minHeight: 0, aspectRatio: "auto", padding: 18, boxSizing: "border-box" }}>
-              <div style={{ width: "100%", display: "flex", alignItems: "center", gap: 12 }}>
-                <button type="button" onClick={togglePlay} title={isPlaying ? "Pause" : "Play"} style={playButtonStyle}>{isPlaying ? "Ⅱ" : "▶"}</button>
-                {playbackError ? <div role="alert" style={{ color: "var(--color-error)", fontSize: 12 }}>{playbackError}</div> : null}
-                <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <button type="button" onClick={togglePlay} title={isPlaying ? "Pause" : "Play"} style={playButtonStyle}>
+            {isPlaying ? "Ⅱ" : "▶"}
+          </button>
+          {playbackError ? <div role="alert" style={{ color: "var(--color-error)", fontSize: 12 }}>{playbackError}</div> : null}
+          <div style={{ flex: 1, minWidth: 0 }}>
             {loading ? (
               <div style={{ color: "var(--fg-subtle)", fontSize: 12 }}>Decoding waveform…</div>
             ) : error ? (
@@ -181,13 +158,10 @@ function AudioStudioContent({ name, src, sourcePath, settings, onClose, onSave }
                 onSeek={handleSeek}
               />
             )}
-                </div>
-                  </div>
-              </div>
-              <div style={{ color: "var(--fg-subtle)", fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.05em" }}>WAVEFORM / TIMELINE</div>
           </div>
-            <aside className="studio-scroll-pane" style={studioInspectorStyle}>
-              <div style={twoColumnGrid}>
+        </div>
+
+        <div style={twoColumnGrid}>
           <label style={fieldLabelStyle}>
             Trim start (s)
             <input
@@ -212,20 +186,16 @@ function AudioStudioContent({ name, src, sourcePath, settings, onClose, onSave }
               style={fieldInputStyle}
             />
           </label>
-          </div>
-          <label style={fieldLabelStyle}>
-          Volume ({Math.round(volume * 100)}%)
-          <input type="range" min={0} max={1} step={0.01} value={volume} onChange={(event) => setVolume(Number(event.target.value))} />
-            </label>
-          </aside>
         </div>
 
-        <div style={studioFooterStyle}>
-          <span style={{ color: "var(--fg-subtle)", fontFamily: "var(--font-mono)", fontSize: 10 }}>AUDIO ASSET</span>
-          <div style={modalFooterRow}>
+        <label style={fieldLabelStyle}>
+          Volume ({Math.round(volume * 100)}%)
+          <input type="range" min={0} max={1} step={0.01} value={volume} onChange={(event) => setVolume(Number(event.target.value))} />
+        </label>
+
+        <div style={modalFooterRow}>
           <button type="button" onClick={onClose} style={secondaryButtonStyle}>Cancel</button>
           <button type="button" onClick={handleSave} style={primaryButtonStyle}>Save</button>
-          </div>
         </div>
       </section>
     </div>,
